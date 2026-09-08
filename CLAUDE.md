@@ -90,8 +90,9 @@ techo del modelo.
   `fetch_genomes.sh` se niega a bajarlos hasta que una persona corra
   `./scripts/fetch_genomes.sh resolve` y ponga `verificado`. El paso manual es
   a propósito: un ensamblado equivocado no falla ruidosamente, alinea peor y
-  contamina la anotación — y si además no coincide con el de MirGeneDB, rompe
-  el conjunto positivo (ver "Trampas conocidas").
+  contamina la anotación. Ya no hace falta que coincida con el ensamblado de
+  MirGeneDB — con el etiquetado por secuencia se elige por contigüidad y
+  completitud.
 - **`Magallana gigas` = `Crassostrea gigas`.** El género se renombró; Ensembl
   Metazoa y buena parte de las bases todavía usan *Crassostrea*. Buscar el
   genoma por el nombre nuevo no va a encontrarlo.
@@ -120,40 +121,24 @@ techo del modelo.
   `danre`. Si alguno muestra una fracción alineada anormalmente baja, revisar
   la distribución de longitudes antes de tocar `-m` — y declararlo en métodos,
   porque un revisor lo va a preguntar.
-- **El ensamblado tiene que ser el mismo que usa la fuente de los positivos.**
-  Esta es la trampa más cara del proyecto, porque no falla: simplemente da un
-  modelo peor. `gadmo`, `galga` y `maggi` sacan sus positivos de MirGeneDB, que
-  publica coordenadas sobre un ensamblado concreto. Si alineamos contra otro
-  —por ejemplo `GRCg7b` en pollo mientras MirGeneDB está sobre `GRCg6a`— los
-  miRNAs conocidos no caen sobre nuestros loci, quedan etiquetados como
-  *unlabeled*, y el clasificador aprende que un miRNA real es un candidato
-  novedoso. Es exactamente el modo de falla que PU learning existe para evitar.
-  Antes de fijar cada ensamblado: mirar sobre cuál publica MirGeneDB, y si no
-  coincide, o se usa ese, o hay que hacer liftover de las coordenadas. Vale lo
-  mismo para miRBase y Rfam.
-
-  **Salida posible: etiquetar por secuencia, no por coordenada.** MirGeneDB y
-  miRBase publican las secuencias maduras y de precursor, no solo coordenadas.
-  Si un locus se marca positivo porque su secuencia coincide con un miRNA
-  conocido —alineando la secuencia contra el locus— el ensamblado deja de
-  importar, y con él desaparecen el liftover y el problema de nombres de
-  cromosoma. Es más robusto y además permite reconocer un miRNA conservado que
-  en nuestro organismo cae en un locus que la anotación de referencia no tiene.
-  El costo es decidir un umbral de identidad: demasiado laxo mete parálogos y
-  miembros de familia como positivos, demasiado estricto los deja como
-  *unlabeled* y reintroduce el mismo sesgo por otra vía. Vale la pena evaluarlo
-  antes de comprometerse con el enfoque por coordenadas.
-
-  Estado: **sin resolver**. No pude determinar sobre qué ensamblado publica
-  MirGeneDB para `galga`. Los papers (Fromm 2020 `10.1093/nar/gkz885`, 2021
-  `10.1093/nar/gkab1101`) remiten a su Tabla Suplementaria S1, que no está en
-  el texto indexado. Confirmar ahí o en la página de la especie en
-  mirgenedb.org.
+- **Los positivos se etiquetan por secuencia, no por coordenada.** Decidido;
+  ver `docs/positivos.md`. Un locus es positivo si su RNA mayoritario coincide
+  con un sRNA descrito, no si su intervalo se solapa con una anotación. Esto
+  desacopla el proyecto del ensamblado: si alineáramos contra un genoma y la
+  base publicara sobre otro, los miRNAs conocidos no caerían sobre nuestros
+  loci, quedarían como *unlabeled*, y el modelo aprendería que un miRNA real es
+  un candidato novedoso — el modo de falla exacto que PU learning evita, y sin
+  ningún error visible.
+  Dos cosas que se siguen de esto y es fácil hacer mal:
+  **no** comparar la secuencia genómica completa del locus contra el maduro (el
+  locus mide cientos de nt y el maduro ~22, la identidad global no significa
+  nada); y **no** usar un umbral de identidad plano, porque el 5' define la
+  semilla y es preciso mientras el 3' varía de rutina por isomiRs. El criterio
+  va anclado en 5' con holgura en 3'.
 - **Ensembl y NCBI no nombran los cromosomas igual** (`1` vs `NC_006088.5`).
   Los 3 organismos heredados vienen de EnsemblGenomes y los 6 nuevos de NCBI.
-  Para bowtie y YASMA da lo mismo, pero cualquier cruce con coordenadas
-  externas —anotación de positivos, comparación con miRBase— necesita que los
-  nombres coincidan.
+  Con el etiquetado por secuencia esto dejó de afectar a los positivos, pero
+  sigue valiendo para cualquier otro cruce con coordenadas externas.
 - **YASMA v1.1.1 escribe en `annotations/<nombre>/loci.gff3`**, no en
   `annotation/`. Un chequeo contra la ruta vieja hacía abortar el pipeline tras
   el primer organismo.
