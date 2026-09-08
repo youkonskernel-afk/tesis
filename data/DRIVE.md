@@ -4,10 +4,24 @@ Fuente de verdad de dónde vive la data. Si una ruta cambia, se actualiza **acá
 y en `scripts/drive_push.sh` (que direcciona por ruta, no por ID — los IDs de
 esta tabla son para abrir la carpeta a mano y para las herramientas de Drive).
 
-- **Cuenta**: `seb.ugazm@gmail.com`
+- **Cuenta**: `seb.ugazm@gmail.com` — al menos 1.6 TB de capacidad
 - **Raíz**: `Mi unidad/tesis/`
 - **ID raíz**: `1E_Q6XLg4_RD01TFgfHbGUSQxx2ExtuVP`
 - https://drive.google.com/drive/folders/1E_Q6XLg4_RD01TFgfHbGUSQxx2ExtuVP
+
+## Presupuesto de espacio
+
+| | |
+| :-- | --: |
+| Capacidad de la cuenta | ≥ 1.6 TB |
+| BAMs (169 corridas) | ~100 GB |
+| `.sra` crudos, si se decidiera respaldarlos | ~55 GB |
+| Genomas + índices bowtie | ~2.5 GB |
+| YASMA, QC, features, modelos | orden de GB |
+
+El espacio **no es la restricción** de este proyecto: los BAMs son ~6% de la
+cuenta. Lo que se excluye de abajo se excluye por criterio de reproducibilidad
+—no se respalda lo que una base pública ya garantiza— no por falta de disco.
 
 | Carpeta | ID | Contiene |
 | :-- | :-- | :-- |
