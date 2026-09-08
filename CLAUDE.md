@@ -45,10 +45,18 @@ no el aporte de la tesis:
 ## Dataset
 
 **9 organismos, 3 por reino, cada uno con BioProject primario y duplicado.**
-`data/organismos.tsv` es la especificación (entrada de `gen_manifest.sh`).
-El manifiesto resuelto de esta ronda **todavía no existe**: hay que generarlo
-con `./gen_manifest.sh` contra la ENA. `data/srr_manifest_r1.tsv` es el de la
-ronda anterior, conservado como referencia.
+`data/organismos.tsv` es la especificación: 19 accessions en 18 slots (el
+primario de `maggi` son dos BioProjects combinados). El manifiesto resuelto de
+esta ronda **todavía no existe**: se genera con
+`./scripts/fetch_runs.sh manifest` contra la ENA, y después
+`./scripts/fetch_runs.sh prefetch` baja los `.sra`.
+`data/srr_manifest_r1.tsv` es el de la ronda anterior, como referencia.
+
+`scripts/fetch_runs.sh` **reemplaza al `gen_manifest.sh` de R1**, que asumía un
+proyecto por organismo. Filtra a datos de RNA con `library_source =
+TRANSCRIPTOMIC` —el filtro duro que excluye las corridas GENOMIC que varios
+BioProjects mezclan— y exige `SINGLE` para RNA-Seq, porque el PAIRED de un
+proyecto de RNA-Seq no es sRNA-seq.
 
 El primario es el set de **descubrimiento**; el duplicado es un experimento
 independiente para **validar** candidatos. Un locus que el modelo prioriza en el
@@ -98,7 +106,13 @@ Dos cosas sostienen el diseño, y están en `docs/positivos.md`:
 2. **Validación cruzada dejando un organismo afuera entre los tres curados.**
    `maggi` es molusco y `gadmo`/`galga` vertebrados. Si el modelo no transfiere
    de pez a molusco, no va a transferir de pez a musgo — y conviene saberlo
-   antes de correr los nueve organismos.
+   antes de correr los nueve organismos. Implementado en `scripts/loo_cv.py`
+   (`--self-test` verifica la lógica sin datos).
+
+**Elkan-Noto no cambia el ranking** respecto de tratar los no etiquetados como
+negativos: divide por una constante. Sirve para calibrar, no para reordenar.
+Para que el orden cambie hace falta bagging PU o nnPU. Verificado en el
+self-test; declararlo en métodos.
 
 **El prior de clase π se estima por organismo.** El π de animales no vale en
 plantas ni hongos; si no se puede estimar bien, reportar ranking en vez de

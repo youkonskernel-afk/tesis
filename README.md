@@ -25,11 +25,16 @@ La regla completa y las trampas del pipeline están en [`CLAUDE.md`](CLAUDE.md).
 ## Estructura
 
 ```
-data/organismos.tsv      9 organismos × (primario + duplicado) — spec del dataset
-data/srr_manifest_r1.tsv 169 corridas de la ronda anterior (referencia)
-data/DRIVE.md            índice de Drive: qué hay, dónde, con qué ID
-scripts/drive_push.sh    sube resultados a Drive vía rclone
-CLAUDE.md                regla de ubicación + trampas conocidas
+data/organismos.tsv       9 organismos × (primario + duplicado) — spec del dataset
+data/genomas.tsv          ensamblado por organismo, con estado de verificación
+data/srr_manifest_r1.tsv  169 corridas de la ronda anterior (referencia)
+data/DRIVE.md             índice de Drive: qué hay, dónde, con qué ID
+docs/positivos.md         cómo se arma el conjunto positivo y por qué
+scripts/fetch_runs.sh     resuelve los 18 proyectos a corridas y las descarga
+scripts/fetch_genomes.sh  resuelve y descarga los ensamblados
+scripts/drive_push.sh     sube resultados a Drive vía rclone
+scripts/loo_cv.py         validación dejando un organismo afuera
+CLAUDE.md                 regla de ubicación + trampas conocidas
 ```
 
 ## Pipeline

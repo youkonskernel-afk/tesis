@@ -138,6 +138,50 @@ predecir en el tercero da una estimación honesta de la capacidad de
 transferencia. Si el modelo no puede ir de pez a molusco, no va a ir de pez a
 musgo, y conviene saberlo antes y no después de correr los nueve organismos.
 
+Implementado en `scripts/loo_cv.py`:
+
+```
+./scripts/loo_cv.py features.tsv        # org, locus_id, y, <features>
+./scripts/loo_cv.py --self-test         # verifica la lógica sin datos
+```
+
+### Cómo se mide, sin negativos
+
+No hay negativos conocidos, así que no se reporta precisión ni AUC contra
+"negativos". Las métricas son las que se sostienen con solo positivos y no
+etiquetados:
+
+- **enriquecimiento** = recall en el top 5% dividido por 5%. **1.0 es azar.**
+  Es la métrica que responde la pregunta: si da ~1 en el organismo dejado
+  afuera, el modelo no transfiere.
+- **Lee & Liu** = recall² / P(predicho positivo). Criterio estándar de PU que
+  no necesita negativos.
+- **percentil mediano** de los positivos conocidos. 0.5 es azar.
+
+### Un resultado del propio código, que hay que declarar en métodos
+
+`scripts/loo_cv.py` implementa tres métodos, y el self-test verifica algo que
+conviene saber antes de escribir nada:
+
+**Elkan-Noto da exactamente el mismo ranking que tratar los no etiquetados como
+negativos.** Su estimación es P(y=1|x) = g(x)/c, y como c es una constante,
+dividir por ella no reordena nada. Elkan-Noto sirve para *calibrar* la
+probabilidad y elegir umbral — no para mejorar el orden.
+
+O sea que decir "usamos PU learning" no cambia por sí solo qué candidatos
+salen priorizados. Para que el orden cambie hace falta un método que toque la
+pérdida (nnPU) o el muestreo (**bagging PU**, Mordelet & Vert, que es el que
+está implementado y sí reordena). Es una distinción que un revisor puede
+preguntar y conviene tenerla resuelta.
+
+### Normalización por organismo
+
+Las features se estandarizan **dentro de cada organismo** antes de entrenar.
+Sin eso, la diferencia de profundidad entre organismos —`galga` declara 32 M
+spots y el primario de `maggi` ~353 M— entra como señal y el modelo aprende a
+reconocer el organismo en vez del sRNA. El self-test verifica que un
+corrimiento de escala artificial no rompe el resultado.
+
 ### El prior de clase
 
 Casi todos los métodos de PU learning (Elkan-Noto, nnPU y parientes) necesitan
