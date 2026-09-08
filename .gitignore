@@ -1,0 +1,70 @@
+# ---------------------------------------------------------------
+# Regla del proyecto: el código vive en GitHub, la data en Drive.
+# Nada de lo que se pueda re-descargar o re-generar entra en git.
+# Ver data/DRIVE.md para dónde vive cada cosa.
+# ---------------------------------------------------------------
+
+# Lecturas crudas — públicas, se recuperan con `prefetch`
+*.sra
+*.sra.tmp
+*.fastq
+*.fastq.gz
+*.fq
+*.fq.gz
+
+# Alineamientos — van a Drive (10_bam/)
+*.bam
+*.bai
+*.sam
+
+# Genomas e índices — se re-descargan desde Ensembl / EnsemblGenomes / NCBI
+*.fa
+*.fa.gz
+*.fasta
+*.gff3
+*.gff3.gz
+*.ebwt
+*.nhr
+*.nin
+*.nsq
+*.ndb
+*.not
+*.ntf
+*.nto
+
+# Directorios de trabajo del pipeline
+sra_cache/
+genomes/
+indexes/
+bams/
+yasma_out/
+tmp/
+
+# Logs y ruido
+*.log
+nohup.out
+__pycache__/
+
+# Credenciales de rclone — nunca en el repo
+rclone.conf
+.rclone.conf
+
+# Nota: srr_manifest.tsv, config.sh y environment.yml SÍ se versionan.
+# No necesitan regla de excepción — ningún patrón de arriba los toca — pero si
+# alguien agrega *.tsv o *.yml a este archivo, hay que exceptuarlos a mano.
+
+# --- PU learning: artefactos entrenados y matrices de features ---
+# El código del modelo va a git; lo que el modelo produce va a Drive.
+*.pkl
+*.joblib
+*.h5
+*.pt
+*.npz
+*.npy
+*.parquet
+*.feather
+models/
+features/
+runs/
+mlruns/
+.ipynb_checkpoints/
