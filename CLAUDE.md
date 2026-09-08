@@ -72,10 +72,37 @@ Escala declarada: ~195 corridas / ~3.0 G spots en los primarios, ~230 / ~4.4 G
 en los duplicados. **~425 corridas y ~7.4 G spots en total, contra 169 y 2.18 G
 del set anterior** — del orden de 3.4× más. Ver "Consecuencias del cambio".
 
-`gadmo`, `galga` y los dos primarios de `maggi` están **declarados por
-MirGeneDB**, o sea que su set de miRNAs positivos es curado. Para PU learning
-eso importa más que la profundidad: la calidad del conjunto positivo define el
-techo del modelo.
+### Entrenamiento vs aplicación
+
+**El modelo se entrena solo en `gadmo`, `galga` y `maggi`** — los tres con
+positivos curados por MirGeneDB. Los otros seis son conjunto de **aplicación**:
+se predice sobre ellos, no se entrena. La columna `set_modelo` de
+`data/organismos.tsv` lo hace explícito. En PU learning un falso positivo es
+peor que un *unlabeled*: el método asume la clase positiva limpia, y las
+entradas dudosas de miRBase invertirían ese supuesto sin vuelta atrás.
+
+**El costo de esto es que los tres de entrenamiento son los tres animales**, y
+los seis de aplicación son hongos y plantas. Es transferencia entre reinos y es
+la parte más frágil del diseño: los precursores de plantas son más largos y
+heterogéneos, las clases de tamaño vegetales son 21 y 24 nt contra el pico
+animal de ~22, y en hongos predominan milRNA y siRNA Dicer-dependiente sobre el
+miRNA canónico. Un modelo que aprendió la firma animal puede no encontrar nada
+en plantas por buscar la forma equivocada, y eso se confunde fácil con "no hay
+nada que encontrar".
+
+Dos cosas sostienen el diseño, y están en `docs/positivos.md`:
+
+1. **miRBase como evaluación, nunca como entrenamiento.** En los seis de
+   aplicación, cuántos miRNAs ya descritos recupera el modelo es la medida
+   directa de si la transferencia funciona. No contamina nada.
+2. **Validación cruzada dejando un organismo afuera entre los tres curados.**
+   `maggi` es molusco y `gadmo`/`galga` vertebrados. Si el modelo no transfiere
+   de pez a molusco, no va a transferir de pez a musgo — y conviene saberlo
+   antes de correr los nueve organismos.
+
+**El prior de clase π se estima por organismo.** El π de animales no vale en
+plantas ni hongos; si no se puede estimar bien, reportar ranking en vez de
+probabilidad calibrada.
 
 ### Consecuencias del cambio de dataset (pendientes)
 

@@ -85,10 +85,75 @@ miRBase tiene una tasa conocida de falsos positivos, que es precisamente lo que
 MirGeneDB se propuso corregir (Fromm et al., 2019). Un positivo falso en PU
 learning es peor que un unlabeled: contamina la clase que se asume limpia.
 
-**Pendiente**: decidir si los organismos sin MirGeneDB se etiquetan con miRBase
-tal cual, con miRBase filtrado por algún criterio de calidad, o si el modelo se
-entrena solo donde el positivo es curado y los demás se usan como conjunto de
-aplicación. No es una decisión menor: cambia qué se puede afirmar del resultado.
+## Alcance: entrenamiento vs aplicación
+
+**Decidido**: el modelo se entrena **solo** en los tres organismos con positivos
+curados por MirGeneDB (`gadmo`, `galga`, `maggi`). Los otros seis son
+**conjunto de aplicación**: se predice sobre ellos, no se entrena.
+
+La razón es que en PU learning un falso positivo es peor que un *unlabeled*.
+El método asume que la clase positiva está limpia y que el ruido vive en la no
+etiquetada; meter entradas dudosas de miRBase en los positivos invierte ese
+supuesto y no hay forma de recuperarse después.
+
+### El costo, que hay que declarar
+
+Los tres organismos de entrenamiento son **los tres animales**. Los seis de
+aplicación son tres hongos y tres plantas. O sea que esto no es solo un cambio
+de especie: es **transferencia entre reinos**, y es la parte más frágil del
+diseño.
+
+Los sRNA de plantas y de animales difieren en cosas que probablemente sean
+justo las features del modelo:
+
+- Los precursores de plantas son más largos y mucho más heterogéneos en
+  longitud y estructura de hairpin que los de animales.
+- Las plantas tienen clases de tamaño propias — 21 nt y 24 nt — mientras el
+  pico animal es ~22 nt. Un modelo que aprendió "22 nt es señal de miRNA"
+  puede descartar la clase de 24 nt de plantas por construcción.
+- En hongos el panorama es todavía más distinto: varios linajes tienen vías de
+  RNAi divergentes o reducidas, y lo que se describe suele ser milRNA y siRNA
+  Dicer-dependiente antes que miRNA canónico. No por nada el proyecto primario
+  de `cloro` son mutantes Dicer-like.
+
+Si el modelo aprende la firma de un miRNA animal, aplicarlo a plantas y hongos
+puede dar pocos candidatos no porque no los haya, sino porque busca la forma
+equivocada.
+
+### Dos cosas que hay que hacer para que el diseño se sostenga
+
+**1. miRBase como evaluación, nunca como entrenamiento.** La decisión de no
+entrenar con miRBase no obliga a ignorarlo. En los seis organismos de
+aplicación, los miRNAs de miRBase sirven como *control de recuperación*:
+¿cuántos de los ya descritos vuelve a encontrar el modelo? Es una medida
+directa de si la transferencia entre reinos funciona, cuesta nada, y no
+contamina nada porque no toca el entrenamiento. Si la recuperación es baja en
+plantas y hongos, eso **es** un resultado, no un fracaso — pero hay que poder
+medirlo.
+
+**2. Validación cruzada dejando un organismo afuera, entre los tres curados.**
+Antes de cruzar a otro reino, medir si el modelo transfiere entre taxones.
+`maggi` es un molusco y `gadmo`/`galga` son vertebrados: entrenar en dos y
+predecir en el tercero da una estimación honesta de la capacidad de
+transferencia. Si el modelo no puede ir de pez a molusco, no va a ir de pez a
+musgo, y conviene saberlo antes y no después de correr los nueve organismos.
+
+### El prior de clase
+
+Casi todos los métodos de PU learning (Elkan-Noto, nnPU y parientes) necesitan
+π, la proporción de positivos entre los no etiquetados. π estimado en animales
+**no** es válido en plantas ni hongos: la proporción de loci que son miRNA real
+sobre el total de loci anotados depende del organismo y del reino. Hay que
+estimar π por organismo en el conjunto de aplicación, o reportar los resultados
+como ranking en vez de como probabilidad calibrada.
+
+### Alternativa, si la transferencia falla
+
+Si la validación del punto 2 muestra que el modelo no transfiere ni entre
+animales, el diseño de entrenar-en-tres-y-aplicar-a-seis no se sostiene y hay
+que replantearlo: por ejemplo entrenar un modelo por reino, aceptando positivos
+de miRBase filtrados en plantas y hongos, y declarando el ruido. Peor, pero
+honesto. Conviene tener esto resuelto antes de escribir métodos.
 
 ## Referencia
 
