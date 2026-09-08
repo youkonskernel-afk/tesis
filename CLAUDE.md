@@ -82,13 +82,16 @@ techo del modelo.
 - **Se caen `arath`, `danre` y `nemve`.** Sus `.sra`, BAMs e índices son ahora
   peso muerto. No borrar sin confirmar: el caché es re-descargable, pero los
   BAMs de `danre` costaron horas de alineamiento.
-- **Faltan 6 ensamblados** (`cloro`, `prupe`, `maldo`, `gadmo`, `galga`,
-  `maggi`). Están en `data/genomas.tsv` con estado `candidato`: son sugerencias
-  **sin verificar**, escritas de memoria y no comprobadas contra ninguna base.
-  `fetch_genomes.sh` se niega a bajarlas hasta que una persona las confirme con
-  `./scripts/fetch_genomes.sh resolve` y cambie el estado a `verificado`. El
-  paso manual es a propósito: un ensamblado equivocado no falla ruidosamente,
-  alinea peor y contamina la anotación.
+- **Faltan 6 ensamblados.** Están en `data/genomas.tsv` como `candidato`, con
+  una columna `confianza` que dice cuánto pesa cada propuesta. Cinco tienen
+  candidato concreto (`prupe`, `maldo`, `gadmo`, `galga`, `maggi`) y `cloro`
+  ninguno: depende de la cepa, y `PRJEB43636` son mutantes Dicer-like del grupo
+  de Karlsson (SLU), casi seguro IK726. Ninguno está comprobado contra NCBI.
+  `fetch_genomes.sh` se niega a bajarlos hasta que una persona corra
+  `./scripts/fetch_genomes.sh resolve` y ponga `verificado`. El paso manual es
+  a propósito: un ensamblado equivocado no falla ruidosamente, alinea peor y
+  contamina la anotación — y si además no coincide con el de MirGeneDB, rompe
+  el conjunto positivo (ver "Trampas conocidas").
 - **`Magallana gigas` = `Crassostrea gigas`.** El género se renombró; Ensembl
   Metazoa y buena parte de las bases todavía usan *Crassostrea*. Buscar el
   genoma por el nombre nuevo no va a encontrarlo.
@@ -117,6 +120,22 @@ techo del modelo.
   `danre`. Si alguno muestra una fracción alineada anormalmente baja, revisar
   la distribución de longitudes antes de tocar `-m` — y declararlo en métodos,
   porque un revisor lo va a preguntar.
+- **El ensamblado tiene que ser el mismo que usa la fuente de los positivos.**
+  Esta es la trampa más cara del proyecto, porque no falla: simplemente da un
+  modelo peor. `gadmo`, `galga` y `maggi` sacan sus positivos de MirGeneDB, que
+  publica coordenadas sobre un ensamblado concreto. Si alineamos contra otro
+  —por ejemplo `GRCg7b` en pollo mientras MirGeneDB está sobre `GRCg6a`— los
+  miRNAs conocidos no caen sobre nuestros loci, quedan etiquetados como
+  *unlabeled*, y el clasificador aprende que un miRNA real es un candidato
+  novedoso. Es exactamente el modo de falla que PU learning existe para evitar.
+  Antes de fijar cada ensamblado: mirar sobre cuál publica MirGeneDB, y si no
+  coincide, o se usa ese, o hay que hacer liftover de las coordenadas. Vale lo
+  mismo para miRBase y Rfam.
+- **Ensembl y NCBI no nombran los cromosomas igual** (`1` vs `NC_006088.5`).
+  Los 3 organismos heredados vienen de EnsemblGenomes y los 6 nuevos de NCBI.
+  Para bowtie y YASMA da lo mismo, pero cualquier cruce con coordenadas
+  externas —anotación de positivos, comparación con miRBase— necesita que los
+  nombres coincidan.
 - **YASMA v1.1.1 escribe en `annotations/<nombre>/loci.gff3`**, no en
   `annotation/`. Un chequeo contra la ruta vieja hacía abortar el pipeline tras
   el primer organismo.

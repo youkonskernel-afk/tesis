@@ -31,7 +31,7 @@ done
 [[ -f "$SPEC" ]] || die "no existe $SPEC"
 
 # Filas de la spec, sin comentarios ni cabecera. Campos: org especie fuente
-# assembly accession estado nota
+# assembly accession estado confianza nota
 # OJO: no usar IFS=$'\t' para leer estas filas. El tab es un carácter de
 # espacio de IFS, así que bash colapsa tabs consecutivos y las filas con
 # accession vacío se leen corridas un campo. Se re-separa con \x1f, que no es
@@ -39,7 +39,7 @@ done
 SEP=$'\x1f'
 filas() {
   grep -v '^[[:space:]]*#' "$SPEC" | tail -n +2 | awk -F'\t' -v o="${1:-}" -v s="$SEP" \
-    'NF>=6 && (o=="" || $1==o) { for(i=1;i<=7;i++) printf "%s%s", (i>1?s:""), $i; print "" }'
+    'NF>=7 && (o=="" || $1==o) { for(i=1;i<=8;i++) printf "%s%s", (i>1?s:""), $i; print "" }'
 }
 
 # El checksum también va a git. Guardarlo solo junto al FASTA en Drive no prueba
@@ -61,9 +61,9 @@ registrar() {
 }
 
 cmd_estado() {
-  printf "%-8s %-12s %-32s %s\n" ORG ESTADO ASSEMBLY ACCESSION
-  filas "${1:-}" | while IFS="$SEP" read -r org esp fuente asm acc estado nota; do
-    printf "%-8s %-12s %-32s %s\n" "$org" "$estado" "$asm" "${acc:--}"
+  printf "%-8s %-11s %-10s %-32s %s\n" ORG ESTADO CONFIANZA ASSEMBLY ACCESSION
+  filas "${1:-}" | while IFS="$SEP" read -r org esp fuente asm acc estado conf nota; do
+    printf "%-8s %-11s %-10s %-32s %s\n" "$org" "$estado" "$conf" "$asm" "${acc:--}"
   done
   echo
   local n; n=$(filas | awk -F'\t' '$6=="candidato"' | wc -l)
@@ -72,12 +72,12 @@ cmd_estado() {
 }
 
 cmd_resolve() {
-  filas "${1:-}" | while IFS="$SEP" read -r org esp fuente asm acc estado nota; do
+  filas "${1:-}" | while IFS="$SEP" read -r org esp fuente asm acc estado conf nota; do
     [[ "$estado" == "heredado" ]] && { echo "== $org: heredado, se salta"; continue; }
     echo "== $org — $esp"
 
     if [[ -n "$acc" ]]; then
-      echo "   candidato en la spec: $acc ($asm)"
+      echo "   candidato en la spec: $acc ($asm) — confianza $conf"
       local_json=$(curl -sS --max-time 60 \
         "$API/genome/accession/$acc/dataset_report" 2>/dev/null || echo '{}')
       echo "$local_json" | jq -r '
@@ -109,11 +109,11 @@ cmd_resolve() {
 
 cmd_fetch() {
   local bajados=0 saltados=0
-  while IFS="$SEP" read -r org esp fuente asm acc estado nota; do
+  while IFS="$SEP" read -r org esp fuente asm acc estado conf nota; do
     case "$estado" in
       verificado) ;;
       candidato)
-        echo "SALTO $org: estado 'candidato'. Verificá con: $0 resolve $org" >&2
+        echo "SALTO $org: 'candidato' (confianza $conf). Verificá: $0 resolve $org" >&2
         saltados=$((saltados+1)); continue ;;
       heredado)
         echo "SALTO $org: heredado, se baja con el pipeline viejo (config.sh)" >&2
