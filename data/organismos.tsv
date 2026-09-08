@@ -1,0 +1,25 @@
+# Especificación del dataset: 9 organismos, 3 por reino, cada uno con un
+# BioProject primario (descubrimiento) y uno duplicado (validación independiente).
+# Entrada de gen_manifest.sh, que resuelve estos accessions a corridas vía ENA.
+# runs y spots_M son los valores DECLARADOS; gen_manifest.sh los verifica.
+# assembly: pendiente de fijar para los 6 organismos nuevos — no inventar.
+org	especie	reino	clado	rol	bioproject	runs	spots_M	strategy	assembly	nota
+rhirr	Rhizophagus irregularis	Fungi	Glomeromycota	primario	PRJEB29180	9	230	miRNA-Seq	ASM43914v3	SmallRNAome; runs/spots desde el manifiesto anterior
+rhirr	Rhizophagus irregularis	Fungi	Glomeromycota	duplicado	PRJNA722321	14	129	miRNA-Seq	ASM43914v3	Dallaire 2021
+sclsc	Sclerotinia sclerotiorum	Fungi	Ascomycota	primario	PRJNA477286	18	184	miRNA-Seq	ASM14694v1	Infección en Arabidopsis y Phaseolus
+sclsc	Sclerotinia sclerotiorum	Fungi	Ascomycota	duplicado	PRJNA985401	8	481	RNA-Seq	ASM14694v1	Mycelial matts en B. napus; RNA-Seq, no miRNA-Seq
+cloro	Clonostachys rosea	Fungi	Ascomycota	primario	PRJEB43636	34	530	ncRNA-Seq	PENDIENTE	Mutantes Dicer-like
+cloro	Clonostachys rosea	Fungi	Ascomycota	duplicado	PRJEB51338	23	1052	miRNA-Seq	PENDIENTE	sRNA + degradome
+phypa	Physcomitrium patens	Plantae	Briofita	primario	PRJNA222997	30	644	RNA-Seq	Phypa_V3	RNA-Seq con fraccionamiento por tamaño, no miRNA-Seq
+phypa	Physcomitrium patens	Plantae	Briofita	duplicado	PRJNA277372	10	86	miRNA-Seq	Phypa_V3	miRNA-Seq puro
+prupe	Prunus persica	Plantae	Rosácea	primario	PRJNA929031	9	124	miRNA-Seq	PENDIENTE	
+prupe	Prunus persica	Plantae	Rosácea	duplicado	PRJNA780811	5	144	miRNA-Seq	PENDIENTE	
+maldo	Malus domestica	Plantae	Rosácea	primario	PRJNA681626	36	858	miRNA-Seq	PENDIENTE	
+maldo	Malus domestica	Plantae	Rosácea	duplicado	PRJNA784097	29	347	miRNA-Seq	PENDIENTE	Reads de 151 nt: revisar pre-trim antes de fastp
+gadmo	Gadus morhua	Animalia	Vertebrado (pez)	primario	PRJNA284846	8	62	miRNA-Seq	PENDIENTE	Declarado por MirGeneDB
+gadmo	Gadus morhua	Animalia	Vertebrado (pez)	duplicado	PRJNA328800	12	73	miRNA-Seq	PENDIENTE	
+galga	Gallus gallus	Animalia	Vertebrado (ave)	primario	PRJEB12164	27	32	miRNA-Seq	PENDIENTE	Declarado por MirGeneDB; solo 32 M spots en 27 runs
+galga	Gallus gallus	Animalia	Vertebrado (ave)	duplicado	PRJNA694114	96	1609	ncRNA-Seq	PENDIENTE	Era primario en R1; queda como refuerzo
+maggi	Magallana gigas	Animalia	Invertebrado (molusco)	primario	PRJNA154615	NA	NA	miRNA-Seq	PENDIENTE	Con PRJNA232734: 24 runs y ~353 M spots combinados; ambos MirGeneDB
+maggi	Magallana gigas	Animalia	Invertebrado (molusco)	primario	PRJNA232734	NA	NA	miRNA-Seq	PENDIENTE	Ver PRJNA154615
+maggi	Magallana gigas	Animalia	Invertebrado (molusco)	duplicado	PRJNA1254880	33	456	miRNA-Seq	PENDIENTE	El más profundo no declarado por MirGeneDB

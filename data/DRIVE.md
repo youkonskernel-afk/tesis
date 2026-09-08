@@ -14,37 +14,40 @@ esta tabla son para abrir la carpeta a mano y para las herramientas de Drive).
 | | |
 | :-- | --: |
 | Capacidad de la cuenta | ≥ 1.6 TB |
-| BAMs (169 corridas) | ~100 GB |
-| `.sra` crudos, si se decidiera respaldarlos | ~55 GB |
-| Genomas + índices bowtie | ~2.5 GB |
+| BAMs (~425 corridas) | ~340 GB |
+| `.sra` crudos, si se decidiera respaldarlos | ~190 GB |
+| Genomas + índices bowtie (9 organismos) | orden de 5 GB |
 | YASMA, QC, features, modelos | orden de GB |
 
-El espacio **no es la restricción** de este proyecto: los BAMs son ~6% de la
-cuenta. Lo que se excluye de abajo se excluye por criterio de reproducibilidad
+El espacio **no es la restricción** de este proyecto: los BAMs son ~21% de la
+cuenta, aun con el dataset ampliado a 9 organismos. Lo que se excluye de abajo se excluye por criterio de reproducibilidad
 —no se respalda lo que una base pública ya garantiza— no por falta de disco.
 
 | Carpeta | ID | Contiene |
 | :-- | :-- | :-- |
-| `00_manifiestos/` | `1rZ6AQ7xu8D7F9WqR7qBfgzATWG_FrJWY` | Copia de respaldo de `srr_manifest.tsv`, `config.sh`, `environment.yml` |
-| `10_bam/` | `1l_65g9VbWDqHik9UrBjgJCYNr7aurDB_` | `<org>/<RUN>.bam` + `.bai` — 169 corridas, ~100 GB |
+| `00_manifiestos/` | `1rZ6AQ7xu8D7F9WqR7qBfgzATWG_FrJWY` | Snapshots de `organismos.tsv`, `config.sh`, `environment.yml` por corrida |
+| `10_bam/` | `1l_65g9VbWDqHik9UrBjgJCYNr7aurDB_` | `<org>/<RUN>.bam` + `.bai` — ~425 corridas, ~340 GB |
 | `20_yasma/` | `14MGZizfNGREiX4CvHzZOPEnlwoTSu62s` | `<org>/annotations/<nombre>/loci.gff3`, counts |
 | `30_qc/` | `11NXk3e0UFTw9RCCPMm-IpkqMsMVWnbsQ` | `<org>/` fastp `.json`/`.html`, flagstat, distribución de longitudes |
 | `40_features/` | `1fHV2-QM6yvEW3yCCuyA8uWwvkEAeZS6x` | Matrices de features por locus para PU learning |
 | `50_modelos/` | `1q59gopI-uKOGJhvQ_JbDJFx4qJL1wKO7` | Modelos entrenados, checkpoints, predicciones |
 | `60_figuras/` | `13rOdpXqd_EbNi3RDamLLeIBUko-Zc7BC` | Figuras raster pesadas |
 
-Las subcarpetas por organismo (`rhirr`, `sclsc`, `arath`, `phypa`, `danre`,
-`nemve`) no se crean a mano: `rclone copy` las crea al subir.
+Las subcarpetas por organismo (`rhirr`, `sclsc`, `cloro`, `phypa`, `prupe`,
+`maldo`, `gadmo`, `galga`, `maggi`) no se crean a mano: `rclone copy` las crea
+al subir.
 
 ## Qué NO está acá
 
-- **`.sra` crudos** (55 GB). Son públicos; `prefetch` los recupera desde SRA.
-  El caché local vive en `/home/dev/sra_cache`.
-- **Genomas e índices bowtie** (~2.5 GB). Se re-descargan desde Ensembl,
-  EnsemblGenomes release-57 y NCBI; las URLs están en `config.sh`.
+- **`.sra` crudos** (~190 GB proyectados). Son públicos; `prefetch` los recupera
+  desde SRA. El caché local vive en `/home/dev/sra_cache` y ya trae 57 corridas
+  vigentes de R1 (`rhirr`, `sclsc`, `phypa` conservan su BioProject primario).
+- **Genomas e índices bowtie**. Se re-descargan desde Ensembl, EnsemblGenomes
+  y NCBI; las URLs están en `config.sh`. Faltan fijar 6 ensamblados nuevos —
+  ver `data/organismos.tsv`.
 
 Reconstruir todo desde cero necesita solo tres ficheros, y los tres están en
-git: `config.sh`, `srr_manifest.tsv` y `environment.yml`.
+git: `config.sh`, `organismos.tsv` y `environment.yml`.
 
 ## Data heredada, fuera de este árbol
 
