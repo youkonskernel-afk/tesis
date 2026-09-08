@@ -8,13 +8,20 @@ al repo, ni siquiera "temporalmente".
 | Va a git | Va a Drive | No va a ninguna parte |
 | :-- | :-- | :-- |
 | Scripts del pipeline, código del modelo | BAMs, salidas YASMA, QC | `.sra` (público, `prefetch` lo recupera) |
-| `config.sh`, `environment.yml` | Matrices de features | Genomas e índices (re-descargables) |
+| `config.sh`, `environment.yml` | Matrices de features, **genomas** | Índices bowtie (derivados del genoma) |
 | `organismos.tsv`, manifiestos | Modelos entrenados, checkpoints | Temporales de `fasterq-dump` |
 | Vitácoras, docs, figuras vectoriales | Figuras raster pesadas | `__pycache__`, logs |
 
 Criterio: si es texto, chico y necesario para **reproducir**, va a git. Si es
-salida binaria y pesada, va a Drive. Si se puede re-descargar de una base
-pública, no se respalda.
+salida binaria y pesada, va a Drive. Si es derivado y se re-genera en minutos,
+no se respalda.
+
+**Los genomas sí se respaldan** (`70_genomas/`), aunque sean públicos. Es una
+excepción deliberada al criterio anterior: un ensamblado se puede retirar,
+renumerar o reemplazar por una versión nueva, y entonces el alineamiento deja
+de ser reproducible. Guardar el FASTA exacto con su `sha256` es la única forma
+de poder decir, dentro de dos años, contra qué se alineó. Los índices bowtie no
+se respaldan: se reconstruyen del FASTA en minutos.
 
 Drive es `Mi unidad/tesis/` en `seb.ugazm@gmail.com`. Los IDs de carpeta están
 en `data/DRIVE.md` — esa es la única fuente de verdad de la ruta.
@@ -76,8 +83,12 @@ techo del modelo.
   peso muerto. No borrar sin confirmar: el caché es re-descargable, pero los
   BAMs de `danre` costaron horas de alineamiento.
 - **Faltan 6 ensamblados** (`cloro`, `prupe`, `maldo`, `gadmo`, `galga`,
-  `maggi`), marcados `PENDIENTE` en `data/organismos.tsv`. Hay que fijarlos y
-  agregar las URLs a `config.sh` antes de correr la fase de índices.
+  `maggi`). Están en `data/genomas.tsv` con estado `candidato`: son sugerencias
+  **sin verificar**, escritas de memoria y no comprobadas contra ninguna base.
+  `fetch_genomes.sh` se niega a bajarlas hasta que una persona las confirme con
+  `./scripts/fetch_genomes.sh resolve` y cambie el estado a `verificado`. El
+  paso manual es a propósito: un ensamblado equivocado no falla ruidosamente,
+  alinea peor y contamina la anotación.
 - **`Magallana gigas` = `Crassostrea gigas`.** El género se renombró; Ensembl
   Metazoa y buena parte de las bases todavía usan *Crassostrea*. Buscar el
   genoma por el nombre nuevo no va a encontrarlo.

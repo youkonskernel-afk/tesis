@@ -4,8 +4,8 @@
 #   ./scripts/drive_push.sh <fase> [ORG]        # dry-run, no sube nada
 #   ./scripts/drive_push.sh <fase> [ORG] --go   # sube de verdad
 #
-#   fases: bam | yasma | qc | features | modelos | figuras
-#   ORG:   rhirr | sclsc | arath | phypa | danre | nemve   (opcional)
+#   fases: bam | yasma | qc | features | modelos | figuras | genomas
+#   ORG:   rhirr | sclsc | cloro | phypa | prupe | maldo | gadmo | galga | maggi
 #
 # Por qué rclone y no el conector de Drive: son ~100 GB de BAMs. El conector
 # mueve manifiestos, no alineamientos.
@@ -44,12 +44,13 @@ case "$FASE" in
   features) SRC="features";    DST="40_features" ;;
   modelos)  SRC="models";      DST="50_modelos" ;;
   figuras)  SRC="figures";     DST="60_figuras" ;;
+  genomas)  SRC="genomes";     DST="70_genomas" ;;
   *) echo "fase desconocida: $FASE" >&2; usage ;;
 esac
 
 if [[ -n "$ORG" ]]; then
   case "$ORG" in
-    rhirr|sclsc|arath|phypa|danre|nemve) ;;
+    rhirr|sclsc|cloro|phypa|prupe|maldo|gadmo|galga|maggi) ;;
     *) echo "organismo desconocido: $ORG" >&2; exit 2 ;;
   esac
   SRC="$SRC/$ORG"; DST="$DST/$ORG"

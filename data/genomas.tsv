@@ -1,0 +1,23 @@
+# Ensamblados de referencia, uno por organismo.
+#
+# COLUMNA estado — leer antes de usar:
+#   verificado : confirmado contra la fuente. Se puede descargar.
+#   candidato  : SUGERENCIA sin verificar, escrita de memoria por el asistente
+#                y NO comprobada contra ninguna base (la sesión no tiene red
+#                hacia NCBI ni Ensembl). Puede estar desactualizada o ser
+#                directamente incorrecta. fetch_genomes.sh se NIEGA a bajarla.
+#                Confirmar con: ./scripts/fetch_genomes.sh resolve <org>
+#   heredado   : viene del pipeline anterior, ya en uso; la URL está en config.sh.
+#
+# Un ensamblado equivocado no falla ruidosamente: alinea peor y contamina la
+# anotación. Por eso el estado empieza en candidato y lo sube una persona.
+org	especie	fuente	assembly	accession	estado	nota
+rhirr	Rhizophagus irregularis	NCBI	ASM43914v3		heredado	En uso desde R1; URL en config.sh
+sclsc	Sclerotinia sclerotiorum	EnsemblGenomes 57	ASM14694v1		heredado	En uso desde R1; URL en config.sh
+phypa	Physcomitrium patens	EnsemblGenomes 57	Phypa_V3		heredado	En uso desde R1; URL en config.sh
+cloro	Clonostachys rosea	?	?		candidato	Sin candidato. Depende de la cepa: PRJEB43636 son mutantes Dicer-like, probablemente IK726. Resolver contra la cepa del BioProject.
+prupe	Prunus persica	NCBI	Prunus_persica_NCBIv2	GCF_000346465.2	candidato	Verificar antes de usar
+maldo	Malus domestica	NCBI	ASM211411v1 (GDDH13)	GCF_002114115.1	candidato	Verificar antes de usar
+gadmo	Gadus morhua	NCBI	gadMor3.0	GCF_902167405.1	candidato	Verificar antes de usar
+galga	Gallus gallus	NCBI	bGalGal1.mat.broiler.GRCg7b	GCF_016699485.2	candidato	Verificar antes de usar; GRCg7b reemplaza a GRCg6a
+maggi	Magallana gigas	NCBI	cgigas_uk_roslin_v1	GCF_902806645.1	candidato	Verificar antes de usar; buscar como Crassostrea gigas

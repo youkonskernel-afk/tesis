@@ -21,6 +21,8 @@
 *.fa
 *.fa.gz
 *.fasta
+*.fna
+*.fna.gz
 *.gff3
 *.gff3.gz
 *.ebwt

@@ -32,6 +32,7 @@ cuenta, aun con el dataset ampliado a 9 organismos. Lo que se excluye de abajo s
 | `40_features/` | `1fHV2-QM6yvEW3yCCuyA8uWwvkEAeZS6x` | Matrices de features por locus para PU learning |
 | `50_modelos/` | `1q59gopI-uKOGJhvQ_JbDJFx4qJL1wKO7` | Modelos entrenados, checkpoints, predicciones |
 | `60_figuras/` | `13rOdpXqd_EbNi3RDamLLeIBUko-Zc7BC` | Figuras raster pesadas |
+| `70_genomas/` | `1Ik2edbmuH6OLqjQDIOH6zLuUgYe_e4yy` | `<org>/<accession>.fna.gz` + `.sha256` — el FASTA exacto usado |
 
 Las subcarpetas por organismo (`rhirr`, `sclsc`, `cloro`, `phypa`, `prupe`,
 `maldo`, `gadmo`, `galga`, `maggi`) no se crean a mano: `rclone copy` las crea
@@ -42,9 +43,12 @@ al subir.
 - **`.sra` crudos** (~190 GB proyectados). Son públicos; `prefetch` los recupera
   desde SRA. El caché local vive en `/home/dev/sra_cache` y ya trae 57 corridas
   vigentes de R1 (`rhirr`, `sclsc`, `phypa` conservan su BioProject primario).
-- **Genomas e índices bowtie**. Se re-descargan desde Ensembl, EnsemblGenomes
-  y NCBI; las URLs están en `config.sh`. Faltan fijar 6 ensamblados nuevos —
-  ver `data/organismos.tsv`.
+- **Índices bowtie**. Se reconstruyen del FASTA en minutos.
+
+Los **genomas sí están** (`70_genomas/`), como excepción deliberada: un
+ensamblado puede retirarse o reemplazarse, y sin el FASTA exacto el
+alineamiento deja de ser reproducible. Faltan fijar 6 — ver `data/genomas.tsv`,
+donde figuran como `candidato` hasta que alguien los verifique.
 
 Reconstruir todo desde cero necesita solo tres ficheros, y los tres están en
 git: `config.sh`, `organismos.tsv` y `environment.yml`.
