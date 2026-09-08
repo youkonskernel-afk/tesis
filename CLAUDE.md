@@ -131,6 +131,24 @@ techo del modelo.
   Antes de fijar cada ensamblado: mirar sobre cuál publica MirGeneDB, y si no
   coincide, o se usa ese, o hay que hacer liftover de las coordenadas. Vale lo
   mismo para miRBase y Rfam.
+
+  **Salida posible: etiquetar por secuencia, no por coordenada.** MirGeneDB y
+  miRBase publican las secuencias maduras y de precursor, no solo coordenadas.
+  Si un locus se marca positivo porque su secuencia coincide con un miRNA
+  conocido —alineando la secuencia contra el locus— el ensamblado deja de
+  importar, y con él desaparecen el liftover y el problema de nombres de
+  cromosoma. Es más robusto y además permite reconocer un miRNA conservado que
+  en nuestro organismo cae en un locus que la anotación de referencia no tiene.
+  El costo es decidir un umbral de identidad: demasiado laxo mete parálogos y
+  miembros de familia como positivos, demasiado estricto los deja como
+  *unlabeled* y reintroduce el mismo sesgo por otra vía. Vale la pena evaluarlo
+  antes de comprometerse con el enfoque por coordenadas.
+
+  Estado: **sin resolver**. No pude determinar sobre qué ensamblado publica
+  MirGeneDB para `galga`. Los papers (Fromm 2020 `10.1093/nar/gkz885`, 2021
+  `10.1093/nar/gkab1101`) remiten a su Tabla Suplementaria S1, que no está en
+  el texto indexado. Confirmar ahí o en la página de la especie en
+  mirgenedb.org.
 - **Ensembl y NCBI no nombran los cromosomas igual** (`1` vs `NC_006088.5`).
   Los 3 organismos heredados vienen de EnsemblGenomes y los 6 nuevos de NCBI.
   Para bowtie y YASMA da lo mismo, pero cualquier cruce con coordenadas
