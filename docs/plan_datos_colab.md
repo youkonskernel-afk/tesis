@@ -1,7 +1,8 @@
 # Plan: Colab como administrador de datos y puente de descarga
 
-Estado: **plan aprobado, sin implementar.** Nada de lo de acá abajo existe todavía
-salvo lo marcado como "existe".
+Estado: **implementado.** Queda como registro de por qué el diseño es así.
+Lo único no hecho por Claude es poner el repo en público, que es un cambio de
+configuración en GitHub: hasta que se haga, los notebooks no pueden clonar.
 
 ## Contexto
 

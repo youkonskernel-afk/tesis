@@ -15,12 +15,12 @@ esta tabla son para abrir la carpeta a mano y para las herramientas de Drive).
 | :-- | --: |
 | Capacidad de la cuenta | ≥ 1.6 TB |
 | BAMs (~425 corridas) | ~340 GB |
-| `.sra` crudos, si se decidiera respaldarlos | ~190 GB |
+| `.sra` crudos (**se respaldan**, `80_sra/`) | ~190 GB |
 | Genomas + índices bowtie (9 organismos) | orden de 5 GB |
 | YASMA, QC, features, modelos | orden de GB |
 
-El espacio **no es la restricción** de este proyecto: los BAMs son ~21% de la
-cuenta, aun con el dataset ampliado a 9 organismos. Lo que se excluye de abajo se excluye por criterio de reproducibilidad
+El espacio **no es la restricción**: BAMs + `.sra` + genomas ≈ 540 GB, un ~34%
+de la cuenta. Lo que se excluye de abajo se excluye por criterio de reproducibilidad
 —no se respalda lo que una base pública ya garantiza— no por falta de disco.
 
 | Carpeta | ID | Contiene |
@@ -33,6 +33,7 @@ cuenta, aun con el dataset ampliado a 9 organismos. Lo que se excluye de abajo s
 | `50_modelos/` | `1q59gopI-uKOGJhvQ_JbDJFx4qJL1wKO7` | Modelos entrenados, checkpoints, predicciones |
 | `60_figuras/` | `13rOdpXqd_EbNi3RDamLLeIBUko-Zc7BC` | Figuras raster pesadas |
 | `70_genomas/` | `1Ik2edbmuH6OLqjQDIOH6zLuUgYe_e4yy` | `<org>/<accession>.fna.gz` + `.sha256` — el FASTA exacto usado |
+| `80_sra/` | `1RQYmPeaixM_-IXTzPeBCMg61xBkZlzL_` | `<org>/<RUN>.sra` — crudo validado, ~190 GB |
 
 Las subcarpetas por organismo (`rhirr`, `sclsc`, `cloro`, `phypa`, `prupe`,
 `maldo`, `gadmo`, `galga`, `maggi`) no se crean a mano: `rclone copy` las crea
@@ -40,10 +41,13 @@ al subir.
 
 ## Qué NO está acá
 
-- **`.sra` crudos** (~190 GB proyectados). Son públicos; `prefetch` los recupera
-  desde SRA. El caché local vive en `/home/dev/sra_cache` y ya trae 57 corridas
-  vigentes de R1 (`rhirr`, `sclsc`, `phypa` conservan su BioProject primario).
 - **Índices bowtie**. Se reconstruyen del FASTA en minutos.
+
+Los **`.sra` pasaron a respaldarse** en `80_sra/`, revirtiendo la decisión
+anterior. El motivo es el reparto con Colab: Colab los baja y una sesión que se
+muere no puede perder la descarga, y el alineamiento local se desacopla de ella.
+El caché local en `/home/dev/sra_cache` ya trae 57 corridas vigentes de R1
+(`rhirr`, `sclsc` y `phypa` conservan su BioProject primario).
 
 Los **genomas sí están** (`70_genomas/`), como excepción deliberada: un
 ensamblado puede retirarse o reemplazarse, y sin el FASTA exacto el

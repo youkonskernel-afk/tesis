@@ -4,10 +4,10 @@
 #   ./scripts/drive_push.sh <fase> [ORG]        # dry-run, no sube nada
 #   ./scripts/drive_push.sh <fase> [ORG] --go   # sube de verdad
 #
-#   fases: bam | yasma | qc | features | modelos | figuras | genomas
+#   fases: bam | yasma | qc | features | modelos | figuras | genomas | sra
 #   ORG:   rhirr | sclsc | cloro | phypa | prupe | maldo | gadmo | galga | maggi
 #
-# Por qué rclone y no el conector de Drive: son ~100 GB de BAMs. El conector
+# Por qué rclone y no el conector de Drive: son cientos de GB. El conector
 # mueve manifiestos, no alineamientos.
 #
 # Requiere un remoto rclone de tipo drive apuntando a seb.ugazm@gmail.com:
@@ -16,49 +16,21 @@
 
 set -euo pipefail
 
-REMOTE="${DRIVE_REMOTE:-gdrive-tesis}"
-DRIVE_ROOT="${DRIVE_ROOT:-tesis}"
-LOCAL_ROOT="${LOCAL_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+. "$DIR/_drive_lib.sh"
 
-usage() { sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-2}"; }
+REMOTE="${DRIVE_REMOTE:-$DRIVE_REMOTE_DEFAULT}"
+DRIVE_ROOT="${DRIVE_ROOT:-tesis}"
+LOCAL_ROOT="${LOCAL_ROOT:-$(cd "$DIR/.." && pwd)}"
+
+usage() { sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-2}"; }
 
 [[ $# -ge 1 ]] || usage
 case "$1" in -h|--help) usage 0 ;; esac
-FASE="$1"; shift
-
-ORG=""
-GO=0
-for arg in "$@"; do
-  case "$arg" in
-    --go) GO=1 ;;
-    -h|--help) usage 0 ;;
-    *) ORG="$arg" ;;
-  esac
-done
-
-# fase -> (subdir local, subdir en Drive)
-case "$FASE" in
-  bam)      SRC="bams";        DST="10_bam" ;;
-  yasma)    SRC="yasma_out";   DST="20_yasma" ;;
-  qc)       SRC="qc";          DST="30_qc" ;;
-  features) SRC="features";    DST="40_features" ;;
-  modelos)  SRC="models";      DST="50_modelos" ;;
-  figuras)  SRC="figures";     DST="60_figuras" ;;
-  genomas)  SRC="genomes";     DST="70_genomas" ;;
-  *) echo "fase desconocida: $FASE" >&2; usage ;;
-esac
-
-if [[ -n "$ORG" ]]; then
-  case "$ORG" in
-    rhirr|sclsc|cloro|phypa|prupe|maldo|gadmo|galga|maggi) ;;
-    *) echo "organismo desconocido: $ORG" >&2; exit 2 ;;
-  esac
-  SRC="$SRC/$ORG"; DST="$DST/$ORG"
-fi
+parse_args_drive "$@" || usage
 
 SRC_PATH="$LOCAL_ROOT/$SRC"
 DST_PATH="$REMOTE:$DRIVE_ROOT/$DST"
-
 [[ -d "$SRC_PATH" ]] || { echo "no existe: $SRC_PATH" >&2; exit 1; }
 
 # --checksum en vez de --size-only: un BAM truncado por un corte de red tiene

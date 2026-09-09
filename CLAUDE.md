@@ -7,21 +7,24 @@ al repo, ni siquiera "temporalmente".
 
 | Va a git | Va a Drive | No va a ninguna parte |
 | :-- | :-- | :-- |
-| Scripts del pipeline, código del modelo | BAMs, salidas YASMA, QC | `.sra` (público, `prefetch` lo recupera) |
-| `config.sh`, `environment.yml` | Matrices de features, **genomas** | Índices bowtie (derivados del genoma) |
-| `organismos.tsv`, manifiestos | Modelos entrenados, checkpoints | Temporales de `fasterq-dump` |
-| Vitácoras, docs, figuras vectoriales | Figuras raster pesadas | `__pycache__`, logs |
+| Scripts del pipeline, código del modelo | BAMs, salidas YASMA, QC, **`.sra`** | Índices bowtie (derivados) |
+| `config.sh`, `environment.yml` | Matrices de features, **genomas** | Temporales de `fasterq-dump` |
+| `organismos.tsv`, manifiestos, checksums | Modelos entrenados, checkpoints | `__pycache__`, logs |
+| Vitácoras, docs, notebooks | Figuras raster pesadas | |
 
 Criterio: si es texto, chico y necesario para **reproducir**, va a git. Si es
 salida binaria y pesada, va a Drive. Si es derivado y se re-genera en minutos,
 no se respalda.
 
-**Los genomas sí se respaldan** (`70_genomas/`), aunque sean públicos. Es una
-excepción deliberada al criterio anterior: un ensamblado se puede retirar,
+**Los genomas y los `.sra` sí se respaldan** (`70_genomas/`, `80_sra/`), aunque
+sean públicos. Es una excepción deliberada al criterio anterior: un ensamblado
+se puede retirar,
 renumerar o reemplazar por una versión nueva, y entonces el alineamiento deja
 de ser reproducible. Guardar el FASTA exacto con su `sha256` es la única forma
-de poder decir, dentro de dos años, contra qué se alineó. Los índices bowtie no
-se respaldan: se reconstruyen del FASTA en minutos.
+de poder decir, dentro de dos años, contra qué se alineó. Los `.sra` se guardan
+por otro motivo: **Colab los baja y las sesiones de Colab se mueren**, así que si
+no persistieran se perdería la descarga; además desacopla el alineamiento local
+de la descarga. Los índices bowtie no se respaldan: se reconstruyen en minutos.
 
 Drive es `Mi unidad/tesis/` en `seb.ugazm@gmail.com`. Los IDs de carpeta están
 en `data/DRIVE.md` — esa es la única fuente de verdad de la ruta.
@@ -49,7 +52,8 @@ no el aporte de la tesis:
 primario de `maggi` son dos BioProjects combinados). El manifiesto resuelto de
 esta ronda **todavía no existe**: se genera con
 `./scripts/fetch_runs.sh manifest` contra la ENA, y después
-`./scripts/fetch_runs.sh prefetch` baja los `.sra`.
+`./scripts/fetch_runs.sh prefetch` baja los `.sra`. En la práctica esto corre
+desde Colab (`notebooks/10_descarga_runs.ipynb`), no en la máquina local.
 `data/srr_manifest_r1.tsv` es el de la ronda anterior, como referencia.
 
 `scripts/fetch_runs.sh` **reemplaza al `gen_manifest.sh` de R1**, que asumía un
@@ -200,10 +204,18 @@ Lo que necesita red va en otro lado:
 
 | tarea | dónde | con qué |
 | :-- | :-- | :-- |
+| setup de la sesión | Colab | `notebooks/00_setup.ipynb` |
 | genomas | Colab | `notebooks/descarga_genomas.ipynb` |
-| manifiesto y `.sra` | máquina local | `scripts/fetch_runs.sh` |
-| BAMs a Drive | máquina local | `scripts/drive_push.sh` |
+| manifiesto y `.sra` | Colab | `notebooks/10_descarga_runs.ipynb` |
+| ver qué falta | Colab | `notebooks/90_estado.ipynb` |
+| traer `.sra` para alinear | máquina local | `scripts/drive_pull.sh sra <org> --go` |
 | alineamiento y YASMA | máquina local | `orchestrate.sh` |
+| BAMs a Drive | máquina local | `scripts/drive_push.sh` |
+
+**Colab es el administrador de datos**: baja, valida y escribe a Drive sin pasar
+por el disco local. Con Free el cómputo largo (30-40 h de bowtie) se queda en la
+máquina local, que trae los `.sra` de a un organismo con `drive_pull.sh` y los
+purga después. Ver `docs/colab.md` y `docs/plan_datos_colab.md`.
 
 ## Entorno
 

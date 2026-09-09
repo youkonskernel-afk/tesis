@@ -18,7 +18,8 @@ como negativo entrenaría al modelo en contra del objetivo.
 | :-- | :-- |
 | Código | este repo |
 | Data | `Mi unidad/tesis/` en Drive — ver [`data/DRIVE.md`](data/DRIVE.md) |
-| Lecturas crudas | no se respaldan: `prefetch` las baja de SRA |
+| Descarga | Google Colab, que escribe directo a Drive — ver [`docs/colab.md`](docs/colab.md) |
+| Cómputo largo | máquina local: alineamiento y YASMA |
 
 La regla completa y las trampas del pipeline están en [`CLAUDE.md`](CLAUDE.md).
 
@@ -30,12 +31,18 @@ data/genomas.tsv          ensamblado por organismo, con estado de verificación
 data/srr_manifest_r1.tsv  169 corridas de la ronda anterior (referencia)
 data/DRIVE.md             índice de Drive: qué hay, dónde, con qué ID
 docs/positivos.md         cómo se arma el conjunto positivo y por qué
-docs/colab.md             bajar a Drive sin pasar por el disco local
-notebooks/                cuaderno de Colab: NCBI -> Drive directo
+docs/colab.md             Colab como administrador de datos
+docs/plan_datos_colab.md  el plan que implementa lo anterior
+notebooks/00_setup.ipynb  monta Drive, clona, instala, verifica
+notebooks/descarga_genomas.ipynb   verifica y baja ensamblados a Drive
+notebooks/10_descarga_runs.ipynb   manifiesto + .sra a Drive, por tandas
+notebooks/90_estado.ipynb          qué falta y cuánto ocupa
 scripts/fetch_runs.sh     resuelve los 18 proyectos a corridas y las descarga
 scripts/fetch_genomes.sh  resuelve y descarga los ensamblados
-scripts/drive_push.sh     sube resultados a Drive vía rclone
+scripts/drive_push.sh     sube a Drive vía rclone
+scripts/drive_pull.sh     baja de Drive, y purga la copia local
 scripts/loo_cv.py         validación dejando un organismo afuera
+scripts/validate_notebooks.py   chequea los .ipynb del repo
 CLAUDE.md                 regla de ubicación + trampas conocidas
 ```
 
