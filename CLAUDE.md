@@ -129,7 +129,9 @@ probabilidad calibrada.
   ninguno: depende de la cepa, y `PRJEB43636` son mutantes Dicer-like del grupo
   de Karlsson (SLU), casi seguro IK726. Ninguno está comprobado contra NCBI.
   `fetch_genomes.sh` se niega a bajarlos hasta que una persona corra
-  `./scripts/fetch_genomes.sh resolve` y ponga `verificado`. El paso manual es
+  `./scripts/fetch_genomes.sh resolve` y ponga `verificado`. Alternativa que
+  evita el disco local: `notebooks/descarga_genomas.ipynb` en Colab verifica y
+  baja directo a `70_genomas/` — ver `docs/colab.md`. El paso manual es
   a propósito: un ensamblado equivocado no falla ruidosamente, alinea peor y
   contamina la anotación. Ya no hace falta que coincida con el ensamblado de
   MirGeneDB — con el etiquetado por secuencia se elige por contigüidad y
@@ -186,6 +188,22 @@ probabilidad calibrada.
 - **`fasterq-dump` sin `-t`** crea temporales en el CWD; llegaron a 109 GB.
 - **Al matar el pipeline**: matar también `bowtie-align-s`, `fastp`,
   `fasterq-dump` y `samtools`, o quedan huérfanos escribiendo el mismo BAM.
+
+## Red
+
+Esta sesión cloud tiene **bloqueada por política** la salida a NCBI, Ensembl,
+la ENA, miRBase y MirGeneDB: el gateway responde 403 al `CONNECT`. Solo pasan
+repositorios de paquetes (npm, PyPI, crates) y GitHub. O sea que desde acá no
+se puede resolver un manifiesto ni bajar un genoma.
+
+Lo que necesita red va en otro lado:
+
+| tarea | dónde | con qué |
+| :-- | :-- | :-- |
+| genomas | Colab | `notebooks/descarga_genomas.ipynb` |
+| manifiesto y `.sra` | máquina local | `scripts/fetch_runs.sh` |
+| BAMs a Drive | máquina local | `scripts/drive_push.sh` |
+| alineamiento y YASMA | máquina local | `orchestrate.sh` |
 
 ## Entorno
 
