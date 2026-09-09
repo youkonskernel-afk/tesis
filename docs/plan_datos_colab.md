@@ -1,8 +1,15 @@
 # Plan: Colab como administrador de datos y puente de descarga
 
 Estado: **implementado.** Queda como registro de por qué el diseño es así.
-Lo único no hecho por Claude es poner el repo en público, que es un cambio de
-configuración en GitHub: hasta que se haga, los notebooks no pueden clonar.
+
+Dos cosas quedan fuera de lo que Claude puede hacer, ambas en Settings de GitHub:
+
+1. **Poner el repo en público.** Verificado por API: sigue `private`. Hasta que
+   se haga, los notebooks no pueden clonar.
+2. **Cambiar el default branch a `main`** una vez que exista con la historia
+   mergeada. Hoy el default es `claude/github-google-drive-setup-cwapri` porque
+   GitHub tomó la primera rama empujada al repo vacío, y los notebooks clonan la
+   rama por defecto.
 
 ## Contexto
 

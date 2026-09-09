@@ -67,6 +67,13 @@ selección: un riesgo de reproducibilidad, no una comodidad.
 
 Por eso el repo es público — así el clon no necesita credenciales.
 
+**Los notebooks clonan la rama por defecto del repo.** Hoy esa rama es
+`claude/github-google-drive-setup-cwapri`, porque GitHub tomó como default la
+primera que se empujó al repo vacío. Funciona, pero en cuanto exista `main` con
+la historia mergeada hay que cambiar el default a `main` en Settings → General,
+o los notebooks van a seguir clonando una rama que quedó atrás — y sin avisar,
+que es lo peor de este tipo de fallas.
+
 `scripts/validate_notebooks.py` chequea que los `.ipynb` del repo tengan JSON
 válido y que cada celda de código parsee.
 
