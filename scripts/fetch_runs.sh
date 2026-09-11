@@ -167,20 +167,73 @@ registrar_md5() {
   rm -f "$LEDGER.tmp"
 }
 
+# Organismos de entrenamiento: son los que definen si el modelo sirve, asi que
+# hay un modo de orden que los pone primero. Ver set_modelo en organismos.tsv.
+ORGS_ENTRENAMIENTO="gadmo galga maggi"
+
+# Construye la cola de pendientes (lo que NO esta ya en DEST) y la ordena.
+#   alfabetico   : por organismo, y dentro del organismo los grandes primero
+#   chico        : organismos con menos pendientes primero -> completa antes
+#   entrenamiento: gadmo/galga/maggi primero, despues el resto
+cola() {
+  local filtro="$1" orden="$2" pend="$3"
+  : > "$pend"
+  local org run rc
+  while IFS=$'\t' read -r org run rc; do
+    ruta_sra "$DEST" "$org" "$run" >/dev/null && continue
+    printf '%s\t%s\t%s\n' "$org" "$run" "$rc" >> "$pend"
+  done < <(awk -F'\t' -v o="$filtro" 'NR>1 && (o=="" || $1==o) {print $1"\t"$2"\t"$6}' "$MANIFEST")
+
+  case "$orden" in
+    chico)
+      awk -F'\t' 'NR==FNR {c[$1]++; next} {print c[$1]"\t"$0}' "$pend" "$pend" \
+        | sort -t$'\t' -k1,1n -k2,2 -k4,4nr | cut -f2-
+      ;;
+    entrenamiento)
+      awk -F'\t' -v e="$ORGS_ENTRENAMIENTO" '
+        BEGIN { split(e, a, " "); for (i in a) tr[a[i]] = 1 }
+        { print (($1 in tr) ? 0 : 1) "\t" $0 }' "$pend" \
+        | sort -t$'\t' -k1,1n -k2,2 -k4,4nr | cut -f2-
+      ;;
+    *)
+      sort -t$'\t' -k1,1 -k3,3nr "$pend"
+      ;;
+  esac
+}
+
 cmd_prefetch() {
   command -v prefetch >/dev/null || die "falta prefetch (sra-tools). Activá el entorno srna2."
   [[ -f "$MANIFEST" ]] || die "no existe $MANIFEST — corré: $0 manifest"
-  local filtro="$1" limite="$2"
+  local filtro="$1" limite="$2" horas="${3:-}" orden="${4:-alfabetico}"
   mkdir -p "$DEST" "$STAGING"
 
-  local n=0 ok=0 fallos=0
-  # Orden: primero los organismos con menos faltantes, para completar organismos
-  # enteros antes de empezar otros. Un organismo completo se puede alinear; uno
-  # a medias no sirve para nada. Dentro del organismo, los grandes primero.
+  local pend; pend=$(mktemp)
+  local ordenada; ordenada=$(mktemp)
+  cola "$filtro" "$orden" "$pend" > "$ordenada"
+  local total; total=$(wc -l < "$ordenada")
+  rm -f "$pend"
+
+  if [[ "$total" -eq 0 ]]; then
+    echo "no hay nada pendiente${filtro:+ para $filtro}."
+    rm -f "$ordenada"; cmd_estado; return 0
+  fi
+
+  local t0; t0=$(date +%s)
+  local corte=""
+  [[ -n "$horas" ]] && corte=$(awk -v h="$horas" 'BEGIN{printf "%d", h*3600}')
+
+  echo "cola: $total corridas pendientes, orden=$orden${limite:+, tope $limite}${horas:+, corte a las ${horas}h}"
+  echo
+
+  local n=0 ok=0 fallos=0 bytes=0
+  local org run rc
   while IFS=$'\t' read -r org run rc; do
     [[ -n "$limite" && $n -ge $limite ]] && { echo; echo "corte por -n $limite"; break; }
-
-    if ruta_sra "$DEST" "$org" "$run" >/dev/null; then continue; fi
+    local trans=$(( $(date +%s) - t0 ))
+    if [[ -n "$corte" && $trans -ge $corte ]]; then
+      echo; echo "corte por tiempo (${horas}h). Re-ejecutá para seguir donde quedó."
+      break
+    fi
 
     local libre; libre=$(libre_gb "$STAGING")
     if [[ -n "$libre" && "$libre" -lt "$MIN_LIBRE_GB" ]]; then
@@ -189,38 +242,45 @@ cmd_prefetch() {
     fi
 
     n=$((n+1))
-    echo "== [$n] $org $run ($rc reads)  libre=${libre:-?}G"
+    printf '== [%d/%d] %s %s (%s reads)\n' "$n" "$total" "$org" "$run" "$rc"
     rm -rf "${STAGING:?}/$run"
-    if ! prefetch --output-directory "$STAGING" --max-size u "$run"; then
-      echo "   FALLO prefetch $run" >&2; fallos=$((fallos+1)); rm -rf "${STAGING:?}/$run"; continue
+    if ! prefetch --output-directory "$STAGING" --max-size u "$run" >/dev/null 2>&1; then
+      echo "   FALLO prefetch" >&2; fallos=$((fallos+1)); rm -rf "${STAGING:?}/$run"; continue
     fi
 
     local src; src=$(ruta_sra "$STAGING" "$org" "$run") || {
-      echo "   FALLO: prefetch no dejó .sra para $run" >&2; fallos=$((fallos+1)); continue; }
+      echo "   FALLO: prefetch no dejó .sra" >&2; fallos=$((fallos+1)); continue; }
 
     # Un .sra truncado NO falla ruidosamente: alinea de menos. Validar antes de
     # darlo por bueno, y nunca mover al destino uno que no valida.
     if command -v vdb-validate >/dev/null; then
       if ! vdb-validate "$src" >/dev/null 2>&1; then
-        echo "   FALLO vdb-validate $run — descartado, se reintenta después" >&2
+        echo "   FALLO vdb-validate — descartado, se reintenta después" >&2
         rm -rf "${STAGING:?}/$run" "$src"; fallos=$((fallos+1)); continue
       fi
-    else
-      echo "   aviso: sin vdb-validate, no puedo verificar integridad" >&2
     fi
 
     mkdir -p "$DEST/$org"
     local final="$DEST/$org/$run.sra"
+    local sz; sz=$(stat -c%s "$src" 2>/dev/null || echo 0)
     if [[ "$src" != "$final" ]]; then
-      mv "$src" "$final" || { echo "   FALLO al mover $run" >&2; fallos=$((fallos+1)); continue; }
+      mv "$src" "$final" || { echo "   FALLO al mover" >&2; fallos=$((fallos+1)); continue; }
       rm -rf "${STAGING:?}/$run"
     fi
+    bytes=$((bytes + sz))
 
     registrar_md5 "$org" "$run" "$(md5sum "$final" | cut -d' ' -f1)"
-    echo "   ok  $(du -h "$final" | cut -f1)"
+
+    # Progreso con ETA: sirve para decidir si conviene subir --horas o cortar.
+    trans=$(( $(date +%s) - t0 ))
+    awk -v sz="$sz" -v n="$n" -v tot="$total" -v b="$bytes" -v s="$trans" 'BEGIN {
+      eta = (n > 0 && s > 0) ? (s/n) * (tot-n) / 60 : 0
+      printf "   ok  %.0f MB   acumulado %.1f GB   %.0f min   ETA ~%.0f min\n",
+             sz/1e6, b/1e9, s/60, eta
+    }'
     ok=$((ok+1))
-  done < <(awk -F'\t' -v o="$filtro" 'NR>1 && (o=="" || $1==o) {print $1"\t"$2"\t"$6}' "$MANIFEST" \
-           | sort -t$'\t' -k1,1 -k3,3nr)
+  done < "$ordenada"
+  rm -f "$ordenada"
 
   echo
   echo "bajadas=$ok fallos=$fallos"
@@ -235,15 +295,21 @@ case "$1" in
   estado)    shift; cmd_estado ;;
   prefetch)
     shift
-    ORG_F=""; LIMITE=""
+    ORG_F=""; LIMITE=""; HORAS=""; ORDEN=""
     while [[ $# -gt 0 ]]; do
       case "$1" in
         -n) LIMITE="${2:-}"; shift 2 ;;
         -n*) LIMITE="${1#-n}"; shift ;;
+        --horas) HORAS="${2:-}"; shift 2 ;;
+        --orden) ORDEN="${2:-}"; shift 2 ;;
         *) ORG_F="$1"; shift ;;
       esac
     done
     [[ -z "$ORG_F" ]] || org_valido_manifest "$ORG_F" || die "organismo desconocido: $ORG_F"
-    cmd_prefetch "$ORG_F" "$LIMITE" ;;
+    case "${ORDEN:-alfabetico}" in
+      alfabetico|chico|entrenamiento) ;;
+      *) die "orden desconocido: $ORDEN (alfabetico|chico|entrenamiento)" ;;
+    esac
+    cmd_prefetch "$ORG_F" "$LIMITE" "${HORAS:-}" "${ORDEN:-alfabetico}" ;;
   *) echo "comando desconocido: $1" >&2; usage ;;
 esac
