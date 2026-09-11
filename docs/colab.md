@@ -28,8 +28,20 @@ de cola reanudable de `10_descarga_runs` es el mismo que necesitaría un
 
 ## Cómo se usa
 
-1. Abrí los notebooks en https://colab.research.google.com (desde GitHub, o
-   Archivo → Subir cuaderno).
+Links directos — Colab abre el notebook desde GitHub sin descargar nada:
+
+| notebook | link |
+| :-- | :-- |
+| 00 setup | https://colab.research.google.com/github/youkonskernel-afk/tesis/blob/claude/github-google-drive-setup-cwapri/notebooks/00_setup.ipynb |
+| genomas | https://colab.research.google.com/github/youkonskernel-afk/tesis/blob/claude/github-google-drive-setup-cwapri/notebooks/descarga_genomas.ipynb |
+| 10 corridas | https://colab.research.google.com/github/youkonskernel-afk/tesis/blob/claude/github-google-drive-setup-cwapri/notebooks/10_descarga_runs.ipynb |
+| 90 estado | https://colab.research.google.com/github/youkonskernel-afk/tesis/blob/claude/github-google-drive-setup-cwapri/notebooks/90_estado.ipynb |
+
+Ojo: la rama está en la URL. Cuando el default pase a `main` y esta rama se
+mergee, hay que actualizar estos links.
+
+1. Abrilos con los links de arriba, o desde https://colab.research.google.com
+   (Archivo → Abrir cuaderno → GitHub).
 2. **Siempre `00_setup.ipynb` primero.** Colab arranca de cero en cada sesión.
 3. Montá con la cuenta `seb.ugazm@gmail.com`, que es la que tiene el árbol.
 4. En `10_descarga_runs.ipynb`, ajustá `LIMITE` y corré la celda de descarga
