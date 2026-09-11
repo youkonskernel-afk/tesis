@@ -65,7 +65,23 @@ RNA-Seq) vive en `scripts/fetch_runs.sh`, y la verificación de ensamblados en
 `scripts/fetch_genomes.sh`. Duplicarlos en Python sería tener dos criterios de
 selección: un riesgo de reproducibilidad, no una comodidad.
 
-Por eso el repo es público — así el clon no necesita credenciales.
+### El clon funciona con el repo público o privado
+
+La celda de clon intenta primero un `git clone` anónimo. Si el repo es público,
+listo. Si falla, busca un token en los Secrets de Colab y reintenta. Así la
+visibilidad del repo es una decisión tuya y no un bloqueo.
+
+**Si querés dejar el repo privado**, cargá el token una vez:
+
+1. En GitHub: Settings → Developer settings → Personal access tokens →
+   Fine-grained tokens. Alcance mínimo: este repo, permiso *Contents: Read-only*.
+2. En Colab: el ícono de llave en la barra izquierda → añadir secreto con
+   nombre exacto `GITHUB_TOKEN`, y habilitar el acceso para el notebook.
+
+Dos cuidados que la celda ya resuelve, y conviene no deshacer si alguien la
+edita: **no se imprime el stderr de git en la rama con token** —git incluye la
+URL en sus errores, y esa URL lleva el token— y **se resetea el remoto** a la
+URL sin token después de clonar, para que no quede escrito en `.git/config`.
 
 **Los notebooks clonan la rama por defecto del repo.** Hoy esa rama es
 `claude/github-google-drive-setup-cwapri`, porque GitHub tomó como default la

@@ -44,7 +44,17 @@ def valida(path):
         n_code += 1
         if "outputs" not in c or "execution_count" not in c:
             fallos.append(f"celda {i}: falta 'outputs' o 'execution_count'")
-        src = "\n".join(c["source"])
+        lineas = c["source"]
+        sin_salto = [j for j, ln in enumerate(lineas[:-1]) if not ln.endswith("\n")]
+        if sin_salto:
+            fallos.append(
+                f"celda {i}: {len(sin_salto)} lineas de 'source' sin \\n final "
+                f"(la primera, la {sin_salto[0]}). Jupyter las concatena sin "
+                f"separador y el codigo queda pegado en una sola linea.")
+        # nbformat concatena 'source' SIN separador: cada linea tiene que
+        # terminar en \n. Unir con "\n" aca enmascararia justamente el bug de
+        # lineas sin salto, que en Colab llega como codigo pegado en una linea.
+        src = "".join(c["source"])
         # Las lineas de shell (! y %) no son Python: se neutralizan para el
         # parse, que es lo unico que se quiere verificar.
         limpio = "\n".join(
