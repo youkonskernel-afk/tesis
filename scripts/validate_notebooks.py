@@ -71,6 +71,22 @@ def valida(path):
     return fallos
 
 
+def sueltos():
+    """Notebooks fuera de notebooks/.
+
+    El boton 'Save a copy to GitHub' de Colab escribe en una ruta que arma con
+    el nombre de la rama, no en la del archivo que abriste: dejo una copia en
+    github-google-drive-setup-cwapri/notebooks/. Un duplicado que nadie mira se
+    va quedando atras y despues alguien edita el equivocado, asi que esto falla
+    en vez de ignorarlo.
+    """
+    return sorted(
+        p for p in RAIZ.rglob("*.ipynb")
+        if NB_DIR not in p.parents and ".ipynb_checkpoints" not in p.parts
+        and ".git" not in p.parts
+    )
+
+
 def main():
     nbs = sorted(NB_DIR.glob("*.ipynb"))
     if not nbs:
@@ -87,6 +103,16 @@ def main():
         else:
             n = len(json.loads(nb.read_text())["cells"])
             print(f"[OK ] {nb.name}  ({n} celdas)")
+    fuera = sueltos()
+    if fuera:
+        malos += len(fuera)
+        print()
+        print("[MAL] notebooks fuera de notebooks/ — borralos:")
+        for p in fuera:
+            print(f"       {p.relative_to(RAIZ)}")
+        print("       (los escribe 'Save a copy to GitHub' de Colab, que usa el")
+        print("        nombre de la rama como carpeta. El original no se toca.)")
+
     print()
     print(f"{len(nbs)} notebooks, {malos} con problemas")
     return 1 if malos else 0
