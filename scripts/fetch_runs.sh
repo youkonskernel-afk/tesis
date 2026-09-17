@@ -5,6 +5,7 @@
 #   ./scripts/fetch_runs.sh manifest             # consulta ENA -> data/srr_manifest.tsv
 #   ./scripts/fetch_runs.sh estado               # que hay bajado y que falta
 #   ./scripts/fetch_runs.sh prefetch [ORG] [-n N]  # descarga los .sra
+#   ./scripts/fetch_runs.sh diag RUN [RUN...]    # por que falla una corrida
 #
 # El destino de los .sra sale de SRA_DEST (por defecto SRA_CACHE). En Colab se
 # apunta al mount de Drive y SRA_STAGING al disco efimero de la VM: prefetch
@@ -46,7 +47,7 @@ FUENTE_OK="TRANSCRIPTOMIC"
 ESTRATEGIAS="miRNA-Seq ncRNA-Seq RNA-Seq"
 
 SEP=$'\x1f'
-usage() { sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-2}"; }
+usage() { sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-2}"; }
 die() { echo "error: $*" >&2; exit 1; }
 
 # Campos de organismos.tsv: org especie reino clado rol bioproject runs
@@ -121,6 +122,44 @@ ruta_sra() {
     [[ -s "$c" ]] && { echo "$c"; return 0; }
   done
   return 1
+}
+
+# Despues de prefetch, sobre STAGING. Es a proposito mas permisiva que
+# ruta_sra: ruta_sra la usan cmd_estado y cola contra DEST, que en Colab es el
+# mount de Drive, y un find recursivo por cada una de las 416 corridas sobre
+# FUSE seria lentisimo. Aca es una sola corrida recien bajada al disco local.
+#
+# Acepta .sralite, que es un formato valido de SRA y fasterq-dump lee. NO
+# acepta los ficheros originales del envio (.fastq.gz, .bam, .sff): el pipeline
+# espera un .sra y tratarlos como si lo fueran romperia el contrato en silencio,
+# que es justo el modo de falla que estos cambios vienen a sacar.
+hallar_descarga() {
+  local dir="$1" org="$2" run="$3" c
+  for c in "$dir/$org/$run.sra"     "$dir/$run/$run.sra"     "$dir/$run.sra" \
+           "$dir/$org/$run.sralite" "$dir/$run/$run.sralite" "$dir/$run.sralite"; do
+    [[ -s "$c" ]] && { echo "$c"; return 0; }
+  done
+  c=$(find "$dir/$run" -maxdepth 2 -type f \
+        \( -name '*.sra' -o -name '*.sralite' \) -size +0 -print -quit 2>/dev/null) || true
+  [[ -n "$c" ]] && { echo "$c"; return 0; }
+  return 1
+}
+
+# Ultimas lineas de un log, indentadas. prefetch es ruidoso y lo que importa
+# siempre esta al final.
+eco_log() {
+  local t; t=$(tail -n 15 "$1" 2>/dev/null || true)
+  if [[ -n "$t" ]]; then sed 's/^/     | /' <<<"$t"
+  else echo "     | (prefetch no imprimió nada)"; fi
+}
+
+# Que dejo prefetch en el staging, para una corrida. Cubre el layout de
+# directorio y el plano.
+listar_staging() {
+  local dir="$1" run="$2" dejo
+  dejo=$(find "$dir" -maxdepth 2 \( -type f -o -type l \) -name "$run*" \
+           -printf '     %10s  %p\n' 2>/dev/null || true)
+  echo "${dejo:-     (nada)}"
 }
 
 cmd_estado() {
@@ -244,12 +283,36 @@ cmd_prefetch() {
     n=$((n+1))
     printf '== [%d/%d] %s %s (%s reads)\n' "$n" "$total" "$org" "$run" "$rc"
     rm -rf "${STAGING:?}/$run"
-    if ! prefetch --output-directory "$STAGING" --max-size u "$run" >/dev/null 2>&1; then
-      echo "   FALLO prefetch" >&2; fallos=$((fallos+1)); rm -rf "${STAGING:?}/$run"; continue
+    # La salida de prefetch se captura, no se tira: un fallo mudo cuesta una
+    # corrida entera para diagnosticarse, y las de maggi costaron dos.
+    local log; log=$(mktemp)
+    if ! prefetch --output-directory "$STAGING" --max-size u "$run" >"$log" 2>&1; then
+      echo "   FALLO prefetch (exit != 0)" >&2; eco_log "$log" >&2
+      rm -f "$log"; fallos=$((fallos+1)); rm -rf "${STAGING:?}/$run"; continue
     fi
 
-    local src; src=$(ruta_sra "$STAGING" "$org" "$run") || {
-      echo "   FALLO: prefetch no dejó .sra" >&2; fallos=$((fallos+1)); continue; }
+    local src
+    if ! src=$(hallar_descarga "$STAGING" "$org" "$run"); then
+      # prefetch salio 0 y no dejo un .sra reconocible. Las dos causas
+      # plausibles: la corrida solo existe en formato original (.fastq.gz,
+      # .bam, .sff), o el resolver no devolvio nada y sra-tools igual salio 0.
+      # Para distinguirlas: $0 diag "$run".
+      echo "   FALLO: prefetch salió 0 pero no dejó .sra" >&2
+      eco_log "$log" >&2
+      echo "   quedó en el staging:" >&2
+      listar_staging "$STAGING" "$run" >&2
+      echo "   para ver por qué:  $0 diag $run" >&2
+      rm -f "$log"; fallos=$((fallos+1)); rm -rf "${STAGING:?}/$run"; continue
+    fi
+    rm -f "$log"
+
+    case "$src" in
+      *.sralite)
+        echo "   AVISO: $run vino en formato lite (.sralite). Las calidades son" >&2
+        echo "          sintéticas, asi que el filtro de calidad de fastp ve una" >&2
+        echo "          constante en esta corrida y no en las demás. Declararlo" >&2
+        echo "          en métodos." >&2 ;;
+    esac
 
     # Un .sra truncado NO falla ruidosamente: alinea de menos. Validar antes de
     # darlo por bueno, y nunca mover al destino uno que no valida.
@@ -288,11 +351,54 @@ cmd_prefetch() {
   cmd_estado
 }
 
+# Por que falla una corrida. Necesita red hacia NCBI: corre en Colab o en la
+# maquina local, nunca en la sesion cloud (el gateway responde 403 al CONNECT).
+# Ver la celda 5 de notebooks/10_descarga_runs.ipynb.
+cmd_diag() {
+  [[ $# -ge 1 ]] || die "uso: $0 diag RUN [RUN...]"
+  local run tmp rc dejo
+  for run in "$@"; do
+    echo "=============== $run"
+
+    echo "-- srapath: que URL resuelve el resolver de SRA"
+    if command -v srapath >/dev/null; then
+      srapath "$run" 2>&1 | sed 's/^/   /' || echo "   (srapath salió con error)"
+    else
+      echo "   (no hay srapath en el PATH)"
+    fi
+
+    echo "-- vdb-dump --info: que cree SRA que existe"
+    if command -v vdb-dump >/dev/null; then
+      vdb-dump --info "$run" 2>&1 | head -20 | sed 's/^/   /' || true
+    else
+      echo "   (no hay vdb-dump en el PATH)"
+    fi
+
+    echo "-- prefetch, con la salida a la vista"
+    if ! command -v prefetch >/dev/null; then
+      echo "   (no hay prefetch en el PATH)"; echo; continue
+    fi
+    tmp=$(mktemp -d)
+    set +e
+    prefetch --output-directory "$tmp" --max-size u "$run" 2>&1 | sed 's/^/   /'
+    rc=${PIPESTATUS[0]}
+    set -e
+    echo "   exit=$rc"
+
+    echo "-- qué quedó en el disco"
+    dejo=$(find "$tmp" -type f -printf '   %10s  %P\n' 2>/dev/null || true)
+    echo "${dejo:-   (nada)}"
+    rm -rf "$tmp"
+    echo
+  done
+}
+
 [[ $# -ge 1 ]] || usage
 case "$1" in
   -h|--help) usage 0 ;;
   manifest)  shift; cmd_manifest ;;
   estado)    shift; cmd_estado ;;
+  diag)      shift; cmd_diag "$@" ;;
   prefetch)
     shift
     ORG_F=""; LIMITE=""; HORAS=""; ORDEN=""
