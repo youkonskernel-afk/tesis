@@ -178,11 +178,14 @@ probabilidad calibrada.
   **única corrida PAIRED de las 416** y trae 273 nt de promedio, contra 51 nt
   SINGLE de sus 8 hermanas del mismo `PRJNA929031`. Está etiquetada `miRNA-Seq`
   en la ENA, y el filtro solo exige `SINGLE` para `RNA-Seq`, así que pasó.
-  **Decisión pendiente**: lo razonable es sacarla del manifiesto, por el mismo
-  criterio que ya excluye el PAIRED de un proyecto de RNA-Seq. Si se deja, la
-  ventana 15-50 nt va a descartar casi todo y lo que sobreviva serán fragmentos
-  de mRNA — la contaminación exacta contra la que existe la trampa de
-  `--disable_length_filtering`. `fetch_runs.sh manifest` ahora la señala aparte.
+  **No alcanza con eso para sacarla.** Un sRNA de 22 nt corrido en 2×150 da
+  `avg_len` 273 igual que un mRNA: el inserto es corto y el secuenciador sigue
+  leyendo adaptador. Lo que distingue los dos casos es **dónde empieza el
+  adaptador 3'**, y eso se mide sin alinear nada:
+  `./scripts/fetch_runs.sh perfil SRR23277331`. Si el inserto pica en 18-30 nt,
+  la corrida entra y solo hay que recortar; si casi no hay adaptador, el inserto
+  es más largo que el read y sale del manifiesto. `manifest` la señala aparte
+  bajo `SOSPECHOSAS` para que no se decida por `avg_len`, que no distingue.
 - **Reads de más de 50 nt: 144 de 416, y casi todas son normales.** 51 nt es una
   librería de 50 ciclos sin recortar y 65-75 nt una de 75 ciclos; `fastp` las
   resuelve recortando adaptador. La única que merece atención de verdad, además

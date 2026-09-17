@@ -8,6 +8,7 @@
 #   ./scripts/fetch_runs.sh diag RUN [RUN...]    # por que falla una corrida
 #   ./scripts/fetch_runs.sh ledger [ORG]         # rehace md5 de lo que ya esta bajado
 #   ./scripts/fetch_runs.sh buscar 'Especie'     # proyectos de sRNA-seq de una especie
+#   ./scripts/fetch_runs.sh perfil RUN [-n N]    # es sRNA-seq de verdad esta corrida?
 #
 # El destino de los .sra sale de SRA_DEST (por defecto SRA_CACHE). En Colab se
 # apunta al mount de Drive y SRA_STAGING al disco efimero de la VM: prefetch
@@ -397,6 +398,73 @@ cmd_prefetch() {
   cmd_estado
 }
 
+# Adaptadores 3\' de los kits de sRNA mas usados. Se busca el prefijo, no la
+# secuencia entera: el read se corta antes de terminarla.
+#   TruSeq Small RNA, TruSeq generico, NEBNext Small RNA, Qiagen/Illumina sRNA
+ADAPTADORES="TGGAATTCTCGGG AGATCGGAAGAGC AGATCGGAAGAGCACACGT GATCGTCGGACTG"
+
+# Una corrida es sRNA-seq si el adaptador 3\' aparece temprano: el inserto es
+# corto y el secuenciador siguio leyendo. Lo que NO se puede saber mirando
+# avg_len es justamente esto — un sRNA de 22 nt corrido en 2x150 da avg_len 273
+# igual que un mRNA. Pasa con SRR23277331 de prupe, la unica PAIRED de las 416.
+#
+# Corre donde esten los .sra: en Colab con SRA_DEST al mount de Drive.
+cmd_perfil() {
+  command -v fastq-dump >/dev/null || die "falta fastq-dump (sra-tools)"
+  local run="${1:-}" n="${2:-20000}"
+  [[ -n "$run" ]] || die "uso: $0 perfil RUN [-n N]"
+
+  # Si ya esta bajado se usa el archivo; si no, fastq-dump lo resuelve por red.
+  local org src=""
+  org=$(awk -F'\t' -v r="$run" 'NR>1 && $2==r {print $1; exit}' "$MANIFEST" 2>/dev/null || true)
+  [[ -n "$org" ]] && src=$(ruta_sra "$DEST" "$org" "$run" 2>/dev/null || true)
+
+  echo "== $run${org:+  ($org)}   primeros $n spots"
+  [[ -n "$src" ]] && echo "   fuente: $src" || echo "   fuente: la red (no esta bajada)"
+
+  local fq; fq=$(mktemp)
+  fastq-dump --split-spot -X "$n" -Z "${src:-$run}" 2>/dev/null > "$fq" || {
+    rm -f "$fq"; die "fastq-dump no pudo leer $run"; }
+
+  awk -v ads="$ADAPTADORES" '
+    BEGIN { na = split(ads, A, " ") }
+    NR % 4 == 2 {
+      total++
+      mejor = 0
+      for (i = 1; i <= na; i++) {
+        p = index($0, A[i])
+        if (p > 0 && (mejor == 0 || p < mejor)) mejor = p
+      }
+      if (mejor > 0) { con++; ins = mejor - 1; h[ins]++; if (ins >= 18 && ins <= 30) corto++ }
+      else { largo[length($0)]++ }
+    }
+    END {
+      if (total == 0) { print "   sin reads"; exit }
+      printf "   reads: %d   con adaptador: %d (%.0f%%)\n", total, con, 100*con/total
+      if (con > 0) {
+        printf "   inserto (largo antes del adaptador), los mas frecuentes:\n"
+        cn = 0
+        for (k in h) { ord[cn++] = k }
+        # top 8 por frecuencia
+        for (a = 0; a < cn; a++) for (b = a+1; b < cn; b++)
+          if (h[ord[b]] + 0 > h[ord[a]] + 0) { t = ord[a]; ord[a] = ord[b]; ord[b] = t }
+        for (a = 0; a < cn && a < 8; a++)
+          printf "     %3d nt  %6d  %5.1f%%\n", ord[a], h[ord[a]], 100*h[ord[a]]/total
+        printf "   inserto entre 18 y 30 nt: %.0f%% de los reads\n", 100*corto/total
+      }
+      print ""
+      if (con >= 0.5*total && corto >= 0.3*total)
+        print "   >>> PARECE sRNA-seq: el adaptador aparece temprano en la mayoria."
+      else if (con < 0.2*total)
+        print "   >>> NO PARECE sRNA-seq: casi ningun read tiene adaptador 3\x27, o sea"
+      else
+        print "   >>> DUDOSA: hay adaptador pero el inserto no es de sRNA. Mirar arriba."
+      if (con < 0.2*total)
+        print "       que el inserto es mas largo que el read. Es lo que se espera de mRNA."
+    }' "$fq"
+  rm -f "$fq"
+}
+
 # Busca proyectos de sRNA-seq de una especie en la ENA, con el MISMO filtro que
 # arma el manifiesto. Para cuando un duplicado resulta no ser sRNA-seq y hay que
 # reemplazarlo: es el caso de sclsc, cuyo PRJNA985401 es RNA-Seq y quedo afuera
@@ -534,6 +602,17 @@ case "$1" in
   estado)    shift; cmd_estado ;;
   diag)      shift; cmd_diag "$@" ;;
   buscar)    shift; cmd_buscar "${1:-}" ;;
+  perfil)
+    shift
+    RUN_P=""; NP=""
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        -n) NP="${2:-}"; shift 2 ;;
+        -n*) NP="${1#-n}"; shift ;;
+        *) RUN_P="$1"; shift ;;
+      esac
+    done
+    cmd_perfil "$RUN_P" "${NP:-20000}" ;;
   ledger)
     shift
     ORG_F=""; FMT=""
