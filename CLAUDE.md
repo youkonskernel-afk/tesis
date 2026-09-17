@@ -142,12 +142,20 @@ probabilidad calibrada.
   abajo. Los detalles y el porqué de cada uno están en la columna `nota` de
   `data/genomas.tsv`.
 
-  **`cloro` es lo único que queda, y no es que falte ensamblado: es la cepa.**
-  NCBI da como referencia `GCA_054828895.1` (cepa NF-06), pero `PRJEB43636` son
-  mutantes Dicer-like del grupo de Karlsson (SLU) sobre **IK726**. Alinear reads
-  de IK726 contra NF-06 pierde todo lo que caiga en regiones divergentes entre
-  cepas, que en hongos incluye presencia/ausencia de genes enteros. Siguiente
-  paso: `./scripts/fetch_genomes.sh cepas cloro` y buscar IK726 (~58 Mb).
+  **`cloro` es lo único que queda.** El ensamblado de IK726 —la cepa de los
+  datos, porque `PRJEB43636` son mutantes Dicer-like del grupo de Karlsson (SLU)
+  sobre ella— **existe**: `GCA_902827195.2`, `C_rosea_IK726`. Se prefiere a la
+  referencia de la especie (`GCA_054828895.1`, cepa NF-06) porque la coincidencia
+  de cepa no se recupera de ninguna otra forma: alinear IK726 contra otra cepa
+  pierde lo que caiga en regiones divergentes, que en hongos incluye
+  presencia/ausencia de genes enteros. `resolve` va a decir `DIFIERE` y está bien
+  que lo diga; la elección es deliberada y el motivo está en la nota del TSV.
+
+  Falta un chequeo antes de verificarlo: **son 70.7 Mb contra una mediana de
+  55.2 Mb** en las otras 20 cepas de la especie, y la publicación declara ~58 Mb.
+  Puede ser contenido duplicado o contaminación, y eso infla el multimapeo justo
+  bajo `bowtie -m 50`. Hay que ver `assembly_status` con `resolve cloro` y si
+  existe una versión `.1` con otro tamaño.
   El paso manual sigue siendo a propósito: un ensamblado equivocado no falla
   ruidosamente, alinea peor y contamina la anotación. Ya no hace falta que
   coincida con el ensamblado de MirGeneDB — con el etiquetado por secuencia se
@@ -205,6 +213,13 @@ probabilidad calibrada.
   Tree of Life). El de ostra importa más porque `maggi` es de entrenamiento: el
   de Roslin retuvo haplotigos —la misma región dos veces— y eso infla el
   multimapeo justo bajo `bowtie -m 50`.
+- **Un listado paginado que se trunca miente en silencio.** `listar_cepas` pedía
+  `page_size=20` y para `cloro` devolvió exactamente 20 — el límite— e imprimía
+  el parcial como si fuera todo. *Clonostachys rosea* tiene **78** ensamblados, y
+  el de IK726 era uno de los 58 que no se veían. Se estuvo a un paso de elegir
+  otra cepa por un defecto de la herramienta, no por los datos. Ahora pagina
+  hasta agotar y avisa si `total_count` no coincide con lo que trajo. Lo mismo
+  vale para cualquier otra consulta paginada que se agregue.
 - **Ensembl y NCBI no nombran los cromosomas igual** (`1` vs `NC_006088.5`).
   Los 3 organismos heredados vienen de EnsemblGenomes y los 6 nuevos de NCBI.
   Con el etiquetado por secuencia esto dejó de afectar a los positivos, pero

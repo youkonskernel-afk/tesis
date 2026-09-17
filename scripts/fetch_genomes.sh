@@ -225,7 +225,10 @@ cmd_resolve() {
     elif [[ -n "$ref_acc" && "$acc" == "$ref_acc" ]]; then
       echo "   >>> COINCIDE — el candidato ES la referencia vigente"
     elif [[ -n "$ref_acc" ]]; then
-      echo "   >>> DIFIERE — la referencia vigente es $ref_acc, no $acc. Gana NCBI."
+      echo "   >>> DIFIERE — la referencia vigente es $ref_acc, no $acc."
+      echo "       Gana NCBI, SALVO que el candidato este elegido a proposito —por"
+      echo "       ejemplo para que la cepa coincida con la de los datos—. En ese"
+      echo "       caso el motivo va escrito en la nota de data/genomas.tsv."
     elif [[ $cand_ok -eq 1 ]]; then
       echo "   >>> El candidato existe pero la especie no tiene referencia vigente."
       echo "       Decidi a mano con los numeros de arriba."
@@ -236,7 +239,8 @@ cmd_resolve() {
   done < <(filas "${1:-}")
   rm -rf "$tmp"
   echo "COINCIDE      -> pone 'verificado' en data/genomas.tsv y corre: $0 fetch"
-  echo "DIFIERE       -> corregi el accession Y el nombre del assembly, despues verifica"
+  echo "DIFIERE       -> corregi el accession Y el nombre del assembly, despues verifica;"
+  echo "                 o dejalo, si elegiste otro a proposito y esta en la nota"
   echo "ERROR DE RED  -> no es un veredicto: volve a correr resolve"
 }
 
