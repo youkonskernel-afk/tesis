@@ -9,6 +9,7 @@
 #   ./scripts/fetch_runs.sh ledger [ORG]         # rehace md5 de lo que ya esta bajado
 #   ./scripts/fetch_runs.sh buscar 'Especie'     # proyectos de sRNA-seq de una especie
 #   ./scripts/fetch_runs.sh perfil RUN [-n N]    # es sRNA-seq de verdad esta corrida?
+#   ./scripts/fetch_runs.sh perfil --proyectos   # una corrida de cada proyecto
 #
 # El destino de los .sra sale de SRA_DEST (por defecto SRA_CACHE). En Colab se
 # apunta al mount de Drive y SRA_STAGING al disco efimero de la VM: prefetch
@@ -409,6 +410,9 @@ ADAPTADORES="TGGAATTCTCGGG AGATCGGAAGAGC AGATCGGAAGAGCACACGT GATCGTCGGACTG"
 # igual que un mRNA. Pasa con SRR23277331 de prupe, la unica PAIRED de las 416.
 #
 # Corre donde esten los .sra: en Colab con SRA_DEST al mount de Drive.
+# Donde cmd_perfil deja el resumen de una linea, para que --proyectos lo junte.
+RESUMEN_PERFIL=""
+
 cmd_perfil() {
   command -v fastq-dump >/dev/null || die "falta fastq-dump (sra-tools)"
   local run="${1:-}" n="${2:-20000}"
@@ -461,8 +465,55 @@ cmd_perfil() {
         print "   >>> DUDOSA: hay adaptador pero el inserto no es de sRNA. Mirar arriba."
       if (con < 0.2*total)
         print "       que el inserto es mas largo que el read. Es lo que se espera de mRNA."
-    }' "$fq"
-  rm -f "$fq"
+
+      # Resumen de una linea, para la tabla de --proyectos.
+      modal = 0; mx = 0
+      for (k in h) if (h[k] + 0 > mx) { mx = h[k] + 0; modal = k }
+      ver = (con >= 0.5*total && corto >= 0.3*total) ? "PARECE sRNA-seq" \
+          : (con < 0.2*total) ? "NO PARECE" : "DUDOSA"
+      printf "RESUMEN\t%.0f\t%s\t%s\n", 100*con/total, (con>0 ? modal" nt" : "-"), ver > "/dev/stderr"
+    }' "$fq" 2> "$fq.res"
+  RESUMEN_PERFIL=$(grep '^RESUMEN' "$fq.res" 2>/dev/null | cut -f2- || true)
+  cat "$fq.res" | grep -v '^RESUMEN' >&2 || true
+  rm -f "$fq" "$fq.res"
+}
+
+# Una corrida representativa de CADA proyecto. La etiqueta de estrategia de la
+# ENA no establece que tipo de libreria es —SRR23277331 decia miRNA-Seq y no
+# tenia un solo read con adaptador—, y en el manifiesto hay 3 proyectos
+# primarios enteros etiquetados RNA-Seq, dos de ellos de organismos de
+# entrenamiento. Son minutos; alinear a ciegas son 30-40 h.
+cmd_perfil_proyectos() {
+  [[ -f "$MANIFEST" ]] || die "no existe $MANIFEST — corré: $0 manifest"
+  local n="${1:-20000}"
+  local tabla; tabla=$(mktemp)
+  local org proy rol strat run
+  while IFS=$'\t' read -r org proy rol strat run; do
+    cmd_perfil "$run" "$n" || true
+    printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$org" "$proy" "$rol" "$strat" "$run" \
+      "${RESUMEN_PERFIL:-?\t?\tSIN DATO}" >> "$tabla"
+    echo
+  done < <(awk -F'\t' 'NR>1 && !(($1 FS $3) in v) {v[$1 FS $3]=1;
+             print $1"\t"$3"\t"$4"\t"$9"\t"$2}' "$MANIFEST" | sort)
+
+  echo "==================== RESUMEN"
+  printf '%-7s %-14s %-10s %-11s %6s %8s  %s\n' ORG PROYECTO ROL ETIQUETA ADAPT INSERTO VEREDICTO
+  awk -F'\t' '{printf "%-7s %-14s %-10s %-11s %5s%% %8s  %s\n", $1,$2,$3,$4,$6,$7,$8}' "$tabla"
+  echo
+  local malos; malos=$(awk -F'\t' '$8!="PARECE sRNA-seq"' "$tabla" | wc -l)
+  if [[ "$malos" -gt 0 ]]; then
+    echo "$malos proyecto(s) NO dieron 'PARECE sRNA-seq'. Revisar antes de alinear:"
+    awk -F'\t' -v man="$MANIFEST" '
+      BEGIN { while ((getline l < man) > 0) { split(l, f, "\t"); n[f[1] "\t" f[3]]++ } }
+      $8 != "PARECE sRNA-seq" {
+        printf "  %-7s %-14s %-10s %3d corridas etiquetadas %s -> %s\n",
+               $1, $2, $3, n[$1 "\t" $2], $4, $8
+      }' "$tabla"
+  else
+    echo "Los $(wc -l < "$tabla") proyectos dan PARECE sRNA-seq."
+  fi
+  rm -f "$tabla"
+  [[ "$malos" -eq 0 ]]
 }
 
 # Busca proyectos de sRNA-seq de una especie en la ENA, con el MISMO filtro que
@@ -604,15 +655,17 @@ case "$1" in
   buscar)    shift; cmd_buscar "${1:-}" ;;
   perfil)
     shift
-    RUN_P=""; NP=""
+    RUN_P=""; NP=""; TODOS=0
     while [[ $# -gt 0 ]]; do
       case "$1" in
+        --proyectos) TODOS=1; shift ;;
         -n) NP="${2:-}"; shift 2 ;;
         -n*) NP="${1#-n}"; shift ;;
         *) RUN_P="$1"; shift ;;
       esac
     done
-    cmd_perfil "$RUN_P" "${NP:-20000}" ;;
+    if [[ $TODOS -eq 1 ]]; then cmd_perfil_proyectos "${NP:-20000}"
+    else cmd_perfil "$RUN_P" "${NP:-20000}"; fi ;;
   ledger)
     shift
     ORG_F=""; FMT=""
