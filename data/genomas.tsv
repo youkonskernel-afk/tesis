@@ -16,6 +16,12 @@
 # Un ensamblado equivocado no falla ruidosamente: alinea peor y contamina la
 # anotación. Por eso ninguna fila llega a 'verificado' sin que una persona mire.
 #
+# 'resolve' cierra con un veredicto por organismo. COINCIDE = el candidato es la
+# referencia vigente. DIFIERE = NCBI tiene otra, y gana NCBI: hay que corregir el
+# accession Y el nombre del assembly, que van juntos. SIN CANDIDATO = elegir de
+# la lista de cepas que imprime. SIN RESPUESTA UTIL = hubo error de red o NCBI no
+# contestó, y eso NO es un veredicto: no confirmar nada, volver a correr resolve.
+#
 # El ensamblado NO tiene que coincidir con el de MirGeneDB ni miRBase: los
 # positivos se etiquetan por secuencia (docs/positivos.md). Elegir por
 # contigüidad, completitud y que sea la referencia vigente.

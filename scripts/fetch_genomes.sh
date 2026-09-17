@@ -12,7 +12,8 @@
 #
 # Para subir a Drive después:  ./scripts/drive_push.sh genomas --go
 #
-# Requiere: curl, jq. La sesión cloud NO tiene red hacia NCBI; esto corre local.
+# Requiere: curl, jq, unzip. La sesión cloud NO tiene red hacia NCBI: esto corre
+# en Colab (notebooks/descarga_genomas.ipynb) o en la máquina local.
 
 set -euo pipefail
 
@@ -22,10 +23,10 @@ DEST="${GENOMES_DIR:-$ROOT/genomes}"
 LEDGER="$ROOT/data/genomas.sha256"
 API="https://api.ncbi.nlm.nih.gov/datasets/v2alpha"
 
-usage() { sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-2}"; }
+usage() { sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-2}"; }
 die()   { echo "error: $*" >&2; exit 1; }
 
-for bin in curl jq; do
+for bin in curl jq unzip; do
   command -v "$bin" >/dev/null || die "falta $bin"
 done
 [[ -f "$SPEC" ]] || die "no existe $SPEC"
@@ -60,51 +61,128 @@ registrar() {
   rm -f "$LEDGER.tmp"
 }
 
+# Consulta a la API. Separa "NCBI dice que no existe" de "no pude preguntar":
+# son cosas distintas y confundirlas es el mismo modo de falla que el prefetch
+# que salia 0 sin bajar nada. rc: 0 ok, 1 red, 2 respuesta que no es JSON.
+api() {
+  local url="$1" dst="$2"
+  : > "$dst.err"
+  curl -sS --max-time 60 -o "$dst" "$url" 2>"$dst.err" || return 1
+  jq -e . "$dst" >/dev/null 2>&1 || return 2
+  return 0
+}
+
+# Formato compacto de un report de NCBI. Incluye nivel, N50 y tamano porque el
+# criterio de eleccion es contiguidad y completitud (ver CLAUDE.md), y eso no se
+# puede juzgar solo con el nombre del ensamblado.
+JQ_FILA='
+  def mb: if . == null or . == "" then "?"
+          else ((tonumber? // 0) / 1000000 * 10 | round / 10 | tostring) + " Mb" end;
+  def fila:
+    "\(.accession)  \(.assembly_info.assembly_name // "?")"
+    + "  nivel=\(.assembly_info.assembly_level // "?")"
+    + "  N50=\((.assembly_stats.scaffold_n50 // .assembly_stats.contig_n50) | mb)"
+    + "  total=\(.assembly_stats.total_sequence_length | mb)"
+    + (if (.organism.infraspecific_names.strain // "") != ""
+       then "  cepa=\(.organism.infraspecific_names.strain)" else "" end);
+'
+
 cmd_estado() {
   printf "%-8s %-11s %-10s %-32s %s\n" ORG ESTADO CONFIANZA ASSEMBLY ACCESSION
   filas "${1:-}" | while IFS="$SEP" read -r org esp fuente asm acc estado conf nota; do
     printf "%-8s %-11s %-10s %-32s %s\n" "$org" "$estado" "$conf" "$asm" "${acc:--}"
   done
   echo
-  local n; n=$(filas | awk -F'\t' '$6=="candidato"' | wc -l)
+  local n; n=$(filas | awk -F"$SEP" '$6=="candidato"' | wc -l)
   [[ $n -gt 0 ]] && echo "$n sin verificar. Corré: $0 resolve"
   return 0
 }
 
+# Cuando la especie no tiene ensamblado de referencia —el caso de cloro— hay que
+# elegir por cepa. Sin esta lista, resolve dejaba un callejon sin salida: decia
+# "buscar por cepa" y no daba con que buscarla.
+listar_cepas() {
+  local esp="$1" tmp="$2" rc=0 n
+  api "$API/genome/taxon/${esp// /%20}/dataset_report?page_size=20" "$tmp/s.json" || rc=$?
+  if [[ $rc -ne 0 ]]; then
+    echo "     (no pude listar los ensamblados: $([[ $rc -eq 1 ]] && echo red || echo "respuesta invalida"))"
+    return 0
+  fi
+  n=$(jq '.reports | length' "$tmp/s.json")
+  if [[ "$n" -eq 0 ]]; then
+    echo "     NCBI no tiene ningun ensamblado para esta especie"
+    return 0
+  fi
+  echo "     ensamblados disponibles ($n, los mas contiguos primero):"
+  jq -r "$JQ_FILA"'
+    [.reports[]]
+    | sort_by(-((.assembly_stats.scaffold_n50 // .assembly_stats.contig_n50 // 0)
+                | tonumber? // 0))
+    | .[] | "     " + fila' "$tmp/s.json"
+}
+
 cmd_resolve() {
-  filas "${1:-}" | while IFS="$SEP" read -r org esp fuente asm acc estado conf nota; do
+  local tmp; tmp=$(mktemp -d)
+  local org esp fuente asm acc estado conf nota rc cand_ok ref_acc
+  while IFS="$SEP" read -r org esp fuente asm acc estado conf nota; do
     [[ "$estado" == "heredado" ]] && { echo "== $org: heredado, se salta"; continue; }
     echo "== $org — $esp"
+    echo "   spec       : ${acc:-(sin accession)}  $asm  confianza=$conf"
 
-    if [[ -n "$acc" ]]; then
-      echo "   candidato en la spec: $acc ($asm) — confianza $conf"
-      local_json=$(curl -sS --max-time 60 \
-        "$API/genome/accession/$acc/dataset_report" 2>/dev/null || echo '{}')
-      echo "$local_json" | jq -r '
-        if (.reports|length) > 0 then
-          .reports[0] |
-          "   NCBI dice: \(.accession)  \(.assembly_info.assembly_name)  " +
-          "\(.assembly_info.assembly_status // "?")  " +
-          "org=\(.organism.organism_name)"
-        else "   NCBI: accession NO encontrado — el candidato es incorrecto"
-        end'
+    # 1. El accession propuesto, existe?
+    cand_ok=0
+    if [[ -n "$acc" && "$acc" != "?" ]]; then
+      rc=0; api "$API/genome/accession/$acc/dataset_report" "$tmp/c.json" || rc=$?
+      if [[ $rc -eq 1 ]]; then
+        echo "   candidato  : ERROR DE RED — $(head -c 120 "$tmp/c.json.err" | tr '\n' ' ')"
+      elif [[ $rc -eq 2 ]]; then
+        echo "   candidato  : ERROR — NCBI no devolvio JSON"
+      elif [[ "$(jq '.reports | length' "$tmp/c.json")" -eq 0 ]]; then
+        echo "   candidato  : NO EXISTE en NCBI"
+      else
+        cand_ok=1
+        jq -r "$JQ_FILA"' .reports[0] | "   candidato  : " + fila
+               + "  estado=\(.assembly_info.assembly_status // "?")"' "$tmp/c.json"
+      fi
     fi
 
-    # Cuál es el ensamblado de referencia vigente para la especie, sea cual sea
-    # el candidato. Es la respuesta que realmente importa.
-    esp_url=${esp// /%20}
-    curl -sS --max-time 60 \
-      "$API/genome/taxon/$esp_url/dataset_report?filters.reference_only=true&page_size=3" \
-      2>/dev/null | jq -r '
-        if (.reports|length) > 0 then
-          .reports[] |
-          "   referencia vigente: \(.accession)  \(.assembly_info.assembly_name)  " +
-          "nivel=\(.assembly_info.assembly_level)  org=\(.organism.organism_name)"
-        else "   sin ensamblado de referencia para esta especie — buscar por cepa"
-        end'
+    # 2. La referencia vigente de la especie. Es la respuesta que mas importa:
+    #    un accession puede existir y no ser el que corresponde.
+    ref_acc=""; rc=0
+    api "$API/genome/taxon/${esp// /%20}/dataset_report?filters.reference_only=true&page_size=3" \
+        "$tmp/r.json" || rc=$?
+    if [[ $rc -eq 1 ]]; then
+      echo "   referencia : ERROR DE RED — $(head -c 120 "$tmp/r.json.err" | tr '\n' ' ')"
+    elif [[ $rc -eq 2 ]]; then
+      echo "   referencia : ERROR — NCBI no devolvio JSON"
+    elif [[ "$(jq '.reports | length' "$tmp/r.json")" -eq 0 ]]; then
+      echo "   referencia : la especie NO tiene ensamblado de referencia"
+      listar_cepas "$esp" "$tmp"
+    else
+      ref_acc=$(jq -r '.reports[0].accession' "$tmp/r.json")
+      jq -r "$JQ_FILA"' .reports[] | "   referencia : " + fila' "$tmp/r.json"
+    fi
+
+    # 3. El veredicto. Comparar lo puede hacer la maquina; decidir no, y por eso
+    #    el estado lo sigue cambiando una persona.
+    if [[ -z "$acc" || "$acc" == "?" ]]; then
+      echo "   >>> SIN CANDIDATO — hay que elegir uno de la lista de arriba"
+    elif [[ -n "$ref_acc" && "$acc" == "$ref_acc" ]]; then
+      echo "   >>> COINCIDE — el candidato ES la referencia vigente"
+    elif [[ -n "$ref_acc" ]]; then
+      echo "   >>> DIFIERE — la referencia vigente es $ref_acc, no $acc. Gana NCBI."
+    elif [[ $cand_ok -eq 1 ]]; then
+      echo "   >>> El candidato existe pero la especie no tiene referencia vigente."
+      echo "       Decidi a mano con los numeros de arriba."
+    else
+      echo "   >>> SIN RESPUESTA UTIL — no confirmes nada con esto"
+    fi
     echo
-  done
-  echo "Si coincide, cambiá estado a 'verificado' en data/genomas.tsv y corré: $0 fetch"
+  done < <(filas "${1:-}")
+  rm -rf "$tmp"
+  echo "COINCIDE      -> pone 'verificado' en data/genomas.tsv y corre: $0 fetch"
+  echo "DIFIERE       -> corregi el accession Y el nombre del assembly, despues verifica"
+  echo "ERROR DE RED  -> no es un veredicto: volve a correr resolve"
 }
 
 cmd_fetch() {
