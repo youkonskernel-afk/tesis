@@ -4,6 +4,7 @@
 #   ./scripts/fetch_genomes.sh resolve [ORG]   # consulta NCBI, no descarga
 #   ./scripts/fetch_genomes.sh fetch   [ORG]   # descarga los 'verificado'
 #   ./scripts/fetch_genomes.sh estado          # qué falta
+#   ./scripts/fetch_genomes.sh cepas ORG       # ensamblados de la especie, por cepa
 #
 # Flujo: 'resolve' te dice qué ensamblado es el vigente y si el candidato de
 # data/genomas.tsv coincide. Confirmás a mano, cambiás estado a 'verificado',
@@ -18,9 +19,11 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SPEC="$ROOT/data/genomas.tsv"
+# Sobreescribible para poder probar el script contra una spec sintetica, igual
+# que MANIFEST en fetch_runs.sh.
+SPEC="${GENOMES_SPEC:-$ROOT/data/genomas.tsv}"
 DEST="${GENOMES_DIR:-$ROOT/genomes}"
-LEDGER="$ROOT/data/genomas.sha256"
+LEDGER="${GENOMES_LEDGER:-$ROOT/data/genomas.sha256}"
 API="https://api.ncbi.nlm.nih.gov/datasets/v2alpha"
 
 usage() { sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-2}"; }
@@ -143,6 +146,12 @@ cmd_resolve() {
         cand_ok=1
         jq -r "$JQ_FILA"' .reports[0] | "   candidato  : " + fila
                + "  estado=\(.assembly_info.assembly_status // "?")"' "$tmp/c.json"
+        # 'suppressed' es el dato mas decisivo de toda la salida y al final de una
+        # linea larga se saltea. NCBI retira un ensamblado por algo: contaminacion,
+        # o porque el que lo deposito lo reemplazo. No se usa, y punto.
+        if [[ "$(jq -r '.reports[0].assembly_info.assembly_status // ""' "$tmp/c.json")" == "suppressed" ]]; then
+          echo "   !!! RETIRADO por NCBI (suppressed) — no usar este accession"
+        fi
       fi
     fi
 
@@ -161,12 +170,20 @@ cmd_resolve() {
     else
       ref_acc=$(jq -r '.reports[0].accession' "$tmp/r.json")
       jq -r "$JQ_FILA"' .reports[] | "   referencia : " + fila' "$tmp/r.json"
+      # Que la especie tenga referencia no quiere decir que la referencia sirva:
+      # puede ser de otra cepa que la de los datos. Sin candidato en la spec no
+      # hay nada contra que comparar, asi que hace falta ver las cepas igual.
+      # Es el caso de cloro: NF-06 es la referencia y los datos son de IK726.
+      if [[ -z "$acc" || "$acc" == "?" ]]; then
+        echo "   (sin candidato en la spec: la referencia puede ser de otra cepa)"
+        listar_cepas "$esp" "$tmp"
+      fi
     fi
 
     # 3. El veredicto. Comparar lo puede hacer la maquina; decidir no, y por eso
     #    el estado lo sigue cambiando una persona.
     if [[ -z "$acc" || "$acc" == "?" ]]; then
-      echo "   >>> SIN CANDIDATO — hay que elegir uno de la lista de arriba"
+      echo "   >>> SIN CANDIDATO — elegi de la lista de arriba, mirando la cepa"
     elif [[ -n "$ref_acc" && "$acc" == "$ref_acc" ]]; then
       echo "   >>> COINCIDE — el candidato ES la referencia vigente"
     elif [[ -n "$ref_acc" ]]; then
@@ -183,6 +200,18 @@ cmd_resolve() {
   echo "COINCIDE      -> pone 'verificado' en data/genomas.tsv y corre: $0 fetch"
   echo "DIFIERE       -> corregi el accession Y el nombre del assembly, despues verifica"
   echo "ERROR DE RED  -> no es un veredicto: volve a correr resolve"
+}
+
+cmd_cepas() {
+  local org="${1:-}" tmp esp n
+  [[ -n "$org" ]] || die "uso: $0 cepas ORG"
+  n=$(filas "$org" | wc -l)
+  [[ "$n" -gt 0 ]] || die "organismo desconocido: $org"
+  esp=$(filas "$org" | awk -F"$SEP" '{print $2}')
+  tmp=$(mktemp -d)
+  echo "== $org — $esp"
+  listar_cepas "$esp" "$tmp"
+  rm -rf "$tmp"
 }
 
 cmd_fetch() {
@@ -234,6 +263,7 @@ cmd_fetch() {
 case "$1" in
   -h|--help) usage 0 ;;
   estado)  shift; cmd_estado  "${1:-}" ;;
+  cepas)   shift; cmd_cepas   "${1:-}" ;;
   resolve) shift; cmd_resolve "${1:-}" ;;
   fetch)   shift; cmd_fetch   "${1:-}" ;;
   *) echo "comando desconocido: $1" >&2; usage ;;

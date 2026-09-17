@@ -134,19 +134,24 @@ probabilidad calibrada.
 - **Se caen `arath`, `danre` y `nemve`.** Sus `.sra`, BAMs e índices son ahora
   peso muerto. No borrar sin confirmar: el caché es re-descargable, pero los
   BAMs de `danre` costaron horas de alineamiento.
-- **Faltan 6 ensamblados.** Están en `data/genomas.tsv` como `candidato`, con
-  una columna `confianza` que dice cuánto pesa cada propuesta. Cinco tienen
-  candidato concreto (`prupe`, `maldo`, `gadmo`, `galga`, `maggi`) y `cloro`
-  ninguno: depende de la cepa, y `PRJEB43636` son mutantes Dicer-like del grupo
-  de Karlsson (SLU), casi seguro IK726. Ninguno está comprobado contra NCBI.
-  `fetch_genomes.sh` se niega a bajarlos hasta que una persona corra
-  `./scripts/fetch_genomes.sh resolve` y ponga `verificado`. Alternativa que
-  evita el disco local: `notebooks/descarga_genomas.ipynb` en Colab verifica y
-  baja directo a `70_genomas/` — ver `docs/colab.md`. El paso manual es
-  a propósito: un ensamblado equivocado no falla ruidosamente, alinea peor y
-  contamina la anotación. Ya no hace falta que coincida con el ensamblado de
-  MirGeneDB — con el etiquetado por secuencia se elige por contigüidad y
-  completitud.
+- **5 de 6 ensamblados fijados; falta `cloro`.** Verificados contra NCBI el
+  2026-09-17 con `./scripts/fetch_genomes.sh resolve` desde Colab
+  (`notebooks/descarga_genomas.ipynb`, que baja directo a `70_genomas/` sin
+  pasar por el disco local). `prupe`, `gadmo` y `galga` confirmaron su candidato
+  sin cambios. `maldo` y `maggi` **cambiaron de ensamblado** — ver la trampa de
+  abajo. Los detalles y el porqué de cada uno están en la columna `nota` de
+  `data/genomas.tsv`.
+
+  **`cloro` es lo único que queda, y no es que falte ensamblado: es la cepa.**
+  NCBI da como referencia `GCA_054828895.1` (cepa NF-06), pero `PRJEB43636` son
+  mutantes Dicer-like del grupo de Karlsson (SLU) sobre **IK726**. Alinear reads
+  de IK726 contra NF-06 pierde todo lo que caiga en regiones divergentes entre
+  cepas, que en hongos incluye presencia/ausencia de genes enteros. Siguiente
+  paso: `./scripts/fetch_genomes.sh cepas cloro` y buscar IK726 (~58 Mb).
+  El paso manual sigue siendo a propósito: un ensamblado equivocado no falla
+  ruidosamente, alinea peor y contamina la anotación. Ya no hace falta que
+  coincida con el ensamblado de MirGeneDB — con el etiquetado por secuencia se
+  elige por contigüidad y completitud.
 - **`Magallana gigas` = `Crassostrea gigas`.** El género se renombró; Ensembl
   Metazoa y buena parte de las bases todavía usan *Crassostrea*. Buscar el
   genoma por el nombre nuevo no va a encontrarlo.
@@ -189,6 +194,17 @@ probabilidad calibrada.
   nada); y **no** usar un umbral de identidad plano, porque el 5' define la
   semilla y es preciso mientras el 3' varía de rutina por isomiRs. El criterio
   va anclado en 5' con holgura en 3'.
+- **Un ensamblado se retira y nadie avisa.** `maldo` y `maggi` tenían de
+  candidato ensamblados que NCBI ya había marcado `suppressed`: GDDH13 v1.1
+  (`GCF_002114115.1`) y cgigas_uk_roslin_v1 (`GCF_902806645.1`), los dos muy
+  citados en la literatura. Descargarlos habría funcionado sin error visible.
+  Es la justificación concreta de por qué `fetch_genomes.sh` no baja nada en
+  estado `candidato` y por qué `resolve` ahora grita `RETIRADO por NCBI`. Los
+  reemplazos son `GCF_042453785.1` (GDT2T_hap1, Golden Delicious T2T, el mismo
+  cultivar del que deriva GDDH13) y `GCF_963853765.1` (xbMagGiga1.1, de Darwin
+  Tree of Life). El de ostra importa más porque `maggi` es de entrenamiento: el
+  de Roslin retuvo haplotigos —la misma región dos veces— y eso infla el
+  multimapeo justo bajo `bowtie -m 50`.
 - **Ensembl y NCBI no nombran los cromosomas igual** (`1` vs `NC_006088.5`).
   Los 3 organismos heredados vienen de EnsemblGenomes y los 6 nuevos de NCBI.
   Con el etiquetado por secuencia esto dejó de afectar a los positivos, pero
