@@ -49,11 +49,14 @@ no el aporte de la tesis:
 
 **9 organismos, 3 por reino, cada uno con BioProject primario y duplicado.**
 `data/organismos.tsv` es la especificación: 19 accessions en 18 slots (el
-primario de `maggi` son dos BioProjects combinados). El manifiesto resuelto de
-esta ronda **todavía no existe**: se genera con
-`./scripts/fetch_runs.sh manifest` contra la ENA, y después
-`./scripts/fetch_runs.sh prefetch` baja los `.sra`. En la práctica esto corre
-desde Colab (`notebooks/10_descarga_runs.ipynb`), no en la máquina local.
+primario de `maggi` son dos BioProjects combinados). `data/srr_manifest.tsv` es
+el manifiesto resuelto: **416 corridas**, generado con
+`./scripts/fetch_runs.sh manifest` contra la ENA desde Colab
+(`notebooks/10_descarga_runs.ipynb`).
+
+**Estado de la descarga: 414 de 416 en `80_sra/`.** Faltan `SRR1066790` y
+`SRR317135`, las dos del primario de `maggi`; fallaron en la corrida y se
+levantan re-ejecutando la celda de descarga, que retoma sola.
 `data/srr_manifest_r1.tsv` es el de la ronda anterior, como referencia.
 
 `scripts/fetch_runs.sh` **reemplaza al `gen_manifest.sh` de R1**, que asumía un
