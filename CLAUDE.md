@@ -50,12 +50,13 @@ no el aporte de la tesis:
 **9 organismos, 3 por reino, cada uno con BioProject primario y duplicado.**
 `data/organismos.tsv` es la especificación: 19 accessions en 18 slots (el
 primario de `maggi` son dos BioProjects combinados). `data/srr_manifest.tsv` es
-el manifiesto resuelto: **416 corridas**, generado con
+el manifiesto resuelto: **415 corridas**, generado con
 `./scripts/fetch_runs.sh manifest` contra la ENA desde Colab
 (`notebooks/10_descarga_runs.ipynb`).
 
-**La descarga está completa: 416 de 416 en `80_sra/`**, con los 416 md5 en
+**La descarga está completa: 415 de 415 en `80_sra/`**, con los 415 md5 en
 `data/sra_md5.tsv` y reconciliado contra el manifiesto en las dos direcciones.
+Eran 416 hasta que `SRR23277331` salió por no ser sRNA-seq — ver más abajo.
 Las dos últimas —`SRR317135` y `SRR1066790`, del primario de `maggi`— costaron
 una ronda entera porque **solo existen en formato SRA Lite** y el script buscaba
 únicamente `.sra`: `prefetch` las bajaba bien, salía con código 0, y el
@@ -63,7 +64,7 @@ una ronda entera porque **solo existen en formato SRA Lite** y el script buscaba
 `prefetch` más abajo, que es donde está lo que hay que declarar en métodos.
 `data/srr_manifest_r1.tsv` es el de la ronda anterior, como referencia.
 
-**El upstream está cerrado**: 416 `.sra` y 9 genomas en Drive, los dos con
+**El upstream está cerrado**: 415 `.sra` y 9 genomas en Drive, los dos con
 checksum versionado. Se comprueba con `./scripts/fetch_runs.sh estado` y
 `./scripts/fetch_genomes.sh verificar`, que recalcula los sha256 contra el
 ledger en vez de confiar en el tamaño. Lo que sigue es el alineamiento.
@@ -174,19 +175,30 @@ probabilidad calibrada.
 - **`Magallana gigas` = `Crassostrea gigas`.** El género se renombró; Ensembl
   Metazoa y buena parte de las bases todavía usan *Crassostrea*. Buscar el
   genoma por el nombre nuevo no va a encontrarlo.
-- **`SRR23277331` (`prupe` primario) casi seguro no es sRNA-seq.** Es la
-  **única corrida PAIRED de las 416** y trae 273 nt de promedio, contra 51 nt
-  SINGLE de sus 8 hermanas del mismo `PRJNA929031`. Está etiquetada `miRNA-Seq`
-  en la ENA, y el filtro solo exige `SINGLE` para `RNA-Seq`, así que pasó.
-  **No alcanza con eso para sacarla.** Un sRNA de 22 nt corrido en 2×150 da
-  `avg_len` 273 igual que un mRNA: el inserto es corto y el secuenciador sigue
-  leyendo adaptador. Lo que distingue los dos casos es **dónde empieza el
-  adaptador 3'**, y eso se mide sin alinear nada:
-  `./scripts/fetch_runs.sh perfil SRR23277331`. Si el inserto pica en 18-30 nt,
-  la corrida entra y solo hay que recortar; si casi no hay adaptador, el inserto
-  es más largo que el read y sale del manifiesto. `manifest` la señala aparte
-  bajo `SOSPECHOSAS` para que no se decida por `avg_len`, que no distingue.
-- **Reads de más de 50 nt: 144 de 416, y casi todas son normales.** 51 nt es una
+- **`SRR23277331` se sacó del manifiesto: era mRNA, no sRNA-seq.** Medido, no
+  supuesto: `perfil` encontró **0 de 40 000 reads con adaptador 3'**. Es
+  concluyente porque la lista incluye `AGATCGGAAGAGC`, el universal de Illumina,
+  así que un inserto corto habría dado read-through con cualquier kit — cero
+  significa que todos los insertos pasan los 150 nt. **El manifiesto queda en
+  415**, `prupe` primario en 8 corridas, y el ledger reconcilia en cero por
+  ambos lados. El `.sra` de 3 GB sigue en Drive como peso muerto; `90_estado` lo
+  va a listar como "sobra", que es correcto.
+
+  **La lección importante no es esa corrida, es que la etiqueta engañó.** Decía
+  `miRNA-Seq` y pasó el filtro. `avg_len` tampoco distingue: un sRNA de 22 nt
+  corrido en 2×150 da 273 nt igual que un mRNA. Lo único que separa los dos
+  casos es dónde empieza el adaptador, y por eso existe
+  `./scripts/fetch_runs.sh perfil`.
+- **Quedan 3 proyectos primarios enteros etiquetados `RNA-Seq` sin verificar**:
+  `galga PRJEB12164` (27 corridas), `maggi PRJNA154615` (21) y
+  `phypa PRJNA222997` (30) — **78 de 415, y dos de organismos de
+  entrenamiento**. La etiqueta es evidencia más débil todavía que la que tenía
+  `SRR23277331`. Si son librerías de mRNA, el modelo se entrena sobre el dato
+  equivocado y no falla ruidosamente: YASMA anota loci igual, solo que de
+  fragmentos de mRNA. **Antes de alinear**:
+  `./scripts/fetch_runs.sh perfil --proyectos`, que perfila una corrida de cada
+  uno de los 18 proyectos y tarda minutos.
+- **Reads de más de 50 nt: 143 de 415, y casi todas son normales.** 51 nt es una
   librería de 50 ciclos sin recortar y 65-75 nt una de 75 ciclos; `fastp` las
   resuelve recortando adaptador. La única que merece atención de verdad, además
   de la de arriba, es `maldo` duplicado (`PRJNA784097`) con **151 nt**: hay que
