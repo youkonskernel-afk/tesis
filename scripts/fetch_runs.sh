@@ -7,6 +7,7 @@
 #   ./scripts/fetch_runs.sh prefetch [ORG] [-n N]  # descarga los .sra
 #   ./scripts/fetch_runs.sh diag RUN [RUN...]    # por que falla una corrida
 #   ./scripts/fetch_runs.sh ledger [ORG]         # rehace md5 de lo que ya esta bajado
+#   ./scripts/fetch_runs.sh buscar 'Especie'     # proyectos de sRNA-seq de una especie
 #
 # El destino de los .sra sale de SRA_DEST (por defecto SRA_CACHE). En Colab se
 # apunta al mount de Drive y SRA_STAGING al disco efimero de la VM: prefetch
@@ -25,7 +26,9 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SPEC="$ROOT/data/organismos.tsv"
+# Sobreescribible para poder probar contra una spec sintetica, igual que
+# MANIFEST y que GENOMES_SPEC en fetch_genomes.sh.
+SPEC="${ORGANISMOS:-$ROOT/data/organismos.tsv}"
 MANIFEST="${MANIFEST:-$ROOT/data/srr_manifest.tsv}"
 CACHE="${SRA_CACHE:-/home/dev/sra_cache}"
 # Destino final de los .sra. En Colab: /content/drive/MyDrive/tesis/80_sra
@@ -36,6 +39,7 @@ LEDGER="${SRA_LEDGER:-$ROOT/data/sra_md5.tsv}"
 # Margen de disco libre exigido antes de cada descarga, en GB.
 MIN_LIBRE_GB="${MIN_LIBRE_GB:-8}"
 ENA="https://www.ebi.ac.uk/ena/portal/api/filereport"
+ENA_BUSCAR="https://www.ebi.ac.uk/ena/portal/api/search"
 
 # Criterio de seleccion. Cambiarlo cambia el dataset: dejarlo explicito y
 # versionado es lo que hace el manifiesto reproducible.
@@ -46,6 +50,19 @@ FUENTE_OK="TRANSCRIPTOMIC"
 # RNA-Seq solo SINGLE: el PAIRED de un proyecto de RNA-Seq no es sRNA-seq y
 # contaminaria la anotacion. miRNA-Seq y ncRNA-Seq entran con cualquier layout.
 ESTRATEGIAS="miRNA-Seq ncRNA-Seq RNA-Seq"
+
+# El criterio de seleccion en UNA funcion. Si se duplica entre el manifiesto y
+# la busqueda, se termina eligiendo un proyecto que despues no entra al
+# manifiesto — que es exactamente como sclsc quedo sin duplicado.
+# Sin grep: esto corre una vez por corrida y pueden ser miles.
+pasa_filtro() {
+  local src="$1" strat="$2" layout="$3" rc="$4"
+  [[ "$src" == "$FUENTE_OK" ]] || return 1
+  [[ " $ESTRATEGIAS " == *" $strat "* ]] || return 1
+  [[ "$strat" == "RNA-Seq" && "$layout" != "SINGLE" ]] && return 1
+  [[ -n "$rc" && "$rc" =~ ^[0-9]+$ && "$rc" -ge "$MIN_READS" ]] || return 1
+  return 0
+}
 
 SEP=$'\x1f'
 usage() { sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-2}"; }
@@ -84,10 +101,7 @@ cmd_manifest() {
       [[ "$run" == "run_accession" || -z "$run" ]] && continue
       n_crudo=$((n_crudo+1))
 
-      [[ "$src" == "$FUENTE_OK" ]] || continue
-      grep -qw -- "$strat" <<<"$ESTRATEGIAS" || continue
-      [[ "$strat" == "RNA-Seq" && "$layout" != "SINGLE" ]] && continue
-      [[ -n "$rc" && "$rc" =~ ^[0-9]+$ && "$rc" -ge "$MIN_READS" ]] || continue
+      pasa_filtro "$src" "$strat" "$layout" "$rc" || continue
 
       local avg="NA"
       [[ -n "$bc" && "$bc" =~ ^[0-9]+$ && "$rc" -gt 0 ]] && avg=$(( bc / rc ))
@@ -106,10 +120,35 @@ cmd_manifest() {
   echo
   echo "manifiesto: $MANIFEST"
   echo "corridas vistas=$total  descartadas=$desc  retenidas=$(( $(wc -l < "$MANIFEST") - 1 ))"
+  # Antes esto listaba corrida por corrida las que pasan de 50 nt y cortaba en
+  # 20. Con 144 de 416 por encima de ese umbral, el listado se llenaba de
+  # librerias normales sin recortar (51 nt = 50 ciclos, 65-75 = 75 ciclos, que
+  # fastp resuelve recortando adaptador) y enterraba el unico caso que de
+  # verdad no parece sRNA-seq. Agrupar y separar lo sospechoso lo hace visible.
+  echo "Longitud de read por proyecto (avg_len = base_count/read_count):"
+  awk -F'\t' 'NR>1 && $8!="NA" {
+      k=$1"\t"$3"\t"$4"\t"$10; n[k]++
+      if ($8+0>mx[k]) mx[k]=$8+0
+      if (mn[k]==0 || $8+0<mn[k]) mn[k]=$8+0
+    }
+    END {
+      for (k in n) {
+        split(k, a, "\t")
+        printf "  %-7s %-14s %-10s %-7s %4d  %s\n", a[1], a[2], a[3], a[4], n[k],
+               (mn[k]==mx[k] ? mn[k]" nt" : mn[k]"-"mx[k]" nt")
+      }
+    }' "$MANIFEST" | sort
   echo
-  echo "Reads largos (avg_len > 50): necesitan pre-trim antes de fastp."
-  awk -F'\t' 'NR>1 && $8!="NA" && $8+0>50 {print "  " $1" "$2"  "$8" nt  ("$3")"}' "$MANIFEST" | head -20
-  echo
+
+  # PAIRED o reads muy largos: no parece sRNA-seq aunque la ENA lo etiquete
+  # miRNA-Seq. El filtro solo exige SINGLE para RNA-Seq, asi que esto pasa.
+  local raras; raras=$(awk -F'\t' 'NR>1 && ($10=="PAIRED" || ($8!="NA" && $8+0>200)) {
+      printf "  %s %s  %s nt  %s  %s  (%s)\n", $1, $2, $8, $10, $9, $3 }' "$MANIFEST")
+  if [[ -n "$raras" ]]; then
+    echo "SOSPECHOSAS — PAIRED o reads muy largos, revisar antes de alinear:"
+    echo "$raras"
+    echo
+  fi
   echo "Por organismo y rol:"
   awk -F'\t' 'NR>1 {c[$1" "$4]++} END {for (k in c) printf "  %-22s %4d\n", k, c[k]}' "$MANIFEST" | sort
 }
@@ -358,6 +397,60 @@ cmd_prefetch() {
   cmd_estado
 }
 
+# Busca proyectos de sRNA-seq de una especie en la ENA, con el MISMO filtro que
+# arma el manifiesto. Para cuando un duplicado resulta no ser sRNA-seq y hay que
+# reemplazarlo: es el caso de sclsc, cuyo PRJNA985401 es RNA-Seq y quedo afuera
+# entero, dejandolo sin set de validacion.
+cmd_buscar() {
+  command -v curl >/dev/null || die "falta curl"
+  local esp="${1:-}"
+  [[ -n "$esp" ]] || die "uso: $0 buscar 'Nombre cientifico'"
+
+  local tmp; tmp=$(mktemp)
+  curl -sS --fail --max-time 300 --retry 3 --retry-delay 2 -G "$ENA_BUSCAR" \
+    --data-urlencode "result=read_run" \
+    --data-urlencode "query=scientific_name=\"$esp\" AND library_source=\"$FUENTE_OK\"" \
+    --data-urlencode "fields=run_accession,study_accession,read_count,base_count,library_strategy,library_layout,library_source" \
+    --data-urlencode "format=tsv" \
+    --data-urlencode "limit=0" > "$tmp" \
+    || { rm -f "$tmp"; die "la ENA no respondio para '$esp'"; }
+
+  # Proyectos que ya estan en la spec, para no proponer uno que ya se usa.
+  local ya; ya=$(mktemp)
+  awk -F'\t' '!/^[[:space:]]*#/ && NR>1 && NF>=6 {print $6"\t"$1" "$5}' "$SPEC" > "$ya"
+
+  local acum; acum=$(mktemp)
+  local run est rc bc strat layout src n_crudo=0 n_ok=0
+  while IFS=$'\t' read -r run est rc bc strat layout src; do
+    [[ "$run" == "run_accession" || -z "$run" ]] && continue
+    n_crudo=$((n_crudo+1))
+    pasa_filtro "$src" "$strat" "$layout" "$rc" || continue
+    printf '%s\t%s\t%s\n' "$est" "$rc" "$strat" >> "$acum"
+    n_ok=$((n_ok+1))
+  done < "$tmp"
+
+  echo "== $esp"
+  echo "   $n_crudo corridas TRANSCRIPTOMIC en la ENA; $n_ok pasan el filtro del proyecto"
+  echo
+  if [[ "$n_ok" -eq 0 ]]; then
+    echo "   Ningun proyecto de esta especie tiene datos que entren al manifiesto."
+    rm -f "$tmp" "$ya" "$acum"; return 0
+  fi
+
+  printf '   %-14s %8s %9s  %-22s %s\n' PROYECTO CORRIDAS 'SPOTS(M)' ESTRATEGIAS 'EN LA SPEC'
+  awk -F'\t' -v yaf="$ya" '
+    BEGIN { while ((getline l < yaf) > 0) { split(l, a, "\t"); spec[a[1]] = a[2] } }
+    { n[$1]++; spots[$1] += $2; if (index(e[$1], $3) == 0) e[$1] = e[$1] (e[$1] ? "," : "") $3 }
+    END {
+      for (p in n)
+        printf "   %-14s %8d %9.0f  %-22s %s\n", p, n[p], spots[p]/1e6, e[p], (p in spec ? spec[p] : "-")
+    }' "$acum" | sort -k2,2nr
+  echo
+  echo "   Un candidato a duplicado tiene que decir '-' en la ultima columna:"
+  echo "   un proyecto que ya esta en la spec no valida nada de forma independiente."
+  rm -f "$tmp" "$ya" "$acum"
+}
+
 # Por que falla una corrida. Necesita red hacia NCBI: corre en Colab o en la
 # maquina local, nunca en la sesion cloud (el gateway responde 403 al CONNECT).
 # Ver la celda 5 de notebooks/10_descarga_runs.ipynb.
@@ -440,6 +533,7 @@ case "$1" in
   manifest)  shift; cmd_manifest ;;
   estado)    shift; cmd_estado ;;
   diag)      shift; cmd_diag "$@" ;;
+  buscar)    shift; cmd_buscar "${1:-}" ;;
   ledger)
     shift
     ORG_F=""; FMT=""

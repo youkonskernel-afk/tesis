@@ -174,11 +174,34 @@ probabilidad calibrada.
 - **`Magallana gigas` = `Crassostrea gigas`.** El género se renombró; Ensembl
   Metazoa y buena parte de las bases todavía usan *Crassostrea*. Buscar el
   genoma por el nombre nuevo no va a encontrarlo.
-- **`maldo` duplicado (PRJNA784097) trae reads de 151 nt.** Son librerías sin
-  recortar: hay que revisar el pre-trim antes de que `fastp` las vea, o la
-  ventana 15-50 nt las descarta enteras.
-- **Dos proyectos no son miRNA-Seq**: `sclsc` duplicado es RNA-Seq y `cloro`
-  primario es ncRNA-Seq. Igual que `phypa`, hay que declararlo en métodos.
+- **`SRR23277331` (`prupe` primario) casi seguro no es sRNA-seq.** Es la
+  **única corrida PAIRED de las 416** y trae 273 nt de promedio, contra 51 nt
+  SINGLE de sus 8 hermanas del mismo `PRJNA929031`. Está etiquetada `miRNA-Seq`
+  en la ENA, y el filtro solo exige `SINGLE` para `RNA-Seq`, así que pasó.
+  **Decisión pendiente**: lo razonable es sacarla del manifiesto, por el mismo
+  criterio que ya excluye el PAIRED de un proyecto de RNA-Seq. Si se deja, la
+  ventana 15-50 nt va a descartar casi todo y lo que sobreviva serán fragmentos
+  de mRNA — la contaminación exacta contra la que existe la trampa de
+  `--disable_length_filtering`. `fetch_runs.sh manifest` ahora la señala aparte.
+- **Reads de más de 50 nt: 144 de 416, y casi todas son normales.** 51 nt es una
+  librería de 50 ciclos sin recortar y 65-75 nt una de 75 ciclos; `fastp` las
+  resuelve recortando adaptador. La única que merece atención de verdad, además
+  de la de arriba, es `maldo` duplicado (`PRJNA784097`) con **151 nt**: hay que
+  revisar el pre-trim antes de que `fastp` las vea. El resumen del manifiesto
+  agrupa por proyecto en vez de listar corrida por corrida, porque cortaba en 20
+  de 144 y enterraba justamente lo que había que ver.
+- **`sclsc` es el único de los 9 sin duplicado.** Su `PRJNA985401` es RNA-Seq
+  PAIRED y cayó entero en el filtro: no fue un accidente, el BioProject elegido
+  era del tipo de experimento equivocado —la propia nota de `organismos.tsv` ya
+  decía "RNA-Seq, no miRNA-Seq"—. **Sin duplicado no hay validación
+  independiente para ese organismo**, que es el esquema que sostiene la
+  priorización de candidatos. Para buscarle reemplazo:
+  `./scripts/fetch_runs.sh buscar 'Sclerotinia sclerotiorum'`, que consulta la
+  ENA con **el mismo filtro** que arma el manifiesto y agrupa por BioProject,
+  marcando los que ya están en la spec. Si no aparece ninguno, hay que
+  declararlo en métodos: `sclsc` se predice pero no se valida por réplica.
+- **`cloro` primario es ncRNA-Seq**, no miRNA-Seq. Igual que `phypa`, hay que
+  declararlo en métodos.
 - **Re-estimar tiempo y espacio.** Con 3.4× más reads, las 8-12 h de
   alineamiento pasan al orden de 30-40 h, y los ~100 GB de BAMs al orden de
   340 GB. Entra sin problema en 1.6 TB, pero el cronograma cambia.
