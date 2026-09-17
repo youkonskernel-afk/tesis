@@ -4,7 +4,8 @@
 #   ./scripts/fetch_genomes.sh resolve [ORG]   # consulta NCBI, no descarga
 #   ./scripts/fetch_genomes.sh fetch   [ORG]   # descarga los 'verificado'
 #   ./scripts/fetch_genomes.sh estado          # qué falta
-#   ./scripts/fetch_genomes.sh cepas ORG       # ensamblados de la especie, por cepa
+#   ./scripts/fetch_genomes.sh cepas ORG [--taxon NOMBRE] [--grep TEXTO]
+#                                              # ensamblados de la especie, por cepa
 #
 # Flujo: 'resolve' te dice qué ensamblado es el vigente y si el candidato de
 # data/genomas.tsv coincide. Confirmás a mano, cambiás estado a 'verificado',
@@ -105,23 +106,60 @@ cmd_estado() {
 # elegir por cepa. Sin esta lista, resolve dejaba un callejon sin salida: decia
 # "buscar por cepa" y no daba con que buscarla.
 listar_cepas() {
-  local esp="$1" tmp="$2" rc=0 n
-  api "$API/genome/taxon/${esp// /%20}/dataset_report?page_size=20" "$tmp/s.json" || rc=$?
-  if [[ $rc -ne 0 ]]; then
-    echo "     (no pude listar los ensamblados: $([[ $rc -eq 1 ]] && echo red || echo "respuesta invalida"))"
-    return 0
-  fi
-  n=$(jq '.reports | length' "$tmp/s.json")
+  local esp="$1" tmp="$2" filtro="${3:-}" rc=0 n total tok pag=0 listados
+  local todos="$tmp/cepas_todos.json"
+  : > "$todos"
+  total=""
+  tok=""
+
+  # Pagina hasta agotar. Antes pedia page_size=20 de una: para cloro devolvio
+  # exactamente 20, o sea que se topo con el limite, y el listado parcial salia
+  # impreso como si fuera todo. Un truncamiento que no se anuncia es un dato
+  # falso disfrazado de dato. El tope de 20 paginas es defensivo: si la API
+  # devolviera siempre el mismo token, esto cortaria en vez de colgarse.
+  while :; do
+    pag=$((pag+1))
+    [[ $pag -gt 20 ]] && { echo "     (corte tras 20 paginas: la API no termina de paginar)"; break; }
+    api "$API/genome/taxon/${esp// /%20}/dataset_report?page_size=100${tok:+&page_token=$tok}" \
+        "$tmp/s.json" || rc=$?
+    if [[ $rc -ne 0 ]]; then
+      echo "     (no pude listar los ensamblados: $([[ $rc -eq 1 ]] && echo red || echo "respuesta invalida"))"
+      return 0
+    fi
+    [[ -z "$total" ]] && total=$(jq -r '.total_count // empty' "$tmp/s.json")
+    jq -c '.reports[]?' "$tmp/s.json" >> "$todos"
+    tok=$(jq -r '.next_page_token // empty' "$tmp/s.json")
+    [[ -z "$tok" ]] && break
+  done
+
+  n=$(wc -l < "$todos")
   if [[ "$n" -eq 0 ]]; then
     echo "     NCBI no tiene ningun ensamblado para esta especie"
     return 0
   fi
-  echo "     ensamblados disponibles ($n, los mas contiguos primero):"
-  jq -r "$JQ_FILA"'
-    [.reports[]]
-    | sort_by(-((.assembly_stats.scaffold_n50 // .assembly_stats.contig_n50 // 0)
-                | tonumber? // 0))
-    | .[] | "     " + fila' "$tmp/s.json"
+
+  # El orden es sobre el conjunto completo, no por pagina.
+  local orden="$tmp/cepas_orden.txt"
+  jq -rs "$JQ_FILA"'
+    sort_by(-((.assembly_stats.scaffold_n50 // .assembly_stats.contig_n50 // 0)
+              | tonumber? // 0))
+    | .[] | fila' "$todos" > "$orden"
+
+  local aviso=""
+  [[ -n "$total" && "$total" != "$n" ]] && aviso="  (la API dice $total en total — listado incompleto)"
+
+  if [[ -n "$filtro" ]]; then
+    listados=$(grep -ic -- "$filtro" "$orden" || true)
+    echo "     $n ensamblados; $listados coinciden con '$filtro'$aviso"
+    if [[ "$listados" -eq 0 ]]; then
+      echo "     NINGUNO coincide con '$filtro'"
+    else
+      grep -i -- "$filtro" "$orden" | sed 's/^/     /'
+    fi
+  else
+    echo "     ensamblados disponibles ($n, los mas contiguos primero)$aviso:"
+    sed 's/^/     /' "$orden"
+  fi
 }
 
 cmd_resolve() {
@@ -203,14 +241,18 @@ cmd_resolve() {
 }
 
 cmd_cepas() {
-  local org="${1:-}" tmp esp n
-  [[ -n "$org" ]] || die "uso: $0 cepas ORG"
+  local org="${1:-}" taxon="${2:-}" filtro="${3:-}" tmp esp n
+  [[ -n "$org" ]] || die "uso: $0 cepas ORG [--taxon NOMBRE] [--grep TEXTO]"
   n=$(filas "$org" | wc -l)
   [[ "$n" -gt 0 ]] || die "organismo desconocido: $org"
   esp=$(filas "$org" | awk -F"$SEP" '{print $2}')
+  # --taxon permite probar los sinonimos sin tocar la spec. Hace falta porque
+  # NCBI agrupa por el nombre que uso quien deposito: la misma trampa que
+  # Magallana / Crassostrea, que ya esta documentada en CLAUDE.md.
+  [[ -n "$taxon" ]] && esp="$taxon"
   tmp=$(mktemp -d)
-  echo "== $org — $esp"
-  listar_cepas "$esp" "$tmp"
+  echo "== $org — $esp${taxon:+  (taxon forzado)}"
+  listar_cepas "$esp" "$tmp" "$filtro"
   rm -rf "$tmp"
 }
 
@@ -263,7 +305,17 @@ cmd_fetch() {
 case "$1" in
   -h|--help) usage 0 ;;
   estado)  shift; cmd_estado  "${1:-}" ;;
-  cepas)   shift; cmd_cepas   "${1:-}" ;;
+  cepas)
+    shift
+    ORG_C=""; TAXON=""; GREP_C=""
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --taxon) TAXON="${2:-}"; shift 2 ;;
+        --grep)  GREP_C="${2:-}"; shift 2 ;;
+        *) ORG_C="$1"; shift ;;
+      esac
+    done
+    cmd_cepas "$ORG_C" "$TAXON" "$GREP_C" ;;
   resolve) shift; cmd_resolve "${1:-}" ;;
   fetch)   shift; cmd_fetch   "${1:-}" ;;
   *) echo "comando desconocido: $1" >&2; usage ;;
