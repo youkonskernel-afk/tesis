@@ -399,10 +399,18 @@ cmd_prefetch() {
   cmd_estado
 }
 
-# Adaptadores 3\' de los kits de sRNA mas usados. Se busca el prefijo, no la
-# secuencia entera: el read se corta antes de terminarla.
-#   TruSeq Small RNA, TruSeq generico, NEBNext Small RNA, Qiagen/Illumina sRNA
-ADAPTADORES="TGGAATTCTCGGG AGATCGGAAGAGC AGATCGGAAGAGCACACGT GATCGTCGGACTG"
+# Adaptadores 3\' de los kits de sRNA. Se busca el prefijo, no la secuencia
+# entera: el read se corta antes de terminarla. La lista incluye los Illumina
+# VIEJOS a proposito — hay librerias de 2011 en el dataset, y con solo los
+# modernos un 0% puede significar "no esta en la lista" en vez de "no hay".
+#   TruSeq Small RNA / generico / NEBNext / Qiagen  +  Illumina v1.5 y GEX
+ADAPTADORES="TGGAATTCTCGGG AGATCGGAAGAGC GATCGTCGGACTG ATCTCGTATGCCG TCGTATGCCGTCTTCTGCTTG CGCCTTGGCCGT"
+
+# Ventana de fastp, que es la que decide que entra al pipeline. El veredicto la
+# usa en vez de un 18-30 propio: el proyecto eligio 15-50 a proposito para no
+# truncar tRFs (30-40 nt) ni dejar los piRNAs (24-32) sin margen.
+VENT_MIN="${VENT_MIN:-15}"
+VENT_MAX="${VENT_MAX:-50}"
 
 # Una corrida es sRNA-seq si el adaptador 3\' aparece temprano: el inserto es
 # corto y el secuenciador siguio leyendo. Lo que NO se puede saber mirando
@@ -430,48 +438,67 @@ cmd_perfil() {
   fastq-dump --split-spot -X "$n" -Z "${src:-$run}" 2>/dev/null > "$fq" || {
     rm -f "$fq"; die "fastq-dump no pudo leer $run"; }
 
-  awk -v ads="$ADAPTADORES" '
+  awk -v ads="$ADAPTADORES" -v vmin="$VENT_MIN" -v vmax="$VENT_MAX" '
     BEGIN { na = split(ads, A, " ") }
     NR % 4 == 2 {
       total++
+      lr[length($0)]++           # longitud del read: sin esto, un 0% no se
+      suma_lr += length($0)      # puede interpretar (ver abajo)
       mejor = 0
       for (i = 1; i <= na; i++) {
         p = index($0, A[i])
         if (p > 0 && (mejor == 0 || p < mejor)) mejor = p
       }
-      if (mejor > 0) { con++; ins = mejor - 1; h[ins]++; if (ins >= 18 && ins <= 30) corto++ }
-      else { largo[length($0)]++ }
+      if (mejor > 0) { con++; ins = mejor - 1; h[ins]++; if (ins >= vmin && ins <= vmax) dentro++ }
     }
     END {
       if (total == 0) { print "   sin reads"; exit }
-      printf "   reads: %d   con adaptador: %d (%.0f%%)\n", total, con, 100*con/total
+
+      # Mediana de la longitud del read.
+      n = 0; for (k in lr) { largos[n++] = k + 0 }
+      for (a = 0; a < n; a++) for (b = a+1; b < n; b++)
+        if (largos[b] < largos[a]) { t = largos[a]; largos[a] = largos[b]; largos[b] = t }
+      acum = 0; med_lr = largos[0]
+      for (a = 0; a < n; a++) { acum += lr[largos[a]]; if (acum >= total/2) { med_lr = largos[a]; break } }
+
+      printf "   reads: %d   largo mediano: %d nt   con adaptador: %d (%.0f%%)\n",
+             total, med_lr, con, 100*con/total
       if (con > 0) {
         printf "   inserto (largo antes del adaptador), los mas frecuentes:\n"
         cn = 0
         for (k in h) { ord[cn++] = k }
-        # top 8 por frecuencia
         for (a = 0; a < cn; a++) for (b = a+1; b < cn; b++)
           if (h[ord[b]] + 0 > h[ord[a]] + 0) { t = ord[a]; ord[a] = ord[b]; ord[b] = t }
         for (a = 0; a < cn && a < 8; a++)
           printf "     %3d nt  %6d  %5.1f%%\n", ord[a], h[ord[a]], 100*h[ord[a]]/total
-        printf "   inserto entre 18 y 30 nt: %.0f%% de los reads\n", 100*corto/total
+        printf "   inserto dentro de la ventana de fastp (%d-%d nt): %.0f%%\n",
+               vmin, vmax, 100*dentro/total
       }
       print ""
-      if (con >= 0.5*total && corto >= 0.3*total)
-        print "   >>> PARECE sRNA-seq: el adaptador aparece temprano en la mayoria."
-      else if (con < 0.2*total)
-        print "   >>> NO PARECE sRNA-seq: casi ningun read tiene adaptador 3\x27, o sea"
-      else
-        print "   >>> DUDOSA: hay adaptador pero el inserto no es de sRNA. Mirar arriba."
-      if (con < 0.2*total)
-        print "       que el inserto es mas largo que el read. Es lo que se espera de mRNA."
 
-      # Resumen de una linea, para la tabla de --proyectos.
       modal = 0; mx = 0
       for (k in h) if (h[k] + 0 > mx) { mx = h[k] + 0; modal = k }
-      ver = (con >= 0.5*total && corto >= 0.3*total) ? "PARECE sRNA-seq" \
-          : (con < 0.2*total) ? "NO PARECE" : "DUDOSA"
-      printf "RESUMEN\t%.0f\t%s\t%s\n", 100*con/total, (con>0 ? modal" nt" : "-"), ver > "/dev/stderr"
+
+      if (con >= 0.5*total && dentro >= 0.3*total) {
+        ver = "PARECE sRNA-seq"
+        print "   >>> PARECE sRNA-seq: el adaptador aparece temprano y el inserto cae"
+        printf "       dentro de la ventana %d-%d nt.\n", vmin, vmax
+      } else if (con < 0.2*total && med_lr <= vmax) {
+        # Sin adaptador PERO reads cortos: el read ES el inserto. Confundir esto
+        # con mRNA casi hace tirar las 34 corridas de cloro PRJEB43636.
+        ver = "YA RECORTADA"
+        printf "   >>> YA RECORTADA: no hay adaptador porque ya se lo sacaron — los reads\n"
+        printf "       miden %d nt, que es el inserto. Es sRNA-seq y no necesita recorte.\n", med_lr
+      } else if (con < 0.2*total) {
+        ver = "NO PARECE"
+        printf "   >>> NO PARECE sRNA-seq: sin adaptador y con reads de %d nt, o sea que el\n", med_lr
+        print  "       inserto es mas largo que el read. Es lo que se espera de mRNA."
+      } else {
+        ver = "DUDOSA"
+        printf "   >>> DUDOSA: hay adaptador pero el inserto cae fuera de %d-%d nt.\n", vmin, vmax
+      }
+      printf "RESUMEN\t%.0f\t%s\t%d nt\t%s\n", 100*con/total,
+             (con>0 ? modal" nt" : "-"), med_lr, ver > "/dev/stderr"
     }' "$fq" 2> "$fq.res"
   RESUMEN_PERFIL=$(grep '^RESUMEN' "$fq.res" 2>/dev/null | cut -f2- || true)
   cat "$fq.res" | grep -v '^RESUMEN' >&2 || true
@@ -491,26 +518,27 @@ cmd_perfil_proyectos() {
   while IFS=$'\t' read -r org proy rol strat run; do
     cmd_perfil "$run" "$n" || true
     printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$org" "$proy" "$rol" "$strat" "$run" \
-      "${RESUMEN_PERFIL:-?\t?\tSIN DATO}" >> "$tabla"
+      "${RESUMEN_PERFIL:-?\t?\t?\tSIN DATO}" >> "$tabla"
     echo
   done < <(awk -F'\t' 'NR>1 && !(($1 FS $3) in v) {v[$1 FS $3]=1;
              print $1"\t"$3"\t"$4"\t"$9"\t"$2}' "$MANIFEST" | sort)
 
   echo "==================== RESUMEN"
-  printf '%-7s %-14s %-10s %-11s %6s %8s  %s\n' ORG PROYECTO ROL ETIQUETA ADAPT INSERTO VEREDICTO
-  awk -F'\t' '{printf "%-7s %-14s %-10s %-11s %5s%% %8s  %s\n", $1,$2,$3,$4,$6,$7,$8}' "$tabla"
+  printf '%-7s %-14s %-10s %-11s %6s %8s %7s  %s\n' \
+    ORG PROYECTO ROL ETIQUETA ADAPT INSERTO READ VEREDICTO
+  awk -F'\t' '{printf "%-7s %-14s %-10s %-11s %5s%% %8s %7s  %s\n", $1,$2,$3,$4,$6,$7,$8,$9}' "$tabla"
   echo
-  local malos; malos=$(awk -F'\t' '$8!="PARECE sRNA-seq"' "$tabla" | wc -l)
+  local malos; malos=$(awk -F'\t' '$9!="PARECE sRNA-seq" && $9!="YA RECORTADA"' "$tabla" | wc -l)
   if [[ "$malos" -gt 0 ]]; then
-    echo "$malos proyecto(s) NO dieron 'PARECE sRNA-seq'. Revisar antes de alinear:"
+    echo "$malos proyecto(s) sin veredicto favorable. Revisar antes de alinear:"
     awk -F'\t' -v man="$MANIFEST" '
       BEGIN { while ((getline l < man) > 0) { split(l, f, "\t"); n[f[1] "\t" f[3]]++ } }
-      $8 != "PARECE sRNA-seq" {
+      $9 != "PARECE sRNA-seq" && $9 != "YA RECORTADA" {
         printf "  %-7s %-14s %-10s %3d corridas etiquetadas %s -> %s\n",
-               $1, $2, $3, n[$1 "\t" $2], $4, $8
+               $1, $2, $3, n[$1 "\t" $2], $4, $9
       }' "$tabla"
   else
-    echo "Los $(wc -l < "$tabla") proyectos dan PARECE sRNA-seq."
+    echo "Los $(wc -l < "$tabla") proyectos son sRNA-seq (PARECE o YA RECORTADA)."
   fi
   rm -f "$tabla"
   [[ "$malos" -eq 0 ]]
