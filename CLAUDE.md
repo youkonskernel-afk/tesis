@@ -54,14 +54,19 @@ el manifiesto resuelto: **416 corridas**, generado con
 `./scripts/fetch_runs.sh manifest` contra la ENA desde Colab
 (`notebooks/10_descarga_runs.ipynb`).
 
-**Estado de la descarga: 414 de 416 en `80_sra/`**, y las 2 que faltan
-—`SRR317135` y `SRR1066790`, del primario de `maggi`— entran re-ejecutando la
-celda 2. Fallaban porque **solo existen en formato SRA Lite** y el script
-buscaba únicamente `.sra`: `prefetch` las bajaba bien, salía con código 0, y el
-`.sralite` se quedaba en el staging sin que nadie lo mirara. Diagnosticado con
-`./scripts/fetch_runs.sh diag` y arreglado; ver la trampa de `prefetch` más
-abajo, que es donde está lo que hay que declarar en métodos.
+**La descarga está completa: 416 de 416 en `80_sra/`**, con los 416 md5 en
+`data/sra_md5.tsv` y reconciliado contra el manifiesto en las dos direcciones.
+Las dos últimas —`SRR317135` y `SRR1066790`, del primario de `maggi`— costaron
+una ronda entera porque **solo existen en formato SRA Lite** y el script buscaba
+únicamente `.sra`: `prefetch` las bajaba bien, salía con código 0, y el
+`.sralite` se quedaba en el staging sin que nadie lo mirara. Ver la trampa de
+`prefetch` más abajo, que es donde está lo que hay que declarar en métodos.
 `data/srr_manifest_r1.tsv` es el de la ronda anterior, como referencia.
+
+**El upstream está cerrado**: 416 `.sra` y 9 genomas en Drive, los dos con
+checksum versionado. Se comprueba con `./scripts/fetch_runs.sh estado` y
+`./scripts/fetch_genomes.sh verificar`, que recalcula los sha256 contra el
+ledger en vez de confiar en el tamaño. Lo que sigue es el alineamiento.
 
 `scripts/fetch_runs.sh` **reemplaza al `gen_manifest.sh` de R1**, que asumía un
 proyecto por organismo. Filtra a datos de RNA con `library_source =
