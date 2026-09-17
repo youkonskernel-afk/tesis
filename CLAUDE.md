@@ -54,16 +54,13 @@ el manifiesto resuelto: **416 corridas**, generado con
 `./scripts/fetch_runs.sh manifest` contra la ENA desde Colab
 (`notebooks/10_descarga_runs.ipynb`).
 
-**Estado de la descarga: 414 de 416 en `80_sra/`.** Faltan `SRR1066790` y
-`SRR317135`, las dos del primario de `maggi`. **Re-ejecutar la celda no las
-levanta**: no es red ni corte de sesión, es que `prefetch` sale con código 0 y
-no deja ningún `.sra`, dos veces seguidas y solo en esas dos corridas (de
-`PRJNA154615` bajaron 20 de 21 y de `PRJNA232734` 2 de 3). El diagnóstico es
-`./scripts/fetch_runs.sh diag SRR317135 SRR1066790`, celda 5 de
-`notebooks/10_descarga_runs.ipynb` porque necesita red, y sirve para distinguir
-el caso recuperable —la corrida solo existe en formato original— del que no lo
-es —el resolver no devuelve nada—, que se excluye del manifiesto y se declara
-en métodos. Excluirlas deja `maggi` en 55 de 57, que no cambia el diseño.
+**Estado de la descarga: 414 de 416 en `80_sra/`**, y las 2 que faltan
+—`SRR317135` y `SRR1066790`, del primario de `maggi`— entran re-ejecutando la
+celda 2. Fallaban porque **solo existen en formato SRA Lite** y el script
+buscaba únicamente `.sra`: `prefetch` las bajaba bien, salía con código 0, y el
+`.sralite` se quedaba en el staging sin que nadie lo mirara. Diagnosticado con
+`./scripts/fetch_runs.sh diag` y arreglado; ver la trampa de `prefetch` más
+abajo, que es donde está lo que hay que declarar en métodos.
 `data/srr_manifest_r1.tsv` es el de la ronda anterior, como referencia.
 
 `scripts/fetch_runs.sh` **reemplaza al `gen_manifest.sh` de R1**, que asumía un
@@ -199,13 +196,26 @@ probabilidad calibrada.
 - **YASMA v1.1.1 escribe en `annotations/<nombre>/loci.gff3`**, no en
   `annotation/`. Un chequeo contra la ruta vieja hacía abortar el pipeline tras
   el primer organismo.
-- **`prefetch` puede salir con código 0 sin bajar nada.** Pasa con corridas
-  viejas que no tienen *SRA Normalized Format*, y con las que el resolver no
-  encuentra: sra-tools no siempre marca eso como error. Por eso
+- **`prefetch` puede salir con código 0 sin dejar un `.sra`.** Le pasa a las
+  corridas que no tienen *SRA Normalized Format*: baja un `.sralite` y sale
+  contento. También sale 0 cuando el resolver no encuentra nada. Por eso
   `fetch_runs.sh` no confía en el código de salida, busca el archivo, y cuando
   no está imprime el log de `prefetch` y lista el staging en vez de fallar
   mudo. No volver a mandar la salida de `prefetch` a `/dev/null`: un fallo que
   no se puede leer cuesta una corrida entera para diagnosticarse.
+- **Dos corridas son SRA Lite y eso va en métodos.** `SRR317135` y
+  `SRR1066790` (primario de `maggi`) solo existen en ese formato — `prefetch`
+  dice explícitamente que prefiere el normalizado y que cae a lite *due to
+  current file availability*, o sea que no hay versión full que pedir. Se
+  aceptan a propósito, pero **SRA Lite guarda una sola calidad sintética para
+  todas las bases**: en esas 2 corridas el filtro de calidad de `fastp` no
+  descarta nada y en las otras 414 sí. La columna `formato` de
+  `data/sra_md5.tsv` dice cuáles son; el archivo en Drive no, porque se guarda
+  como `<RUN>.sra` igual que los demás. **Pendiente de confirmar contra
+  `config.sh`**: si `bowtie` corre en modo `-v` (conteo de mismatches, el
+  estilo ShortStack3) la calidad se ignora y el asunto se agota en `fastp`; si
+  corriera `-n`/`-e` (suma de calidades del seed), las calidades sintéticas
+  cambiarían el alineamiento de esas 2 corridas.
 - **`fasterq-dump` sin `-t`** crea temporales en el CWD; llegaron a 109 GB.
 - **Al matar el pipeline**: matar también `bowtie-align-s`, `fastp`,
   `fasterq-dump` y `samtools`, o quedan huérfanos escribiendo el mismo BAM.

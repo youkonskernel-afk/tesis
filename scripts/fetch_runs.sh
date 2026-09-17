@@ -193,16 +193,20 @@ cmd_estado() {
 
 libre_gb() { df -BG --output=avail "$1" 2>/dev/null | tail -1 | tr -dc '0-9'; }
 
+# La columna formato distingue sra de sralite. Importa porque el .sralite se
+# mueve a DEST como <RUN>.sra igual que los demas —fasterq-dump lee los dos— y
+# ahi la extension, que era lo unico que lo decia, desaparece. Recuperarlo
+# despues costaria un vdb-dump --info por archivo sobre el mount de Drive.
 registrar_md5() {
-  local org="$1" run="$2" sum="$3" tab
+  local org="$1" run="$2" sum="$3" fmt="${4:-sra}" tab
   tab=$(printf '\t')
   mkdir -p "$(dirname "$LEDGER")"
   touch "$LEDGER"
   {
     grep -v "^org${tab}" "$LEDGER" 2>/dev/null | grep -v "^${org}${tab}${run}${tab}" || true
-    printf '%s\t%s\t%s\t%s\n' "$org" "$run" "$sum" "$(date -u +%Y-%m-%d)"
+    printf '%s\t%s\t%s\t%s\t%s\n' "$org" "$run" "$sum" "$fmt" "$(date -u +%Y-%m-%d)"
   } | sort > "$LEDGER.tmp"
-  { printf 'org\trun\tmd5\tfecha_utc\n'; cat "$LEDGER.tmp"; } > "$LEDGER"
+  { printf 'org\trun\tmd5\tformato\tfecha_utc\n'; cat "$LEDGER.tmp"; } > "$LEDGER"
   rm -f "$LEDGER.tmp"
 }
 
@@ -306,12 +310,14 @@ cmd_prefetch() {
     fi
     rm -f "$log"
 
+    local fmt=sra
     case "$src" in
       *.sralite)
+        fmt=sralite
         echo "   AVISO: $run vino en formato lite (.sralite). Las calidades son" >&2
         echo "          sintéticas, asi que el filtro de calidad de fastp ve una" >&2
-        echo "          constante en esta corrida y no en las demás. Declararlo" >&2
-        echo "          en métodos." >&2 ;;
+        echo "          constante en esta corrida y no en las demás. Queda" >&2
+        echo "          anotado en el ledger; declararlo en métodos." >&2 ;;
     esac
 
     # Un .sra truncado NO falla ruidosamente: alinea de menos. Validar antes de
@@ -332,7 +338,7 @@ cmd_prefetch() {
     fi
     bytes=$((bytes + sz))
 
-    registrar_md5 "$org" "$run" "$(md5sum "$final" | cut -d' ' -f1)"
+    registrar_md5 "$org" "$run" "$(md5sum "$final" | cut -d' ' -f1)" "$fmt"
 
     # Progreso con ETA: sirve para decidir si conviene subir --horas o cortar.
     trans=$(( $(date +%s) - t0 ))

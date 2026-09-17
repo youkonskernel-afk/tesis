@@ -35,6 +35,11 @@ de la cuenta. Lo que se excluye de abajo se excluye por criterio de reproducibil
 | `70_genomas/` | `1Ik2edbmuH6OLqjQDIOH6zLuUgYe_e4yy` | `<org>/<accession>.fna.gz` + `.sha256` — el FASTA exacto usado |
 | `80_sra/` | `1RQYmPeaixM_-IXTzPeBCMg61xBkZlzL_` | `<org>/<RUN>.sra` — crudo validado, ~190 GB |
 
+Dos corridas de `maggi` (`SRR317135`, `SRR1066790`) son **SRA Lite**: se
+guardan como `<RUN>.sra` igual que las demás, así que el archivo no lo dice.
+La columna `formato` de `data/sra_md5.tsv` es la que lo dice. Importa porque
+las calidades de SRA Lite son sintéticas — ver `CLAUDE.md`.
+
 Las subcarpetas por organismo (`rhirr`, `sclsc`, `cloro`, `phypa`, `prupe`,
 `maldo`, `gadmo`, `galga`, `maggi`) no se crean a mano: `rclone copy` las crea
 al subir.
