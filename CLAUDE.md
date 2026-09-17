@@ -134,20 +134,24 @@ probabilidad calibrada.
 - **Se caen `arath`, `danre` y `nemve`.** Sus `.sra`, BAMs e índices son ahora
   peso muerto. No borrar sin confirmar: el caché es re-descargable, pero los
   BAMs de `danre` costaron horas de alineamiento.
-- **8 de 9 ensamblados fijados y bajados; falta `rhirr`.** Verificados contra
-  NCBI con `./scripts/fetch_genomes.sh resolve` desde Colab, bajados a
-  `70_genomas/` y con `sha256` en `data/genomas.sha256`. `verificar` recalcula
-  los checksums contra ese ledger, así que la integridad está comprobada, no
+- **Los 9 ensamblados fijados y verificados contra NCBI.** Bajados a
+  `70_genomas/` con `sha256` en `data/genomas.sha256`; `verificar` recalcula los
+  checksums contra ese ledger, así que la integridad está comprobada y no
   inferida del tamaño. El porqué de cada elección está en la columna `nota` de
   `data/genomas.tsv`.
 
-  **Los 3 heredados de R1 ya tienen accession**, que es el hueco que más
-  importaba: hasta ahora no había registro de contra qué FASTA se alineó.
-  Se resolvieron **sin `config.sh`**, desde el nombre del assembly, y los dos de
-  Ensembl eran el mismo malentendido — NCBI está en una versión posterior del
-  mismo linaje: `ASM14694v1` → `ASM14694v2` (`GCF_000146945.2`, cepa 1980) y
-  `Phypa_V3` → `Phypa V5` (`GCF_000002425.5`). Mismo accession base en los dos,
-  así que no hay cambio de material.
+  **Los 3 heredados de R1 ya tienen accession**, que era el hueco más serio:
+  hasta ahora no había registro de contra qué FASTA se había alineado. Se
+  resolvieron **sin `config.sh`**, desde el nombre del assembly. Los dos de
+  Ensembl eran el mismo malentendido —NCBI está en una versión posterior del
+  mismo linaje: `ASM14694v1` → `ASM14694v2` y `Phypa_V3` → `Phypa V5`, mismo
+  accession base— y `rhirr` tenía el suyo **retirado** (`ASM43914v3`), pero su
+  reemplazo `GCF_026210795.1` es la referencia vigente, es DAOM 197198 igual que
+  el viejo, y es 17× mejor en N50.
+
+  **Tres ensamblados estaban `suppressed`** y dos de ellos son los más citados
+  de su especie. Ver la trampa correspondiente abajo: es la justificación
+  concreta de por qué existe el paso de verificación.
 
   **`cloro` usa la cepa de los datos, no la referencia de la especie.**
   `GCA_902827195.2` (`C_rosea_IK726`), porque `PRJEB43636` son mutantes
@@ -157,12 +161,6 @@ probabilidad calibrada.
   ~58 Mb que declara la publicación; la anomalía quedó sin explicar, así que
   **hay que chequear después del alineamiento si aparecen loci duplicados con el
   mismo RNA mayoritario**, que es cómo se vería contenido duplicado.
-
-  **`rhirr` está pendiente por la cepa.** El de R1 (`ASM43914v3`) está
-  `suppressed`, y el reemplazo `GCF_026210795.1` es la referencia vigente y
-  mucho mejor (Chromosome contra Scaffold, N50 5.1 contra 0.3 Mb). Falta
-  confirmar que sea DAOM 197198, el aislado modelo; si no lo fuera, la
-  alternativa es `GCA_020716725.1`, que lo declara con stats equivalentes.
 
   El paso manual sigue siendo a propósito: un ensamblado equivocado no falla
   ruidosamente, alinea peor y contamina la anotación. Ya no hace falta que
@@ -210,10 +208,12 @@ probabilidad calibrada.
   nada); y **no** usar un umbral de identidad plano, porque el 5' define la
   semilla y es preciso mientras el 3' varía de rutina por isomiRs. El criterio
   va anclado en 5' con holgura en 3'.
-- **Un ensamblado se retira y nadie avisa.** `maldo` y `maggi` tenían de
-  candidato ensamblados que NCBI ya había marcado `suppressed`: GDDH13 v1.1
-  (`GCF_002114115.1`) y cgigas_uk_roslin_v1 (`GCF_902806645.1`), los dos muy
-  citados en la literatura. Descargarlos habría funcionado sin error visible.
+- **Un ensamblado se retira y nadie avisa.** Tres de los nueve tenían
+  ensamblados que NCBI ya había marcado `suppressed`: GDDH13 v1.1
+  (`GCF_002114115.1`, `maldo`), cgigas_uk_roslin_v1 (`GCF_902806645.1`, `maggi`)
+  y ASM43914v3 (`GCF_000439145.1`, `rhirr`). Los dos primeros son de los más
+  citados de su especie; el tercero **estaba en uso desde R1**. Descargarlos
+  habría funcionado sin error visible.
   Es la justificación concreta de por qué `fetch_genomes.sh` no baja nada en
   estado `candidato` y por qué `resolve` ahora grita `RETIRADO por NCBI`. Los
   reemplazos son `GCF_042453785.1` (GDT2T_hap1, Golden Delicious T2T, el mismo
