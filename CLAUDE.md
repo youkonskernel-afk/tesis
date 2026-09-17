@@ -134,28 +134,36 @@ probabilidad calibrada.
 - **Se caen `arath`, `danre` y `nemve`.** Sus `.sra`, BAMs e índices son ahora
   peso muerto. No borrar sin confirmar: el caché es re-descargable, pero los
   BAMs de `danre` costaron horas de alineamiento.
-- **5 de 6 ensamblados fijados; falta `cloro`.** Verificados contra NCBI el
-  2026-09-17 con `./scripts/fetch_genomes.sh resolve` desde Colab
-  (`notebooks/descarga_genomas.ipynb`, que baja directo a `70_genomas/` sin
-  pasar por el disco local). `prupe`, `gadmo` y `galga` confirmaron su candidato
-  sin cambios. `maldo` y `maggi` **cambiaron de ensamblado** — ver la trampa de
-  abajo. Los detalles y el porqué de cada uno están en la columna `nota` de
+- **8 de 9 ensamblados fijados y bajados; falta `rhirr`.** Verificados contra
+  NCBI con `./scripts/fetch_genomes.sh resolve` desde Colab, bajados a
+  `70_genomas/` y con `sha256` en `data/genomas.sha256`. `verificar` recalcula
+  los checksums contra ese ledger, así que la integridad está comprobada, no
+  inferida del tamaño. El porqué de cada elección está en la columna `nota` de
   `data/genomas.tsv`.
 
-  **`cloro` es lo único que queda.** El ensamblado de IK726 —la cepa de los
-  datos, porque `PRJEB43636` son mutantes Dicer-like del grupo de Karlsson (SLU)
-  sobre ella— **existe**: `GCA_902827195.2`, `C_rosea_IK726`. Se prefiere a la
-  referencia de la especie (`GCA_054828895.1`, cepa NF-06) porque la coincidencia
-  de cepa no se recupera de ninguna otra forma: alinear IK726 contra otra cepa
-  pierde lo que caiga en regiones divergentes, que en hongos incluye
-  presencia/ausencia de genes enteros. `resolve` va a decir `DIFIERE` y está bien
-  que lo diga; la elección es deliberada y el motivo está en la nota del TSV.
+  **Los 3 heredados de R1 ya tienen accession**, que es el hueco que más
+  importaba: hasta ahora no había registro de contra qué FASTA se alineó.
+  Se resolvieron **sin `config.sh`**, desde el nombre del assembly, y los dos de
+  Ensembl eran el mismo malentendido — NCBI está en una versión posterior del
+  mismo linaje: `ASM14694v1` → `ASM14694v2` (`GCF_000146945.2`, cepa 1980) y
+  `Phypa_V3` → `Phypa V5` (`GCF_000002425.5`). Mismo accession base en los dos,
+  así que no hay cambio de material.
 
-  Falta un chequeo antes de verificarlo: **son 70.7 Mb contra una mediana de
-  55.2 Mb** en las otras 20 cepas de la especie, y la publicación declara ~58 Mb.
-  Puede ser contenido duplicado o contaminación, y eso infla el multimapeo justo
-  bajo `bowtie -m 50`. Hay que ver `assembly_status` con `resolve cloro` y si
-  existe una versión `.1` con otro tamaño.
+  **`cloro` usa la cepa de los datos, no la referencia de la especie.**
+  `GCA_902827195.2` (`C_rosea_IK726`), porque `PRJEB43636` son mutantes
+  Dicer-like del grupo de Karlsson (SLU) sobre IK726, y la coincidencia de cepa
+  no se recupera de ninguna otra forma. `resolve` dice `DIFIERE` y está bien que
+  lo diga. Son 70.7 Mb contra una mediana de 55.2 Mb en las otras 20 cepas y
+  ~58 Mb que declara la publicación; la anomalía quedó sin explicar, así que
+  **hay que chequear después del alineamiento si aparecen loci duplicados con el
+  mismo RNA mayoritario**, que es cómo se vería contenido duplicado.
+
+  **`rhirr` está pendiente por la cepa.** El de R1 (`ASM43914v3`) está
+  `suppressed`, y el reemplazo `GCF_026210795.1` es la referencia vigente y
+  mucho mejor (Chromosome contra Scaffold, N50 5.1 contra 0.3 Mb). Falta
+  confirmar que sea DAOM 197198, el aislado modelo; si no lo fuera, la
+  alternativa es `GCA_020716725.1`, que lo declara con stats equivalentes.
+
   El paso manual sigue siendo a propósito: un ensamblado equivocado no falla
   ruidosamente, alinea peor y contamina la anotación. Ya no hace falta que
   coincida con el ensamblado de MirGeneDB — con el etiquetado por secuencia se
@@ -213,6 +221,15 @@ probabilidad calibrada.
   Tree of Life). El de ostra importa más porque `maggi` es de entrenamiento: el
   de Roslin retuvo haplotigos —la misma región dos veces— y eso infla el
   multimapeo justo bajo `bowtie -m 50`.
+- **Un campo que no se lee se ve igual que un campo vacío.** `resolve` mostraba
+  `GCF_026210795.1` (`rhirr`) sin cepa, y parecía un ensamblado sin aislado
+  declarado. Era que el formateador leía la cepa **solo** de
+  `.organism.infraspecific_names.strain`, y NCBI también la publica en
+  `assembly_info.biosample.attributes[]` como `strain` o `isolate`. Ahora cae en
+  cascada por los tres y, cuando de verdad no hay ninguno, imprime `cepa=?` en
+  vez de omitir la columna — porque una columna ausente se lee como un hecho.
+  Mismo patrón que la paginación truncada de abajo: el límite de la herramienta
+  disfrazado de dato.
 - **Un listado paginado que se trunca miente en silencio.** `listar_cepas` pedía
   `page_size=20` y para `cloro` devolvió exactamente 20 — el límite— e imprimía
   el parcial como si fuera todo. *Clonostachys rosea* tiene **78** ensamblados, y

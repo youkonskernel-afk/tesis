@@ -84,13 +84,25 @@ api() {
 JQ_FILA='
   def mb: if . == null or . == "" then "?"
           else ((tonumber? // 0) / 1000000 * 10 | round / 10 | tostring) + " Mb" end;
+  # NCBI publica la cepa en dos lugares distintos y no siempre en los dos: el
+  # record del organismo, o los atributos del biosample. Leer solo el primero
+  # hacia que un ensamblado con cepa declarada apareciera como si no la tuviera
+  # —le paso a GCF_026210795.1 de rhirr— y una columna ausente se lee como "no
+  # hay cepa". Cuando de verdad no hay ninguna, lo dice con '?'.
+  def bioattr($n):
+    [.assembly_info.biosample.attributes[]? | select(.name == $n) | .value]
+    | map(select(. != null and . != "")) | first;
+  def cepa:
+    if (.organism.infraspecific_names.strain // "") != ""
+    then .organism.infraspecific_names.strain
+    else (bioattr("strain") // bioattr("isolate") // "?")
+    end;
   def fila:
     "\(.accession)  \(.assembly_info.assembly_name // "?")"
     + "  nivel=\(.assembly_info.assembly_level // "?")"
     + "  N50=\((.assembly_stats.scaffold_n50 // .assembly_stats.contig_n50) | mb)"
     + "  total=\(.assembly_stats.total_sequence_length | mb)"
-    + (if (.organism.infraspecific_names.strain // "") != ""
-       then "  cepa=\(.organism.infraspecific_names.strain)" else "" end);
+    + "  cepa=\(cepa)";
 '
 
 cmd_estado() {
