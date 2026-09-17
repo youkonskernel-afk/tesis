@@ -6,6 +6,7 @@
 #   ./scripts/fetch_runs.sh estado               # que hay bajado y que falta
 #   ./scripts/fetch_runs.sh prefetch [ORG] [-n N]  # descarga los .sra
 #   ./scripts/fetch_runs.sh diag RUN [RUN...]    # por que falla una corrida
+#   ./scripts/fetch_runs.sh ledger [ORG]         # rehace md5 de lo que ya esta bajado
 #
 # El destino de los .sra sale de SRA_DEST (por defecto SRA_CACHE). En Colab se
 # apunta al mount de Drive y SRA_STAGING al disco efimero de la VM: prefetch
@@ -399,12 +400,61 @@ cmd_diag() {
   done
 }
 
+# Repara el ledger: calcula el md5 de las corridas que estan en DEST pero no
+# figuran en data/sra_md5.tsv. Pasa cuando la sesion de Colab que las bajo se
+# muere antes de que el ledger llegue a git: el dato esta en Drive y el
+# checksum se perdio. Solo toca lo que falta, asi que correrlo de mas no hace
+# nada.
+#
+# El formato (sra|sralite) no se puede deducir del archivo: al moverlo a DEST se
+# guarda como <RUN>.sra en los dos casos. Por eso --formato, que aplica a las
+# que falten. Default sra.
+cmd_ledger() {
+  [[ -f "$MANIFEST" ]] || die "no existe $MANIFEST — corré: $0 manifest"
+  local filtro="${1:-}" fmt="${2:-sra}"
+  local org run src tab n=0 ya=0 sin=0
+  tab=$(printf '\t')
+  mkdir -p "$(dirname "$LEDGER")"; touch "$LEDGER"
+  while IFS=$'\t' read -r org run; do
+    if grep -q "^${org}${tab}${run}${tab}" "$LEDGER" 2>/dev/null; then
+      ya=$((ya+1)); continue
+    fi
+    if ! src=$(ruta_sra "$DEST" "$org" "$run"); then
+      echo "   FALTA bajar: $org $run" >&2; sin=$((sin+1)); continue
+    fi
+    printf '== %s %s  (formato=%s, %s MB)\n' "$org" "$run" "$fmt" \
+      "$(awk -v b="$(stat -c%s "$src")" 'BEGIN{printf "%.0f", b/1e6}')"
+    registrar_md5 "$org" "$run" "$(md5sum "$src" | cut -d' ' -f1)" "$fmt"
+    n=$((n+1))
+  done < <(awk -F'\t' -v o="$filtro" 'NR>1 && (o=="" || $1==o) {print $1"\t"$2}' "$MANIFEST")
+
+  echo
+  echo "agregadas=$n  ya estaban=$ya  sin bajar=$sin"
+  [[ $n -gt 0 ]] && echo "Commitear el ledger: git add $LEDGER"
+  return 0
+}
+
 [[ $# -ge 1 ]] || usage
 case "$1" in
   -h|--help) usage 0 ;;
   manifest)  shift; cmd_manifest ;;
   estado)    shift; cmd_estado ;;
   diag)      shift; cmd_diag "$@" ;;
+  ledger)
+    shift
+    ORG_F=""; FMT=""
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --formato) FMT="${2:-}"; shift 2 ;;
+        *) ORG_F="$1"; shift ;;
+      esac
+    done
+    [[ -z "$ORG_F" ]] || org_valido_manifest "$ORG_F" || die "organismo desconocido: $ORG_F"
+    case "${FMT:-sra}" in
+      sra|sralite) ;;
+      *) die "formato desconocido: $FMT (sra|sralite)" ;;
+    esac
+    cmd_ledger "$ORG_F" "${FMT:-sra}" ;;
   prefetch)
     shift
     ORG_F=""; LIMITE=""; HORAS=""; ORDEN=""
