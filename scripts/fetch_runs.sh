@@ -8,7 +8,7 @@
 #   ./scripts/fetch_runs.sh diag RUN [RUN...]    # por que falla una corrida
 #   ./scripts/fetch_runs.sh ledger [ORG]         # rehace md5 de lo que ya esta bajado
 #   ./scripts/fetch_runs.sh buscar 'Especie'     # proyectos de sRNA-seq de una especie
-#   ./scripts/fetch_runs.sh perfil RUN [-n N]    # es sRNA-seq de verdad esta corrida?
+#   ./scripts/fetch_runs.sh perfil RUN|PRJ [-n N]  # es sRNA-seq de verdad?
 #   ./scripts/fetch_runs.sh perfil --proyectos   # una corrida de cada proyecto
 #
 # El destino de los .sra sale de SRA_DEST (por defecto SRA_CACHE). En Colab se
@@ -421,10 +421,36 @@ VENT_MAX="${VENT_MAX:-50}"
 # Donde cmd_perfil deja el resumen de una linea, para que --proyectos lo junte.
 RESUMEN_PERFIL=""
 
+# De un BioProject a una corrida representativa, aplicando el mismo filtro que
+# el manifiesto. Hace falta para evaluar un proyecto CANDIDATO, que por
+# definicion todavia no esta en el manifiesto — el caso de sclsc, que necesita
+# duplicado y no se puede adoptar sin mirarlo primero.
+corrida_de_proyecto() {
+  local acc="$1" resp run rc bc strat layout src
+  resp=$(curl -sS --fail --max-time 180 --retry 3 --retry-delay 2 \
+    "$ENA?accession=$acc&result=read_run&format=tsv&fields=run_accession,read_count,base_count,library_strategy,library_layout,library_source") \
+    || return 1
+  while IFS=$'\t' read -r run rc bc strat layout src; do
+    [[ "$run" == "run_accession" || -z "$run" ]] && continue
+    pasa_filtro "$src" "$strat" "$layout" "$rc" || continue
+    echo "$run"
+    return 0
+  done <<< "$resp"
+  return 1
+}
+
 cmd_perfil() {
   command -v fastq-dump >/dev/null || die "falta fastq-dump (sra-tools)"
   local run="${1:-}" n="${2:-20000}"
-  [[ -n "$run" ]] || die "uso: $0 perfil RUN [-n N]"
+  [[ -n "$run" ]] || die "uso: $0 perfil RUN|PRJ [-n N]"
+
+  if [[ "$run" =~ ^PRJ ]]; then
+    command -v curl >/dev/null || die "falta curl"
+    local proy="$run"
+    run=$(corrida_de_proyecto "$proy") \
+      || die "no encontré en $proy ninguna corrida que pase el filtro"
+    echo "== $proy -> corrida representativa: $run"
+  fi
 
   # Si ya esta bajado se usa el archivo; si no, fastq-dump lo resuelve por red.
   local org src=""
