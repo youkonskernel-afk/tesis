@@ -3,7 +3,9 @@
 #
 #   ./scripts/fetch_genomes.sh resolve [ORG]   # consulta NCBI, no descarga
 #   ./scripts/fetch_genomes.sh fetch   [ORG]   # descarga los 'verificado'
-#   ./scripts/fetch_genomes.sh estado          # qué falta
+#   ./scripts/fetch_genomes.sh estado          # qué falta, según la spec
+#   ./scripts/fetch_genomes.sh verificar [ORG] [--rapido]
+#                                              # qué hay bajado de verdad, e íntegro
 #   ./scripts/fetch_genomes.sh cepas ORG [--taxon NOMBRE] [--grep TEXTO]
 #                                              # ensamblados de la especie, por cepa
 #
@@ -27,7 +29,7 @@ DEST="${GENOMES_DIR:-$ROOT/genomes}"
 LEDGER="${GENOMES_LEDGER:-$ROOT/data/genomas.sha256}"
 API="https://api.ncbi.nlm.nih.gov/datasets/v2alpha"
 
-usage() { sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-2}"; }
+usage() { sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-2}"; }
 die()   { echo "error: $*" >&2; exit 1; }
 
 for bin in curl jq unzip; do
@@ -244,6 +246,91 @@ cmd_resolve() {
   echo "ERROR DE RED  -> no es un veredicto: volve a correr resolve"
 }
 
+# Chequea que los ensamblados esten realmente bajados y sanos. No confia en la
+# spec ni en el ledger: mira los archivos. No necesita red, asi que corre igual
+# en Colab (GENOMES_DIR al mount de Drive) que en la maquina local.
+#
+# El criterio fuerte es el sha256 contra data/genomas.sha256: si coincide, el
+# archivo es identico byte a byte al que se bajo, y como fetch lo escribio con
+# gzip, la integridad del stream va implicita. Solo cuando NO hay entrada en el
+# ledger hace falta chequear el gzip aparte, que es lo que detecta un archivo
+# cortado (falla el CRC). Por eso no se lee el archivo dos veces.
+#
+# --rapido: solo existencia y la primera linea. No lee el archivo completo, que
+# sobre el FUSE de Drive son ~1 GB.
+cmd_verificar() {
+  local filtro="${1:-}" rapido="${2:-0}"
+  local org esp fuente asm acc estado conf nota
+  local f sha_led sha_real pri probs mb
+  local n_ok=0 n_mal=0 n_falta=0 n_sin=0
+
+  echo "arbol de genomas: $DEST"
+  [[ "$rapido" == "1" ]] && echo "(modo rapido: no se verifican checksums)"
+  echo
+  printf '%-7s %-11s %-18s %-9s %s\n' ORG ESTADO ACCESSION TAMANO CHEQUEO
+
+  while IFS="$SEP" read -r org esp fuente asm acc estado conf nota; do
+    # Sin accession no hay nada que chequear, y eso ES el problema: el proyecto
+    # respalda los genomas justamente para poder decir despues contra que se
+    # alineo. Los heredados de R1 no tienen ni accession ni FASTA en DEST: su
+    # URL vive en config.sh y nada en el repo registra cual fue.
+    if [[ -z "$acc" || "$acc" == "?" ]]; then
+      printf '%-7s %-11s %-18s %-9s %s\n' "$org" "$estado" "-" "-" \
+        "SIN RESPALDO — no hay accession en la spec"
+      n_sin=$((n_sin+1)); continue
+    fi
+
+    f="$DEST/$org/$acc.fna.gz"
+    if [[ ! -s "$f" ]]; then
+      printf '%-7s %-11s %-18s %-9s %s\n' "$org" "$estado" "$acc" "-" \
+        "FALTA — corre: $0 fetch $org"
+      n_falta=$((n_falta+1)); continue
+    fi
+
+    mb=$(awk -v b="$(stat -c%s "$f")" 'BEGIN{printf "%.1f MB", b/1e6}')
+    probs=""
+
+    # Arranca con '>'? Barato, y descarta que el .gz tenga otra cosa adentro.
+    pri=$(gzip -cd "$f" 2>/dev/null | head -1 || true)
+    [[ "$pri" == ">"* ]] || probs="${probs}no arranca con '>' (no es FASTA); "
+
+    sha_led=""
+    [[ -f "$LEDGER" ]] && sha_led=$(awk -F'\t' -v o="$org" '$1==o {print $4}' "$LEDGER")
+
+    if [[ "$rapido" != "1" ]]; then
+      if [[ -n "$sha_led" ]]; then
+        sha_real=$(sha256sum "$f" | cut -d" " -f1)
+        [[ "$sha_real" == "$sha_led" ]] || probs="${probs}sha256 NO coincide con el ledger; "
+      else
+        probs="${probs}sin entrada en $(basename "$LEDGER"); "
+        gzip -t "$f" 2>/dev/null || probs="${probs}gzip corrupto o truncado; "
+      fi
+    fi
+
+    [[ -s "$f.sha256" ]] || probs="${probs}falta el .sha256 al lado; "
+
+    if [[ -z "$probs" ]]; then
+      printf '%-7s %-11s %-18s %-9s %s\n' "$org" "$estado" "$acc" "$mb" "OK"
+      n_ok=$((n_ok+1))
+    else
+      printf '%-7s %-11s %-18s %-9s %s\n' "$org" "$estado" "$acc" "$mb" "${probs%; }"
+      n_mal=$((n_mal+1))
+    fi
+  done < <(filas "$filtro")
+
+  echo
+  echo "ok=$n_ok  con problemas=$n_mal  sin bajar=$n_falta  sin respaldo=$n_sin"
+  if [[ $n_sin -gt 0 ]]; then
+    echo
+    echo "Los 'sin respaldo' son los heredados de R1. No es un fallo de descarga:"
+    echo "nunca se registro su accession. Mientras siga asi no se puede decir"
+    echo "contra que ensamblado se alineo, que es lo que data/DRIVE.md dice que"
+    echo "los genomas se respaldan para poder decir."
+  fi
+  [[ $n_mal -eq 0 && $n_falta -eq 0 ]] || return 1
+  return 0
+}
+
 cmd_cepas() {
   local org="${1:-}" taxon="${2:-}" filtro="${3:-}" tmp esp n
   [[ -n "$org" ]] || die "uso: $0 cepas ORG [--taxon NOMBRE] [--grep TEXTO]"
@@ -309,6 +396,16 @@ cmd_fetch() {
 case "$1" in
   -h|--help) usage 0 ;;
   estado)  shift; cmd_estado  "${1:-}" ;;
+  verificar)
+    shift
+    ORG_V=""; RAPIDO=0
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --rapido) RAPIDO=1; shift ;;
+        *) ORG_V="$1"; shift ;;
+      esac
+    done
+    cmd_verificar "$ORG_V" "$RAPIDO" ;;
   cepas)
     shift
     ORG_C=""; TAXON=""; GREP_C=""
