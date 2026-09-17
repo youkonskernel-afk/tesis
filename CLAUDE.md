@@ -189,24 +189,31 @@ probabilidad calibrada.
   corrido en 2×150 da 273 nt igual que un mRNA. Lo único que separa los dos
   casos es dónde empieza el adaptador, y por eso existe
   `./scripts/fetch_runs.sh perfil`.
-- **Los 18 proyectos perfilados; 2 siguen abiertos.** `perfil --proyectos` mide
-  dónde empieza el adaptador 3' en una corrida de cada uno. Resultado: los tres
-  primarios etiquetados `RNA-Seq` que preocupaban —`galga PRJEB12164` 98% de
-  adaptador con inserto modal 22 nt, `phypa PRJNA222997` 93%— **son sRNA-seq de
-  verdad**. La etiqueta de la ENA estaba mal, la librería no.
+- **Los 18 proyectos verificados: todos son sRNA-seq.** `perfil --proyectos`
+  mide dónde empieza el adaptador 3' en una corrida de cada uno; 17 dan
+  `PARECE sRNA-seq` y `cloro PRJEB43636` da `YA RECORTADA`. Los tres primarios
+  etiquetados `RNA-Seq` que preocupaban son sRNA-seq de verdad: la etiqueta de
+  la ENA está mal, la librería no. **El único dato que no era sRNA-seq en todo
+  el dataset fue `SRR23277331`**, ya fuera del manifiesto.
 
-  **Abierto**: `maggi PRJNA154615` (21 corridas, **primario de un organismo de
-  entrenamiento**) y `phypa PRJNA277372` (10, duplicado) dan 0% de adaptador con
-  reads de 49 nt. Eso sí es el patrón de mRNA, pero hay que re-correr `perfil`
-  con la lista de adaptadores ampliada antes de concluir: son librerías de
-  2011-2015 y los adaptadores viejos no estaban.
-- **Reads de más de 50 nt: 143 de 415, y casi todas son normales.** 51 nt es una
-  librería de 50 ciclos sin recortar y 65-75 nt una de 75 ciclos; `fastp` las
-  resuelve recortando adaptador. La única que merece atención de verdad, además
-  de la de arriba, es `maldo` duplicado (`PRJNA784097`) con **151 nt**: hay que
-  revisar el pre-trim antes de que `fastp` las vea. El resumen del manifiesto
-  agrupa por proyecto en vez de listar corrida por corrida, porque cortaba en 20
-  de 144 y enterraba justamente lo que había que ver.
+  Tres cosas del perfilado que conviene tener a mano cuando se mire el QC de
+  `fastp`, para no perseguir un bug que no existe:
+
+  - **`cloro PRJEB43636` viene ya recortado** (reads de 35 nt, 0% de adaptador
+    porque el read *es* el inserto). No necesita recorte.
+  - **`gadmo PRJNA328800`: el 37% de los reads tienen inserto de 10 nt** y
+    `phypa PRJNA222997` un 12% de inserto 0 — dímeros de adaptador. `fastp` los
+    descarta por el piso de 15 nt, así que esos dos proyectos van a mostrar una
+    retención baja **a propósito**, no por un fallo.
+  - **`maldo PRJNA784097` (151 nt) está resuelto**: 100% de adaptador con
+    inserto modal 24 nt, o sea que el recorte normal de `fastp` lo recupera. No
+    hace falta pre-trim especial.
+- **Reads de más de 50 nt: 143 de 415, y ninguna es un problema.** Verificado
+  con `perfil`: 51 nt es una librería de 50 ciclos sin recortar, 65-75 nt una de
+  75, y los 151 nt de `maldo` traen el adaptador al nt 24. `fastp` las resuelve
+  todas recortando. El resumen del manifiesto agrupa por proyecto en vez de
+  listar corrida por corrida, porque cortaba en 20 de 144 y enterraba lo que
+  había que ver.
 - **`sclsc` es el único de los 9 sin duplicado.** Su `PRJNA985401` es RNA-Seq
   PAIRED y cayó entero en el filtro: no fue un accidente, el BioProject elegido
   era del tipo de experimento equivocado —la propia nota de `organismos.tsv` ya
@@ -217,10 +224,8 @@ probabilidad calibrada.
   ENA con **el mismo filtro** que arma el manifiesto y agrupa por BioProject,
   marcando los que ya están en la spec. Si no aparece ninguno, hay que
   declararlo en métodos: `sclsc` se predice pero no se valida por réplica.
-- **`cloro` primario (`PRJEB43636`) viene ya recortado**: reads de 30-34 nt sin
-  adaptador, porque el read **es** el inserto. No necesita el recorte de `fastp`,
-  y hay que tenerlo en cuenta al configurar el pre-trim. Es además `ncRNA-Seq`,
-  no miRNA-Seq — igual que `phypa`, hay que declararlo en métodos.
+- **`cloro` primario es `ncRNA-Seq`**, no miRNA-Seq. Igual que `phypa`, hay que
+  declararlo en métodos. (Que venga ya recortado está anotado arriba.)
 - **Re-estimar tiempo y espacio.** Con 3.4× más reads, las 8-12 h de
   alineamiento pasan al orden de 30-40 h, y los ~100 GB de BAMs al orden de
   340 GB. Entra sin problema en 1.6 TB, pero el cronograma cambia.
@@ -277,8 +282,12 @@ probabilidad calibrada.
   reads largos, o sea inserto mayor que el read).
   Dos defectos más del mismo veredicto, corregidos a la vez: usaba una ventana
   propia de 18-30 nt **que contradecía la de `fastp`** —15-50, elegida para no
-  truncar tRFs ni piRNAs—, y su lista de adaptadores era solo moderna, cuando el
-  dataset tiene librerías de 2011.
+  truncar tRFs ni piRNAs—, y su lista de adaptadores era solo moderna.
+  Ese último resultó ser el peor: con los adaptadores de 2011 agregados,
+  `maggi PRJNA154615` pasó de **0% a 92%** y `phypa PRJNA277372` de **0% a 97%**.
+  Los dos daban `NO PARECE sRNA-seq` y son sRNA-seq perfectamente normales —
+  y uno es el primario de un organismo de entrenamiento. **Los cuatro proyectos
+  que la herramienta marcó eran defectos de la herramienta, no de los datos.**
 - **Un campo que no se lee se ve igual que un campo vacío.** `resolve` mostraba
   `GCF_026210795.1` (`rhirr`) sin cepa, y parecía un ensamblado sin aislado
   declarado. Era que el formateador leía la cepa **solo** de
