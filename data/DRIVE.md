@@ -56,8 +56,12 @@ El caché local en `/home/dev/sra_cache` ya trae 57 corridas vigentes de R1
 
 Los **genomas sí están** (`70_genomas/`), como excepción deliberada: un
 ensamblado puede retirarse o reemplazarse, y sin el FASTA exacto el
-alineamiento deja de ser reproducible. Faltan fijar 6 — ver `data/genomas.tsv`,
-donde figuran como `candidato` hasta que alguien los verifique.
+alineamiento deja de ser reproducible. **Los 9 están fijados, bajados y
+verificados**, con su `sha256` en `data/genomas.sha256`. Y la excepción se ganó
+el lugar: **tres de los nueve tenían el ensamblado ya retirado por NCBI**
+(`suppressed`), uno de ellos en uso desde R1. Ver `data/genomas.tsv` para el
+porqué de cada elección, y `./scripts/fetch_genomes.sh verificar` para
+comprobar que lo que hay en Drive es lo que dice el ledger.
 
 Reconstruir todo desde cero necesita solo tres ficheros, y los tres están en
 git: `config.sh`, `organismos.tsv` y `environment.yml`.
