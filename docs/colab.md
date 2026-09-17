@@ -67,7 +67,23 @@ notebook se puede re-ejecutar y retoma.
 **Los checksums van a git.** `data/sra_md5.tsv` y `data/genomas.sha256`. El
 checksum guardado solo al lado del dato en Drive no prueba nada: quien reemplace
 el archivo reemplaza el checksum con él. El clon de Colab es efímero, así que
-los notebooks imprimen el ledger para que lo copies y commitees.
+los notebooks imprimen lo que falta commitear para que lo copies.
+
+**Pero el ledger de trabajo vive en Drive**, en `00_manifiestos/sra_md5.tsv`, no
+adentro del clon. No es una excepción a lo anterior: git sigue siendo el
+registro que vale. Son dos cosas distintas por dos motivos concretos.
+
+El primero es que el clon **se resetea en cada corrida** (`git fetch` +
+`git reset --hard`), así que nada escrito adentro sobrevive. El segundo es que
+antes el ledger era un archivo **versionado** que el script modificaba, y eso
+hacía que `git pull --ff-only` fallara para siempre después de la primera
+descarga — sin hacer ruido, dejando al notebook corriendo con el código viejo.
+Ese fallo mudo costó una ronda entera.
+
+Que el ledger viva en Drive además lo salva de que se muera la sesión, que es
+exactamente lo que pasó una vez y obligó a recalcular md5. La celda de setup lo
+siembra desde la copia del repo cuando esta tiene más filas, así que el modo
+`ledger` no recalcula las 416 corridas al pedo.
 
 ## Los notebooks son delgados
 
