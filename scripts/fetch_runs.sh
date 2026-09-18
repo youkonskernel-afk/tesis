@@ -31,6 +31,8 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # Sobreescribible para poder probar contra una spec sintetica, igual que
 # MANIFEST y que GENOMES_SPEC en fetch_genomes.sh.
 SPEC="${ORGANISMOS:-$ROOT/data/organismos.tsv}"
+# Corridas excluidas a mano, con motivo medido. Ver el encabezado del archivo.
+EXCLUIDAS="${EXCLUIDAS:-$ROOT/data/excluidas.tsv}"
 MANIFEST="${MANIFEST:-$ROOT/data/srr_manifest.tsv}"
 CACHE="${SRA_CACHE:-/home/dev/sra_cache}"
 # Destino final de los .sra. En Colab: /content/drive/MyDrive/tesis/80_sra
@@ -88,7 +90,18 @@ cmd_manifest() {
   local tmp; tmp=$(mktemp)
   printf 'org\trun\tbioproject\trol\tset_modelo\tread_count\tbase_count\tavg_len\tstrategy\tlayout\tsource\n' > "$tmp"
 
-  local total=0 desc=0
+  # Las exclusiones se aplican ACA, no editando el manifiesto despues: una
+  # edicion a mano la deshace la proxima regeneracion, sin avisar.
+  local excl; excl=$(mktemp)
+  if [[ -f "$EXCLUIDAS" ]]; then
+    grep -v '^[[:space:]]*#' "$EXCLUIDAS" 2>/dev/null | tail -n +2 \
+      | awk -F'\t' 'NF>=1 && $1!="" {print $1}' > "$excl" || true
+  else
+    : > "$excl"
+  fi
+  local n_excl; n_excl=$(wc -l < "$excl")
+
+  local total=0 desc=0 fuera=0
   while IFS="$SEP" read -r org acc rol setm; do
     [[ "$acc" =~ ^PRJ ]] || { echo "salto $org: accession invalido '$acc'" >&2; continue; }
     echo "== $org $rol $acc" >&2
@@ -104,6 +117,10 @@ cmd_manifest() {
       n_crudo=$((n_crudo+1))
 
       pasa_filtro "$src" "$strat" "$layout" "$rc" || continue
+      if grep -qx -- "$run" "$excl"; then
+        echo "   EXCLUIDA $run (ver $(basename "$EXCLUIDAS"))" >&2
+        fuera=$((fuera+1)); continue
+      fi
 
       local avg="NA"
       [[ -n "$bc" && "$bc" =~ ^[0-9]+$ && "$rc" -gt 0 ]] && avg=$(( bc / rc ))
@@ -119,9 +136,11 @@ cmd_manifest() {
   done < <(proyectos)
 
   mv "$tmp" "$MANIFEST"
+  rm -f "$excl"
   echo
   echo "manifiesto: $MANIFEST"
-  echo "corridas vistas=$total  descartadas=$desc  retenidas=$(( $(wc -l < "$MANIFEST") - 1 ))"
+  echo "corridas vistas=$total  descartadas=$(( desc - fuera ))  excluidas=$fuera  retenidas=$(( $(wc -l < "$MANIFEST") - 1 ))"
+  [[ $n_excl -gt 0 ]] && echo "($n_excl corrida(s) en $(basename "$EXCLUIDAS"), con motivo medido)"
   # Antes esto listaba corrida por corrida las que pasan de 50 nt y cortaba en
   # 20. Con 144 de 416 por encima de ese umbral, el listado se llenaba de
   # librerias normales sin recortar (51 nt = 50 ciclos, 65-75 = 75 ciclos, que

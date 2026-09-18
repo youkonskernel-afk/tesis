@@ -214,16 +214,21 @@ probabilidad calibrada.
   todas recortando. El resumen del manifiesto agrupa por proyecto en vez de
   listar corrida por corrida, porque cortaba en 20 de 144 y enterraba lo que
   había que ver.
-- **`sclsc` es el único de los 9 sin duplicado.** Su `PRJNA985401` es RNA-Seq
-  PAIRED y cayó entero en el filtro: no fue un accidente, el BioProject elegido
-  era del tipo de experimento equivocado —la propia nota de `organismos.tsv` ya
-  decía "RNA-Seq, no miRNA-Seq"—. **Sin duplicado no hay validación
-  independiente para ese organismo**, que es el esquema que sostiene la
-  priorización de candidatos. Para buscarle reemplazo:
-  `./scripts/fetch_runs.sh buscar 'Sclerotinia sclerotiorum'`, que consulta la
-  ENA con **el mismo filtro** que arma el manifiesto y agrupa por BioProject,
-  marcando los que ya están en la spec. Si no aparece ninguno, hay que
-  declararlo en métodos: `sclsc` se predice pero no se valida por réplica.
+- **`sclsc` ya tiene duplicado: `PRJNA1135930`.** Reemplaza a `PRJNA985401`,
+  que era RNA-Seq PAIRED y caía entero en el filtro. Verificado con `perfil`
+  antes de adoptarlo: 98% de adaptador, inserto modal 22 nt, 97% dentro de la
+  ventana. Con esto **los 9 organismos tienen primario y duplicado**.
+
+  **Es UNA sola corrida (12 M spots), y eso va declarado en métodos**: la
+  validación de `sclsc` es más débil que la de los otros 8. Alcanza para lo que
+  el duplicado existe —preguntar si un locus priorizado reaparece en un
+  experimento independiente— pero no da para nada estadístico.
+
+  El otro candidato, `PRJNA379694` (6 corridas, 758 M spots, etiquetado
+  `miRNA-Seq`), **se descartó**: `perfil` dio 1% de adaptador con reads de 100 nt
+  e insertos de 71-87 nt. Es mRNA. Los 126 M spots por corrida ya lo hacían
+  sospechoso y perfilarlo antes de adoptarlo evitó cambiar un duplicado que no
+  servía por otro que tampoco.
 - **`cloro` primario es `ncRNA-Seq`**, no miRNA-Seq. Igual que `phypa`, hay que
   declararlo en métodos. (Que venga ya recortado está anotado arriba.)
 - **Re-estimar tiempo y espacio.** Con 3.4× más reads, las 8-12 h de
@@ -273,6 +278,11 @@ probabilidad calibrada.
   Tree of Life). El de ostra importa más porque `maggi` es de entrenamiento: el
   de Roslin retuvo haplotigos —la misma región dos veces— y eso infla el
   multimapeo justo bajo `bowtie -m 50`.
+- **Sacar una corrida editando el manifiesto a mano no sirve**: la próxima
+  `fetch_runs.sh manifest` la vuelve a agregar, en silencio. Por eso existe
+  `data/excluidas.tsv`, que el generador aplica y reporta. Una exclusión solo se
+  agrega **con evidencia medida** —la columna `motivo` dice qué se midió— y hoy
+  tiene una sola fila, `SRR23277331`.
 - **Un 0% de adaptador no significa lo mismo con reads cortos que con largos.**
   `perfil` daba `NO PARECE sRNA-seq` a cualquier cosa sin adaptador, y marcó las
   34 corridas de `cloro PRJEB43636` — que vienen **ya recortadas**, con reads de

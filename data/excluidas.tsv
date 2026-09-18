@@ -1,0 +1,11 @@
+# Corridas que pasan el filtro de fetch_runs.sh pero NO entran al manifiesto.
+#
+# Por qué existe este archivo: sacar una corrida editando srr_manifest.tsv a
+# mano no sirve, porque `fetch_runs.sh manifest` la vuelve a agregar la próxima
+# vez que se regenere. La exclusión tiene que ser parte de la especificación,
+# no una edición que el generador deshace en silencio.
+#
+# Solo se excluye con evidencia medida, no por sospecha. La columna motivo dice
+# qué se midió; `./scripts/fetch_runs.sh perfil RUN` es lo que la produce.
+run	motivo	fecha_utc
+SRR23277331	No es sRNA-seq: 0 de 40000 reads con adaptador 3' y reads de ~136 nt, o sea inserto mayor que el read. Etiquetada miRNA-Seq en la ENA y unica PAIRED del dataset. Medido con: fetch_runs.sh perfil SRR23277331	2026-09-17
