@@ -713,6 +713,24 @@ cmd_ledger() {
     n=$((n+1))
   done < <(awk -F'\t' -v o="$filtro" 'NR>1 && (o=="" || $1==o) {print $1"\t"$2}' "$MANIFEST")
 
+  # El ledger espeja el manifiesto. Una fila de una corrida que ya no esta en el
+  # manifiesto —porque se excluyo— haria que la celda de "guardar el ledger"
+  # proponga volver a commitearla, deshaciendo la exclusion. Ya paso una vez.
+  local sobran; sobran=$(awk -F'\t' -v m="$MANIFEST" '
+    BEGIN { while ((getline l < m) > 0) { split(l, f, "\t"); en[f[2]] = 1 } }
+    NR > 1 && !($2 in en) { print $2 }' "$LEDGER")
+  if [[ -n "$sobran" ]]; then
+    local ns; ns=$(wc -l <<< "$sobran")
+    echo
+    echo "$ns fila(s) del ledger ya no estan en el manifiesto; las saco:"
+    sed 's/^/  /' <<< "$sobran"
+    local tmp_l; tmp_l=$(mktemp)
+    awk -F'\t' -v m="$MANIFEST" '
+      BEGIN { while ((getline l < m) > 0) { split(l, f, "\t"); en[f[2]] = 1 } }
+      NR == 1 || ($2 in en)' "$LEDGER" > "$tmp_l"
+    mv "$tmp_l" "$LEDGER"
+  fi
+
   echo
   echo "agregadas=$n  ya estaban=$ya  sin bajar=$sin"
   [[ $n -gt 0 ]] && echo "Commitear el ledger: git add $LEDGER"
