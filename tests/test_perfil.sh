@@ -7,6 +7,7 @@ TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
 FALLAS=0
 ok(){ printf '  ok   %s\n' "$1"; }; mal(){ printf '  MAL  %s\n' "$1"; FALLAS=$((FALLAS+1)); }
 tiene(){ grep -qF -- "$2" <<<"$3" && ok "$1" || mal "$1 — falta: $2"; }
+notiene(){ grep -qF -- "$2" <<<"$3" && mal "$1 — no debia: $2" || ok "$1"; }
 
 mkdir -p "$TMP/bin"
 cat > "$TMP/bin/fastq-dump" <<'FD'
@@ -178,6 +179,33 @@ tiene "avisa cuantos fallan"  "2 proyecto(s) sin veredicto favorable"  "$S"
 S2=$(MANIFEST="$MAN" bash "$R" perfil --proyectos -n 2000 2>&1); RC2=$?
 [[ $RC2 -eq 0 ]] && ok "exit 0 si todos pasan" || mal "exit 0 si todos pasan (rc=$RC2)"
 tiene "lo dice" "son sRNA-seq (PARECE o YA RECORTADA)" "$S2"
+
+echo "== --tsv: filas listas para data/adaptadores.tsv"
+# Existe para no pasar a mano lo que la herramienta ya midio: copiar 19 filas de
+# una tabla formateada es donde se cuela un error que despues no falla.
+S3=$(MANIFEST="$MAN" bash "$R" perfil --proyectos --tsv -n 2000 2>&1)
+tiene "tiene el bloque"        "PARA data/adaptadores.tsv"   "$S3"
+# 8 columnas, las de adaptadores.tsv
+_fila=$(sed -n "/PARA data/,\$p" <<<"$S3" | grep -P "^aa\tPRJ_A\t")
+[[ $(awk -F'\t' '{print NF}' <<<"$_fila") -eq 8 ]] \
+  && ok "8 columnas" || mal "8 columnas (tiene $(awk -F'\t' '{print NF}' <<<"$_fila"))"
+[[ $(cut -f3 <<<"$_fila") == "RA3" ]] && ok "columna familia" \
+  || mal "columna familia (dio '$(cut -f3 <<<"$_fila")')"
+# La secuencia COMPLETA, no el prefijo que se usa para detectar
+[[ $(cut -f4 <<<"$_fila") == "TGGAATTCTCGGGTGCCAAGG" ]] \
+  && ok "la secuencia completa, no el prefijo" \
+  || mal "la secuencia completa (dio '$(cut -f4 <<<"$_fila")')"
+[[ $(cut -f6 <<<"$_fila") == "22" ]] && ok "inserto sin la unidad" \
+  || mal "inserto sin la unidad (dio '$(cut -f6 <<<"$_fila")')"
+# Una ya recortada va PRE-TRIMMED: yasma la pasa de largo sin llamar a cutadapt
+_trim=$(sed -n "/PARA data/,\$p" <<<"$S3" | grep -P "^dd\tPRJ_D\t")
+[[ $(cut -f4 <<<"$_trim") == "PRE-TRIMMED" ]] \
+  && ok "la ya recortada va PRE-TRIMMED" \
+  || mal "la ya recortada va PRE-TRIMMED (dio '$(cut -f4 <<<"$_trim")')"
+tiene "avisa de las que no se pueden recortar" "NO se pueden recortar" "$S3"
+
+echo "== sin --tsv no imprime el bloque"
+notiene "no esta"  "PARA data/adaptadores.tsv"  "$S2"
 tiene "y cuenta los 2" "Los 2 proyectos son sRNA-seq" "$S2"
 
 echo; [[ $FALLAS -eq 0 ]] && echo "TODO OK" || { echo "$FALLAS fallas"; exit 1; }

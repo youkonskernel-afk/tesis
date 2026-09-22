@@ -438,6 +438,12 @@ cmd_prefetch() {
 # El prefijo sirve para DETECTAR; la secuencia que va a cutadapt es la del
 # adaptador completo y esta en data/adaptadores.tsv. No son lo mismo: TGGAATTCTCGGG
 # es el prefijo compartido por 50 entradas de la familia RPI.
+# De familia detectada a la secuencia COMPLETA que se le pasa a cutadapt. No es
+# lo mismo que el prefijo de ADAPTADORES: ese detecta, este recorta. Un 5p o un
+# sin_identificar no tienen entrada a proposito — no se recorta con ellos, y
+# trim.sh lo rechaza mirando la familia.
+SECUENCIAS="RA3:TGGAATTCTCGGGTGCCAAGG TruSeq_universal:AGATCGGAAGAGCACACGTCTGAACTCCAGTCA smallRNA_2011:TCGTATGCCGTCTTCTGCTTG"
+
 ADAPTADORES="TGGAATTCTCGGG:RA3 AGATCGGAAGAGC:TruSeq_universal GATCGTCGGACTG:5p:RA5 ATCTCGTATGCCG:smallRNA_2011 TCGTATGCCGTCTTCTGCTTG:smallRNA_2011 CGCCTTGGCCGT:??:sin_identificar"
 
 # Ventana de fastp, que es la que decide que entra al pipeline. El veredicto la
@@ -601,7 +607,7 @@ cmd_perfil() {
 # entrenamiento. Son minutos; alinear a ciegas son 30-40 h.
 cmd_perfil_proyectos() {
   [[ -f "$MANIFEST" ]] || die "no existe $MANIFEST — corré: $0 manifest"
-  local n="${1:-20000}"
+  local n="${1:-20000}" tsv="${2:-0}"
   local tabla; tabla=$(mktemp)
   local org proy rol strat run
   while IFS=$'\t' read -r org proy rol strat run; do
@@ -618,6 +624,34 @@ cmd_perfil_proyectos() {
   awk -F'\t' '{printf "%-7s %-14s %-10s %-11s %5s%% %8s %7s  %-17s %s\n", \
     $1,$2,$3,$4,$6,$7,$8,$9,$10}' "$tabla"
   echo
+  # Filas listas para data/adaptadores.tsv. Existe para no pasar a mano lo que
+  # la herramienta ya midio: copiar 19 filas de una tabla formateada es
+  # exactamente donde se cuela un error que despues no falla ruidosamente.
+  if [[ "$tsv" == "1" ]]; then
+    echo
+    echo "==================== PARA data/adaptadores.tsv"
+    awk -F'\t' -v secs="$SECUENCIAS" -v hoy="$(date -u +%Y-%m-%d)" '
+      BEGIN {
+        ns = split(secs, S, " ")
+        for (i = 1; i <= ns; i++) { j = index(S[i], ":");
+          SEC[substr(S[i], 1, j-1)] = substr(S[i], j+1) }
+      }
+      {
+        fam = $10; ver = $9; sec = "-"
+        # La tabla para leer dice "22 nt"; un TSV lleva el numero solo.
+        ins = $7; sub(/ nt$/, "", ins)
+        # Una libreria ya recortada se marca PRE-TRIMMED: yasma la pasa de largo
+        # sin llamar a cutadapt.
+        if (ver == "YA RECORTADA") sec = "PRE-TRIMMED"
+        else if (fam in SEC)       sec = SEC[fam]
+        printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+               $1, $2, fam, sec, $6, ins, ver, hoy
+      }' "$tabla"
+    echo
+    echo "Las filas con secuencia '-' NO se pueden recortar: o la familia es 5p"
+    echo "(dimero, no read-through) o no esta identificada. trim.sh las rechaza."
+  fi
+
   local malos; malos=$(awk -F'\t' '$9!="PARECE sRNA-seq" && $9!="YA RECORTADA"' "$tabla" | wc -l)
   if [[ "$malos" -gt 0 ]]; then
     echo "$malos proyecto(s) sin veredicto favorable. Revisar antes de alinear:"
@@ -791,16 +825,17 @@ case "$1" in
   buscar)    shift; cmd_buscar "${1:-}" ;;
   perfil)
     shift
-    RUN_P=""; NP=""; TODOS=0
+    RUN_P=""; NP=""; TODOS=0; TSV=0
     while [[ $# -gt 0 ]]; do
       case "$1" in
         --proyectos) TODOS=1; shift ;;
+        --tsv) TSV=1; shift ;;
         -n) NP="${2:-}"; shift 2 ;;
         -n*) NP="${1#-n}"; shift ;;
         *) RUN_P="$1"; shift ;;
       esac
     done
-    if [[ $TODOS -eq 1 ]]; then cmd_perfil_proyectos "${NP:-20000}"
+    if [[ $TODOS -eq 1 ]]; then cmd_perfil_proyectos "${NP:-20000}" "$TSV"
     else cmd_perfil "$RUN_P" "${NP:-20000}"; fi ;;
   ledger)
     shift

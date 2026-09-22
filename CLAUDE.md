@@ -271,6 +271,12 @@ probabilidad calibrada.
   esto queda cubierto; pero llenarla con un solo adaptador para "maggi primario"
   sería un error, y no fallaría ruidosamente: `--trimmed-only` simplemente
   descartaría casi todo el proyecto cuya secuencia no corresponde.
+- **`perfil --proyectos --tsv` emite las filas de `data/adaptadores.tsv`.**
+  La tabla de `--proyectos` es para leer; pasar 19 filas de ahí a mano es
+  exactamente donde se cuela un error que después no falla ruidosamente, solo
+  recorta con la secuencia equivocada. El `--tsv` traduce familia → secuencia
+  completa con el mapa `SECUENCIAS` del script, pone `PRE-TRIMMED` en las
+  `YA RECORTADA`, y deja `-` en las que no se pueden recortar.
 - **El adaptador no se detecta en tiempo de corrida: sale de
   `data/adaptadores.tsv`.** `yasma trim` ante un adaptador `"None"` **descarta
   la librería** —no la suma a `trimmed_libraries` y desaparece del pipeline sin
@@ -523,7 +529,7 @@ purga después. Ver `docs/colab.md` y `docs/plan_datos_colab.md`.
 Todo corre sin red y en segundos. Antes de cada push:
 
 ```bash
-./tests/run_all.sh              # 12 bancos, 280 chequeos, binarios falsos en el PATH
+./tests/run_all.sh              # 12 bancos, 288 chequeos, binarios falsos en el PATH
 ./tests/mutar.py                # rompe el codigo y exige que algun banco grite
 ./scripts/check_docs.py         # lo que afirman los docs contra data/
 ./scripts/validate_notebooks.py # los .ipynb parsean y no hay duplicados
@@ -534,7 +540,7 @@ y `check_docs.py` dos más.
 
 **Un banco que pasa no prueba nada.** Prueba algo el día que se rompe lo que
 cubre y el banco se queja, y la única forma de saberlo es romper el código a
-propósito: eso es `tests/mutar.py`, 29 mutaciones que tienen que dar todas
+propósito: eso es `tests/mutar.py`, 31 mutaciones que tienen que dar todas
 `[OK]`. Un `[HUECO]` es un chequeo que falta; un `[VIEJA]` es una mutación cuyo
 patrón ya no existe, que tampoco prueba nada. Así aparecieron los dos huecos que
 ninguna otra cosa mostró — el veredicto de `perfil` que iba a la tabla sin estar
