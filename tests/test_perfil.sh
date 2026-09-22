@@ -59,6 +59,9 @@ S=$(bash "$R" perfil SRNA1 -n 2000 2>&1); echo "$S" | sed -n '3,12p'
 tiene "detecta adaptador en casi todos"  "con adaptador: 2000 (100%)" "$S"
 tiene "el inserto modal es de sRNA"      "22 nt"                      "$S"
 tiene "veredicto correcto"               ">>> PARECE sRNA-seq"        "$S"
+# CUAL adaptador, no solo cuanto: es el dato que el paso de recorte le pasa a
+# fastp, y "98% de adaptador" no sirve para eso.
+tiene "nombra el adaptador"              "adaptador: TruSeq_smallRNA" "$S"
 
 echo "== libreria de mRNA (sin adaptador visible)"
 S=$(bash "$R" perfil MRNA1 -n 2000 2>&1)
@@ -95,6 +98,16 @@ echo "== adaptador viejo de 2011 se detecta"
 S=$(bash "$R" perfil VIEJO1 -n 2000 2>&1)
 tiene "lo encuentra"               "con adaptador: 2000 (100%)" "$S"
 tiene "y da PARECE"                ">>> PARECE sRNA-seq"        "$S"
+tiene "y lo nombra bien"           "adaptador: Illumina_2011"   "$S"
+grep -q "adaptador: TruSeq" <<<"$S" && mal "no lo confunde con el moderno" \
+  || ok "no lo confunde con el moderno"
+
+echo "== sin adaptador no inventa uno"
+for _r in TRIM1 MRNA1; do
+  _S=$(bash "$R" perfil $_r -n 2000 2>&1)
+  grep -qE "^   adaptador:" <<<"$_S" && mal "$_r: no reporta adaptador" \
+    || ok "$_r: no reporta adaptador"
+done
 
 echo "== perfilar un BioProject candidato (no esta en el manifiesto)"
 S=$(bash "$R" perfil PRJ_BUENO -n 2000 2>&1); echo "$S" | sed -n '1,4p'
@@ -143,6 +156,9 @@ rex   "PRJ_D: YA RECORTADA en la tabla" "PRJ_D .*YA RECORTADA" "$S"
 rex   "cuenta las corridas"   "PRJ_B .*1 corridas"       "$S"
 tiene "muestra el % adaptador" "100%"                     "$S"
 tiene "la tabla trae el largo de read" "READ"                "$S"
+tiene "y la columna de adaptador"      "ADAPTADOR"           "$S"
+rex   "PRJ_A dice cual"       "PRJ_A .*TruSeq_smallRNA"  "$S"
+rex   "PRJ_D (recortada) dice -" "PRJ_D .*YA RECORTADA +-" "$S"
 tiene "avisa cuantos fallan"  "2 proyecto(s) sin veredicto favorable"  "$S"
 [[ $RC -ne 0 ]] && ok "exit != 0 si alguno falla" || mal "exit != 0 si alguno falla (rc=$RC)"
 

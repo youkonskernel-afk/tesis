@@ -46,6 +46,7 @@ scripts/loo_cv.py         validación dejando un organismo afuera
 scripts/validate_notebooks.py   chequea los .ipynb del repo
 scripts/check_docs.py     cruza lo que afirman los docs contra data/
 tests/                    bancos de prueba, con binarios falsos en el PATH
+tests/mutar.py            rompe el código y exige que algún banco grite
 CLAUDE.md                 regla de ubicación + trampas conocidas
 ```
 

@@ -420,7 +420,11 @@ cmd_prefetch() {
 # VIEJOS a proposito — hay librerias de 2011 en el dataset, y con solo los
 # modernos un 0% puede significar "no esta en la lista" en vez de "no hay".
 #   TruSeq Small RNA / generico / NEBNext / Qiagen  +  Illumina v1.5 y GEX
-ADAPTADORES="TGGAATTCTCGGG AGATCGGAAGAGC GATCGTCGGACTG ATCTCGTATGCCG TCGTATGCCGTCTTCTGCTTG CGCCTTGGCCGT"
+# Prefijos de adaptador 3' con nombre. El nombre no es cosmetico: el paso de
+# recorte necesita saber CUAL se encontro para pasarselo a fastp, y "hay
+# adaptador en el 98%" no alcanza para eso. Los tres ultimos son librerias
+# viejas: agregarlos hizo que maggi PRJNA154615 pasara de 0% a 92%.
+ADAPTADORES="TGGAATTCTCGGG:TruSeq_smallRNA AGATCGGAAGAGC:TruSeq_universal GATCGTCGGACTG:Nextera ATCTCGTATGCCG:Illumina_viejo TCGTATGCCGTCTTCTGCTTG:Illumina_2011 CGCCTTGGCCGT:Illumina_RA3"
 
 # Ventana de fastp, que es la que decide que entra al pipeline. El veredicto la
 # usa en vez de un 18-30 propio: el proyecto eligio 15-50 a proposito para no
@@ -481,17 +485,23 @@ cmd_perfil() {
     rm -f "$fq"; die "fastq-dump no pudo leer $run"; }
 
   awk -v ads="$ADAPTADORES" -v vmin="$VENT_MIN" -v vmax="$VENT_MAX" '
-    BEGIN { na = split(ads, A, " ") }
+    BEGIN {
+      na = split(ads, campo, " ")
+      for (i = 1; i <= na; i++) { split(campo[i], par, ":"); A[i] = par[1]; NOM[i] = par[2] }
+    }
     NR % 4 == 2 {
       total++
       lr[length($0)]++           # longitud del read: sin esto, un 0% no se
       suma_lr += length($0)      # puede interpretar (ver abajo)
-      mejor = 0
+      mejor = 0; cual = ""
       for (i = 1; i <= na; i++) {
         p = index($0, A[i])
-        if (p > 0 && (mejor == 0 || p < mejor)) mejor = p
+        if (p > 0 && (mejor == 0 || p < mejor)) { mejor = p; cual = NOM[i] }
       }
-      if (mejor > 0) { con++; ins = mejor - 1; h[ins]++; if (ins >= vmin && ins <= vmax) dentro++ }
+      if (mejor > 0) {
+        con++; ins = mejor - 1; h[ins]++; ad[cual]++
+        if (ins >= vmin && ins <= vmax) dentro++
+      }
     }
     END {
       if (total == 0) { print "   sin reads"; exit }
@@ -505,6 +515,14 @@ cmd_perfil() {
 
       printf "   reads: %d   largo mediano: %d nt   con adaptador: %d (%.0f%%)\n",
              total, med_lr, con, 100*con/total
+
+      # Cual adaptador, no solo cuanto. Es el dato que el recorte necesita.
+      ad_top = "-"; ad_mx = 0
+      for (k in ad) if (ad[k] + 0 > ad_mx) { ad_mx = ad[k] + 0; ad_top = k }
+      if (con > 0) {
+        printf "   adaptador: %s (%.0f%% de los que tienen)\n", ad_top, 100*ad_mx/con
+        for (k in ad) if (k != ad_top) printf "     tambien: %s  %.0f%%\n", k, 100*ad[k]/con
+      }
       if (con > 0) {
         printf "   inserto (largo antes del adaptador), los mas frecuentes:\n"
         cn = 0
@@ -539,8 +557,8 @@ cmd_perfil() {
         ver = "DUDOSA"
         printf "   >>> DUDOSA: hay adaptador pero el inserto cae fuera de %d-%d nt.\n", vmin, vmax
       }
-      printf "RESUMEN\t%.0f\t%s\t%d nt\t%s\n", 100*con/total,
-             (con>0 ? modal" nt" : "-"), med_lr, ver > "/dev/stderr"
+      printf "RESUMEN\t%.0f\t%s\t%d nt\t%s\t%s\n", 100*con/total,
+             (con>0 ? modal" nt" : "-"), med_lr, ver, ad_top > "/dev/stderr"
     }' "$fq" 2> "$fq.res"
   RESUMEN_PERFIL=$(grep '^RESUMEN' "$fq.res" 2>/dev/null | cut -f2- || true)
   cat "$fq.res" | grep -v '^RESUMEN' >&2 || true
@@ -560,15 +578,16 @@ cmd_perfil_proyectos() {
   while IFS=$'\t' read -r org proy rol strat run; do
     cmd_perfil "$run" "$n" || true
     printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$org" "$proy" "$rol" "$strat" "$run" \
-      "${RESUMEN_PERFIL:-?\t?\t?\tSIN DATO}" >> "$tabla"
+      "${RESUMEN_PERFIL:-?\t?\t?\tSIN DATO\t?}" >> "$tabla"
     echo
   done < <(awk -F'\t' 'NR>1 && !(($1 FS $3) in v) {v[$1 FS $3]=1;
              print $1"\t"$3"\t"$4"\t"$9"\t"$2}' "$MANIFEST" | sort)
 
   echo "==================== RESUMEN"
-  printf '%-7s %-14s %-10s %-11s %6s %8s %7s  %s\n' \
-    ORG PROYECTO ROL ETIQUETA ADAPT INSERTO READ VEREDICTO
-  awk -F'\t' '{printf "%-7s %-14s %-10s %-11s %5s%% %8s %7s  %s\n", $1,$2,$3,$4,$6,$7,$8,$9}' "$tabla"
+  printf '%-7s %-14s %-10s %-11s %6s %8s %7s  %-17s %s\n' \
+    ORG PROYECTO ROL ETIQUETA ADAPT INSERTO READ VEREDICTO ADAPTADOR
+  awk -F'\t' '{printf "%-7s %-14s %-10s %-11s %5s%% %8s %7s  %-17s %s\n", \
+    $1,$2,$3,$4,$6,$7,$8,$9,$10}' "$tabla"
   echo
   local malos; malos=$(awk -F'\t' '$9!="PARECE sRNA-seq" && $9!="YA RECORTADA"' "$tabla" | wc -l)
   if [[ "$malos" -gt 0 ]]; then

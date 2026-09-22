@@ -437,15 +437,22 @@ purga después. Ver `docs/colab.md` y `docs/plan_datos_colab.md`.
 Todo corre sin red y en segundos. Antes de cada push:
 
 ```bash
-./tests/run_all.sh              # 9 bancos, 188 chequeos, binarios falsos en el PATH
+./tests/run_all.sh              # 9 bancos, 196 chequeos, binarios falsos en el PATH
+./tests/mutar.py                # rompe el codigo y exige que algun banco grite
 ./scripts/check_docs.py         # lo que afirman los docs contra data/
 ./scripts/validate_notebooks.py # los .ipynb parsean y no hay duplicados
 ```
 
 Los bancos encontraron **diez bugs** que ninguna lectura del código había visto,
-y `check_docs.py` dos más. Un banco nuevo no vale por pasar: vale por ponerse
-rojo cuando se rompe lo que cubre — la forma de comprobarlo es romper el código
-a propósito y ver qué banco *no* se queja.
+y `check_docs.py` dos más.
+
+**Un banco que pasa no prueba nada.** Prueba algo el día que se rompe lo que
+cubre y el banco se queja, y la única forma de saberlo es romper el código a
+propósito: eso es `tests/mutar.py`, 14 mutaciones que tienen que dar todas
+`[OK]`. Un `[HUECO]` es un chequeo que falta; un `[VIEJA]` es una mutación cuyo
+patrón ya no existe, que tampoco prueba nada. Así aparecieron los dos huecos que
+ninguna otra cosa mostró — el veredicto de `perfil` que iba a la tabla sin estar
+cubierto, y `estado` sin banco.
 
 `check_docs.py` falla hoy a propósito, con `PRJNA1135930` sin corridas en el
 manifiesto. Es el pendiente de `sclsc`, no un falso positivo: se cierra
