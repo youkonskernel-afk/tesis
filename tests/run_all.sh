@@ -30,6 +30,7 @@ BANCOS=(
   tests/test_verificar.sh
   tests/test_clon.py
   tests/test_celda1.py
+  tests/test_celda4.py
 )
 
 malos=0 total_ok=0 total_mal=0

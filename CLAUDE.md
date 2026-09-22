@@ -292,6 +292,22 @@ probabilidad calibrada.
   anota la ruta original. Con el nombre adivinado nada contaba como recortado, o
   sea ni idempotencia ni `estado`. `trim.sh` lee `trimmed_libraries` de
   `inputs.json`, que es el registro que YASMA deja de lo que hizo.
+- **La columna `runs` de `organismos.tsv` es una estimación, no un hecho** —
+  difiere del manifiesto resuelto en **7 de los 18** proyectos (`prupe
+  PRJNA780811` declara 5 y trae 7; `galga PRJNA694114` declara 96 y trae 95;
+  los dos de `maggi` declaran `NA`). Eso está bien: el manifiesto es la verdad
+  y la columna es de cuando se eligió el proyecto. **Lo que no está bien es
+  convertirla en una afirmación de métodos**, que es lo que pasó con `sclsc`:
+  declaraba 1 corrida, se escribió tres veces en este fichero que su validación
+  era "más débil" por eso, y la ENA devolvió **2**.
+- **Lo que le falta a git son dos mitades, no una.** §4 reportaba solo el
+  ledger de md5, así que las filas del manifiesto había que sacarlas con un
+  `grep` a mano — y commitear un md5 cuya corrida no está en el manifiesto hace
+  fallar a `check_docs.py` con *"en el ledger y no en el manifiesto"*. Ahora
+  reporta las dos. Y compara contra **lo que tiene git** (`git show HEAD:...`),
+  no contra el working tree: §1 pisa `data/srr_manifest.tsv` del clon con la
+  copia de Drive, así que leer ese fichero da el manifiesto de Drive y el diff
+  sale vacío siempre. Tiene banco (`tests/test_celda4.py`, 6 escenarios).
 - **Si la celda ya sabe que algo está viejo, que lo arregle ella.** §1 del
   notebook de descargas estuvo mal **tres veces**, y las tres fueron la misma
   equivocación de altura: primero reusaba la copia de Drive siempre (cambiar
@@ -505,7 +521,7 @@ purga después. Ver `docs/colab.md` y `docs/plan_datos_colab.md`.
 Todo corre sin red y en segundos. Antes de cada push:
 
 ```bash
-./tests/run_all.sh              # 11 bancos, 258 chequeos, binarios falsos en el PATH
+./tests/run_all.sh              # 12 bancos, 278 chequeos, binarios falsos en el PATH
 ./tests/mutar.py                # rompe el codigo y exige que algun banco grite
 ./scripts/check_docs.py         # lo que afirman los docs contra data/
 ./scripts/validate_notebooks.py # los .ipynb parsean y no hay duplicados
@@ -516,7 +532,7 @@ y `check_docs.py` dos más.
 
 **Un banco que pasa no prueba nada.** Prueba algo el día que se rompe lo que
 cubre y el banco se queja, y la única forma de saberlo es romper el código a
-propósito: eso es `tests/mutar.py`, 25 mutaciones que tienen que dar todas
+propósito: eso es `tests/mutar.py`, 29 mutaciones que tienen que dar todas
 `[OK]`. Un `[HUECO]` es un chequeo que falta; un `[VIEJA]` es una mutación cuyo
 patrón ya no existe, que tampoco prueba nada. Así aparecieron los dos huecos que
 ninguna otra cosa mostró — el veredicto de `perfil` que iba a la tabla sin estar
