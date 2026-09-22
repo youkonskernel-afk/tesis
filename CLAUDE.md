@@ -54,9 +54,17 @@ el manifiesto resuelto: **415 corridas**, generado con
 `./scripts/fetch_runs.sh manifest` contra la ENA desde Colab
 (`notebooks/10_descarga_runs.ipynb`).
 
-**La descarga está completa: 415 de 415 en `80_sra/`**, con los 415 md5 en
-`data/sra_md5.tsv` y reconciliado contra el manifiesto en las dos direcciones.
-Eran 416 hasta que `SRR23277331` salió por no ser sRNA-seq — ver más abajo.
+**415 de 415 bajadas en `80_sra/`**, con los 415 md5 en `data/sra_md5.tsv` y
+reconciliado contra el manifiesto en las dos direcciones. Eran 416 hasta que
+`SRR23277331` salió por no ser sRNA-seq — ver más abajo.
+
+**Falta una corrida, y el conteo no lo delata.** El manifiesto resuelve 18 de
+los 19 BioProjects de la spec: el duplicado nuevo de `sclsc` (`PRJNA1135930`)
+entró a `organismos.tsv` y el manifiesto todavía no se regeneró contra la ENA,
+así que `415 de 415` está completo **respecto de la spec anterior**. Se ve con
+`./scripts/check_docs.py`, que compara los dos ficheros en vez de creerle al
+total; a ojo no se ve, porque el manifiesto al día también da 416 —una corrida
+menos por la exclusión, una más por `sclsc`—.
 Las dos últimas —`SRR317135` y `SRR1066790`, del primario de `maggi`— costaron
 una ronda entera porque **solo existen en formato SRA Lite** y el script buscaba
 únicamente `.sra`: `prefetch` las bajaba bien, salía con código 0, y el
@@ -64,10 +72,12 @@ una ronda entera porque **solo existen en formato SRA Lite** y el script buscaba
 `prefetch` más abajo, que es donde está lo que hay que declarar en métodos.
 `data/srr_manifest_r1.tsv` es el de la ronda anterior, como referencia.
 
-**El upstream está cerrado**: 415 `.sra` y 9 genomas en Drive, los dos con
-checksum versionado. Se comprueba con `./scripts/fetch_runs.sh estado` y
-`./scripts/fetch_genomes.sh verificar`, que recalcula los sha256 contra el
-ledger en vez de confiar en el tamaño. Lo que sigue es el alineamiento.
+**Los genomas están cerrados** (9 de 9 con `sha256` versionado) y los `.sra`
+casi: falta la corrida de `sclsc` de arriba. Se comprueba con
+`./scripts/fetch_runs.sh estado`, `./scripts/fetch_genomes.sh verificar` —que
+recalcula los sha256 contra el ledger en vez de confiar en el tamaño— y
+`./scripts/check_docs.py`, que cruza los docs contra `data/`. Lo que sigue es
+el alineamiento.
 
 `scripts/fetch_runs.sh` **reemplaza al `gen_manifest.sh` de R1**, que asumía un
 proyecto por organismo. Filtra a datos de RNA con `library_source =
@@ -84,7 +94,7 @@ no entra al entrenamiento**, o la validación deja de ser independiente.
 | org | especie | reino | primario | duplicado |
 | :-- | :-- | :-- | :-- | :-- |
 | rhirr | *Rhizophagus irregularis* | Fungi (Glomeromycota) | PRJEB29180 | PRJNA722321 |
-| sclsc | *Sclerotinia sclerotiorum* | Fungi (Ascomycota) | PRJNA477286 | PRJNA985401 |
+| sclsc | *Sclerotinia sclerotiorum* | Fungi (Ascomycota) | PRJNA477286 | PRJNA1135930 |
 | cloro | *Clonostachys rosea* | Fungi (Ascomycota) | PRJEB43636 | PRJEB51338 |
 | phypa | *Physcomitrium patens* | Plantae (briofita) | PRJNA222997 | PRJNA277372 |
 | prupe | *Prunus persica* | Plantae (rosácea) | PRJNA929031 | PRJNA780811 |
@@ -189,11 +199,13 @@ probabilidad calibrada.
   corrido en 2×150 da 273 nt igual que un mRNA. Lo único que separa los dos
   casos es dónde empieza el adaptador, y por eso existe
   `./scripts/fetch_runs.sh perfil`.
-- **Los 18 proyectos verificados: todos son sRNA-seq.** `perfil --proyectos`
-  mide dónde empieza el adaptador 3' en una corrida de cada uno; 17 dan
-  `PARECE sRNA-seq` y `cloro PRJEB43636` da `YA RECORTADA`. Los tres primarios
-  etiquetados `RNA-Seq` que preocupaban son sRNA-seq de verdad: la etiqueta de
-  la ENA está mal, la librería no. **El único dato que no era sRNA-seq en todo
+- **Los 19 proyectos verificados: todos son sRNA-seq.** `perfil --proyectos`
+  mide dónde empieza el adaptador 3' en una corrida de cada uno; de los 18 que
+  tenía el manifiesto, 17 dieron `PARECE sRNA-seq` y `cloro PRJEB43636`
+  `YA RECORTADA`. El 19º, `PRJNA1135930`, se perfiló aparte antes de adoptarlo
+  —por eso `perfil` acepta un `PRJ*` suelto— y da `PARECE sRNA-seq`.
+  Los tres primarios etiquetados `RNA-Seq` que preocupaban son sRNA-seq de
+  verdad: la etiqueta de la ENA está mal, la librería no. **El único dato que no era sRNA-seq en todo
   el dataset fue `SRR23277331`**, ya fuera del manifiesto.
 
   Tres cosas del perfilado que conviene tener a mano cuando se mire el QC de
@@ -298,6 +310,31 @@ probabilidad calibrada.
   Los dos daban `NO PARECE sRNA-seq` y son sRNA-seq perfectamente normales —
   y uno es el primario de un organismo de entrenamiento. **Los cuatro proyectos
   que la herramienta marcó eran defectos de la herramienta, no de los datos.**
+- **Un chequeo que mira el mensaje y no el dato no chequea nada.** El banco de
+  `perfil` verificaba la línea `>>> YA RECORTADA` que se le imprime a la
+  persona, pero no la variable `ver` que va a la tabla del resumen y **decide el
+  exit code**. Son dos strings distintos en el mismo `awk`: se puede cambiar el
+  veredicto de la tabla —regresionando el arreglo de `cloro`, el que casi tiró
+  34 corridas buenas— y los 176 chequeos seguían verdes. Se descubrió mutando el
+  código a propósito y viendo qué banco *no* se ponía rojo, que es la única
+  forma de saber si un banco sirve. Ahora hay una fila `YA RECORTADA` en la
+  tabla de `--proyectos` y otra en el caso "todos buenos", que es la que cubre
+  el exit code. Al agregar un chequeo: afirmar sobre el valor que el programa
+  *usa*, no sobre el texto que imprime al lado.
+
+- **Los docs derivan igual que los datos, y el total no lo delata.** La tabla
+  del dataset decía que el duplicado de `sclsc` era `PRJNA985401` cuando la spec
+  ya decía `PRJNA1135930`, y la prosa correcta estaba 130 líneas más abajo —
+  quien lee la tabla no llega ahí. El `README` era peor: mandaba a correr cinco
+  comandos y cuatro no existen en este repo. Y el conteo no avisa: el manifiesto
+  viejo y el al día dan los dos 416, una corrida menos por la exclusión y una
+  más por `sclsc`. Por eso existe `./scripts/check_docs.py`, que recalcula desde
+  `data/` en vez de creerle a lo escrito a mano, y falla si un doc cita un
+  fichero que no está. Los seis del pipeline de alineamiento (`config.sh`,
+  `orchestrate.sh`, `verify.sh`, `check_env.sh`, `environment.yml`,
+  `environment_pip.txt`) están declarados ahí como deuda: el día que lleguen del
+  `main` local se borra la línea y el chequeo vuelve a exigirlos.
+
 - **Un campo que no se lee se ve igual que un campo vacío.** `resolve` mostraba
   `GCF_026210795.1` (`rhirr`) sin cepa, y parecía un ensamblado sin aislado
   declarado. Era que el formateador leía la cepa **solo** de
@@ -368,6 +405,25 @@ Lo que necesita red va en otro lado:
 por el disco local. Con Free el cómputo largo (30-40 h de bowtie) se queda en la
 máquina local, que trae los `.sra` de a un organismo con `drive_pull.sh` y los
 purga después. Ver `docs/colab.md` y `docs/plan_datos_colab.md`.
+
+## Chequeos
+
+Todo corre sin red y en segundos. Antes de cada push:
+
+```bash
+./tests/run_all.sh              # 9 bancos, 188 chequeos, binarios falsos en el PATH
+./scripts/check_docs.py         # lo que afirman los docs contra data/
+./scripts/validate_notebooks.py # los .ipynb parsean y no hay duplicados
+```
+
+Los bancos encontraron **diez bugs** que ninguna lectura del código había visto,
+y `check_docs.py` dos más. Un banco nuevo no vale por pasar: vale por ponerse
+rojo cuando se rompe lo que cubre — la forma de comprobarlo es romper el código
+a propósito y ver qué banco *no* se queja.
+
+`check_docs.py` falla hoy a propósito, con `PRJNA1135930` sin corridas en el
+manifiesto. Es el pendiente de `sclsc`, no un falso positivo: se cierra
+regenerando el manifiesto desde Colab.
 
 ## Entorno
 

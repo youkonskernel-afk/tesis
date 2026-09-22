@@ -228,9 +228,6 @@ cmd_estado() {
   echo "manifiesto: $MANIFEST"
   echo "destino   : $DEST"
   echo
-  awk -F'\t' -v dest="$DEST" '
-    NR>1 { total[$1]++ }
-    END { }' "$MANIFEST" >/dev/null
 
   local hay=0 falta=0
   declare -A h f

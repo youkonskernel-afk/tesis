@@ -37,12 +37,14 @@ notebooks/00_setup.ipynb  monta Drive, clona, instala, verifica
 notebooks/descarga_genomas.ipynb   verifica y baja ensamblados a Drive
 notebooks/10_descarga_runs.ipynb   manifiesto + .sra a Drive, por tandas
 notebooks/90_estado.ipynb          qué falta y cuánto ocupa
-scripts/fetch_runs.sh     resuelve los 18 proyectos a corridas y las descarga
+scripts/fetch_runs.sh     resuelve los 19 proyectos a corridas y las descarga
 scripts/fetch_genomes.sh  resuelve y descarga los ensamblados
 scripts/drive_push.sh     sube a Drive vía rclone
 scripts/drive_pull.sh     baja de Drive, y purga la copia local
 scripts/loo_cv.py         validación dejando un organismo afuera
 scripts/validate_notebooks.py   chequea los .ipynb del repo
+scripts/check_docs.py     cruza lo que afirman los docs contra data/
+tests/                    bancos de prueba, con binarios falsos en el PATH
 CLAUDE.md                 regla de ubicación + trampas conocidas
 ```
 
@@ -54,19 +56,35 @@ prefetch → fastp (15-50 nt) → bowtie1 (-m 50) → samtools → YASMA v1.1.1
                                               features por locus → PU learning
 ```
 
-Entrada: `./orchestrate.sh`. Estado: `./orchestrate.sh status`. Verificación:
-`./verify.sh`. Es idempotente: relanzar tras un corte no rehace trabajo, porque
-el paso de alineamiento salta las corridas cuyo BAM ya existe.
+**El upstream está acá; el alineamiento todavía no.** Lo que este repo corre hoy
+es la mitad de arriba: resolver el manifiesto, bajar los `.sra` y los genomas, y
+verificarlos. `config.sh`, `orchestrate.sh`, `verify.sh`, `check_env.sh` y
+`environment.yml` están en el `main` local sin subir, así que los comandos que
+los usan **no se pueden correr desde un clon de este repo**. Mientras no lleguen,
+`scripts/check_docs.py` los lista como deuda declarada en vez de dejar que el
+README los cite como si funcionaran.
 
 ## Reproducir desde cero
 
-Solo hacen falta tres ficheros, los tres versionados acá: `config.sh`,
-`organismos.tsv` y `environment.yml`.
+Lo que hoy se puede reproducir con lo que hay versionado:
 
 ```bash
-./check_env.sh      # línea base
-# instalar micromamba + entorno srna2 (ver CLAUDE.md)
-./check_env.sh      # verificar
-./gen_manifest.sh   # regenerar el manifiesto desde la ENA Portal API
-./orchestrate.sh    # lanza las 4 fases
+./scripts/check_docs.py              # docs contra data/: ¿coincide todo?
+./scripts/validate_notebooks.py      # los .ipynb parsean
+tests/run_all.sh                     # los bancos, sin red
+
+# desde Colab, que sí tiene salida a la ENA y a NCBI:
+./scripts/fetch_runs.sh manifest     # los 19 proyectos -> corridas
+./scripts/fetch_runs.sh perfil --proyectos   # ¿son sRNA-seq de verdad?
+./scripts/fetch_runs.sh prefetch     # los .sra a Drive, por tandas
+./scripts/fetch_genomes.sh fetch     # los ensamblados a Drive
+./scripts/fetch_genomes.sh verificar # recalcula los sha256 contra el ledger
 ```
+
+El manifiesto y los ensamblados **no se editan a mano**: se regeneran. Sacar una
+corrida va en `data/excluidas.tsv`, con el motivo medido; editar
+`data/srr_manifest.tsv` a mano lo deshace la próxima regeneración, en silencio.
+
+Falta, y va acá cuando llegue: `./check_env.sh`, `./orchestrate.sh` (las 4
+fases, idempotente — relanzar tras un corte no rehace trabajo porque el
+alineamiento salta las corridas cuyo BAM ya existe) y `./verify.sh`.
