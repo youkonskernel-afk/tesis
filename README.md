@@ -31,6 +31,7 @@ data/genomas.tsv          ensamblado por organismo, con estado de verificación
 data/srr_manifest_r1.tsv  169 corridas de la ronda anterior (referencia)
 data/DRIVE.md             índice de Drive: qué hay, dónde, con qué ID
 docs/positivos.md         cómo se arma el conjunto positivo y por qué
+docs/yasma.md             qué consume YASMA, qué decide, y cómo pinearlo
 docs/colab.md             Colab como administrador de datos
 docs/plan_datos_colab.md  el plan que implementa lo anterior
 notebooks/00_setup.ipynb  monta Drive, clona, instala, verifica

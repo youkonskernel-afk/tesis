@@ -358,6 +358,32 @@ probabilidad calibrada.
 - **YASMA v1.1.1 escribe en `annotations/<nombre>/loci.gff3`**, no en
   `annotation/`. Un chequeo contra la ruta vieja hacía abortar el pipeline tras
   el primer organismo.
+- **El BAM que va a YASMA tiene que traer `@RG` por corrida.** `yasma tradeoff`
+  hace `header['RG']` sin `.get()`: un BAM sin read groups no degrada, tira
+  `KeyError: 'RG'`. Y no es cosmético — agrega profundidad por read group, así
+  que sin `@RG` no podría separar librerías aunque no se cayera. Medido; ver
+  `docs/yasma.md`.
+- **`yasma align` no es nuestro camino.** Envuelve a `ShortStack` y pediría las
+  librerías ya recortadas; usarlo reemplazaría nuestro bowtie y con él el
+  `-m 50`, que está medido. Lo que usamos es `yasma tradeoff -a <BAM>`, que
+  consume **nuestro** alineamiento.
+- **`yasma adapter` no reemplaza a `perfil`: su criterio es más débil.** Marca
+  `PRE-TRIMMED` con `read_length_freq < 0.8 and best_perc < 0.10`, o sea que usa
+  la **dispersión** del largo del read, no su magnitud. Corrido cabeza a cabeza
+  contra `perfil` sobre las mismas lecturas, coinciden en `cloro` y en el caso
+  mRNA, pero **una librería recortada a un solo largo le sale `None`, igual que
+  el mRNA** — el mismo bug que `perfil` tuvo y se arregló. Ninguno de los 19
+  proyectos está en ese estado, así que acierta en los 19, pero por suerte: el
+  único pre-recortado es `cloro`, y sus largos de 30-34 nt son justo la
+  variación que su criterio necesita. El que decide sigue siendo `perfil`.
+- **Clonar YASMA por defecto no te da la versión pineada.** El branch por
+  defecto del repo es `library-scaling`, no `main`, y deja 1.1.0. Peor: el
+  `pyproject.toml` **dentro del tag `v1.1.1` declara `version = "1.1.0"`**, así
+  que los metadatos del paquete instalado no sirven para verificar qué versión
+  es. Se pinea por ref —`git+https://github.com/NateyJay/YASMA@v1.1.1`— y no por
+  número. También: `import RNA` de ViennaRNA está en el nivel superior de
+  `hairpin`, que `__init__` importa, así que sin ViennaRNA **no arranca ningún
+  subcomando**, ni los que no tocan estructura.
 - **`prefetch` puede salir con código 0 sin dejar un `.sra`.** Le pasa a las
   corridas que no tienen *SRA Normalized Format*: baja un `.sralite` y sale
   contento. También sale 0 cuando el resolver no encuentra nada. Por eso
@@ -429,5 +455,7 @@ regenerando el manifiesto desde Colab.
 
 micromamba, entorno `srna2` (se llama así porque el primer intento usó Python
 3.11 y YASMA exige >= 3.12). Pin en `environment.yml` + `environment_pip.txt`.
+YASMA se pinea por ref de git, no por número de versión — ver `docs/yasma.md`,
+que documenta qué consume, qué decide y dónde no hay que confiarle.
 `./check_env.sh` verifica que cada herramienta **arranque** de verdad, incluido
 `import RNA` de ViennaRNA — el fallo clásico.
