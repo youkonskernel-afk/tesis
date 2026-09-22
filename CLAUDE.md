@@ -260,6 +260,15 @@ probabilidad calibrada.
   del asunto de SRA Lite — en el recorte la calidad sintética no distorsiona
   nada porque no se mira. Detalle que cuesta una corrida: `yasma trim` **no
   tiene `--override`**, aunque `yasma adapter` sí.
+- **`maggi` primario son dos BioProjects de eras distintas, y eso es una fila
+  de adaptador cada uno.** `vdb-dump --info` da la fecha de carga:
+  `SRR317135` (`PRJNA154615`) es de **julio de 2011** y `SRR1066790`
+  (`PRJNA232734`) de **enero de 2014**. Justo el rango donde cambió el kit — es
+  el proyecto que pasó de 0% a 92% de adaptador al agregar los prefijos viejos.
+  `data/adaptadores.tsv` lleva una fila por proyecto, no por organismo, así que
+  esto queda cubierto; pero llenarla con un solo adaptador para "maggi primario"
+  sería un error, y no fallaría ruidosamente: `--trimmed-only` simplemente
+  descartaría casi todo el proyecto cuya secuencia no corresponde.
 - **El adaptador no se detecta en tiempo de corrida: sale de
   `data/adaptadores.tsv`.** `yasma trim` ante un adaptador `"None"` **descarta
   la librería** —no la suma a `trimmed_libraries` y desaparece del pipeline sin
@@ -430,6 +439,12 @@ probabilidad calibrada.
   no está imprime el log de `prefetch` y lista el staging en vez de fallar
   mudo. No volver a mandar la salida de `prefetch` a `/dev/null`: un fallo que
   no se puede leer cuesta una corrida entera para diagnosticarse.
+- **El `read_count` del manifiesto está verificado contra el archivo, no solo
+  declarado por la ENA.** `vdb-dump --info` informa `SEQ`, que es el conteo de
+  reads del propio `.sra`; para `SRR317135` (14 311 812) y `SRR1066790`
+  (11 760 772) coincide exacto con el manifiesto. Es una comprobación cruzada
+  barata que `./scripts/fetch_runs.sh diag <RUN>` deja a mano si alguna corrida
+  da un conteo sospechoso.
 - **Dos corridas son SRA Lite y eso va en métodos.** `SRR317135` y
   `SRR1066790` (primario de `maggi`) solo existen en ese formato — `prefetch`
   dice explícitamente que prefiere el normalizado y que cae a lite *due to
