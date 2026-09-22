@@ -20,7 +20,9 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$DIR/_drive_lib.sh"
 
 REMOTE="${DRIVE_REMOTE:-$DRIVE_REMOTE_DEFAULT}"
-DRIVE_ROOT="${DRIVE_ROOT:-tesis}"
+# OJO con `-` y no `:-`: DRIVE_ROOT='' es una configuracion valida
+# (remoto con root_folder_id ya apuntando a tesis/), y `:-` la pisaria.
+DRIVE_ROOT="${DRIVE_ROOT-tesis}"
 LOCAL_ROOT="${LOCAL_ROOT:-$(cd "$DIR/.." && pwd)}"
 
 usage() { sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-2}"; }
@@ -30,7 +32,7 @@ case "$1" in -h|--help) usage 0 ;; esac
 parse_args_drive "$@" || usage
 
 SRC_PATH="$LOCAL_ROOT/$SRC"
-DST_PATH="$REMOTE:$DRIVE_ROOT/$DST"
+DST_PATH="$REMOTE:${DRIVE_ROOT:+$DRIVE_ROOT/}$DST"
 [[ -d "$SRC_PATH" ]] || { echo "no existe: $SRC_PATH" >&2; exit 1; }
 
 # --checksum en vez de --size-only: un BAM truncado por un corte de red tiene

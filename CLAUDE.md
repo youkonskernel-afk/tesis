@@ -565,6 +565,18 @@ probabilidad calibrada.
   `git status` muestre cientos de GB. El banco de rutas exige que **todos** los
   del mapa de fases estén ignorados, así que agregar una fase nueva sin su
   entrada ahora falla.
+- **Dos formas de configurar rclone mal que no dan error: el remoto lista
+  vacío.** (a) elegir `scope = drive.file` en vez de `drive` — rclone solo ve
+  los ficheros que él mismo creó, y las carpetas de `tesis/` se hicieron a mano
+  en la web; (b) poner `root_folder_id` apuntando a `tesis/` **y** dejar
+  `DRIVE_ROOT=tesis`, con lo que rclone busca `tesis/tesis/80_sra/`. En los dos
+  casos `drive_pull.sh sra <org> --go` baja **0 ficheros y sale con código 0**.
+  `./scripts/drive_check.sh` los distingue; la guía está en `docs/rclone.md`.
+- **`${VAR:-x}` usa el default también cuando `VAR` está definida pero vacía**;
+  `${VAR-x}` solo cuando no está definida. Los tres scripts de Drive usaban
+  `:-` para `DRIVE_ROOT`, así que `DRIVE_ROOT=''` —la salida de escape
+  documentada para un remoto que ya tiene `root_folder_id`— no existía. Lo
+  encontró el banco de `drive_check`.
 - **`purge` borraba la copia local sin comprobar que estuviera en Drive.** Su
   docstring decía "nunca toca Drive", que es verdad y no es el peligro: para
   `bam`, `yasma`, `features` y `modelos` la copia local es lo que se **produjo**
@@ -591,6 +603,7 @@ Lo que necesita red va en otro lado:
 | genomas | Colab | `notebooks/descarga_genomas.ipynb` |
 | manifiesto y `.sra` | Colab | `notebooks/10_descarga_runs.ipynb` |
 | ver qué falta | Colab | `notebooks/90_estado.ipynb` |
+| configurar rclone | máquina local | `docs/rclone.md` + `scripts/drive_check.sh` |
 | traer `.sra` para alinear | máquina local | `scripts/drive_pull.sh sra <org> --go` |
 | alineamiento y YASMA | máquina local | `orchestrate.sh` |
 | BAMs a Drive | máquina local | `scripts/drive_push.sh` |
@@ -605,7 +618,7 @@ purga después. Ver `docs/colab.md` y `docs/plan_datos_colab.md`.
 Todo corre sin red y en segundos. Antes de cada push:
 
 ```bash
-./tests/run_all.sh              # 14 bancos, 342 chequeos, binarios falsos en el PATH
+./tests/run_all.sh              # 15 bancos, 366 chequeos, binarios falsos en el PATH
 ./tests/mutar.py                # rompe el codigo y exige que algun banco grite
 ./scripts/check_docs.py         # lo que afirman los docs contra data/
 ./scripts/validate_notebooks.py # los .ipynb parsean y no hay duplicados
@@ -616,7 +629,7 @@ y `check_docs.py` dos más.
 
 **Un banco que pasa no prueba nada.** Prueba algo el día que se rompe lo que
 cubre y el banco se queja, y la única forma de saberlo es romper el código a
-propósito: eso es `tests/mutar.py`, 42 mutaciones que tienen que dar todas
+propósito: eso es `tests/mutar.py`, 46 mutaciones que tienen que dar todas
 `[OK]`. Un `[HUECO]` es un chequeo que falta; un `[VIEJA]` es una mutación cuyo
 patrón ya no existe, que tampoco prueba nada. Así aparecieron los dos huecos que
 ninguna otra cosa mostró — el veredicto de `perfil` que iba a la tabla sin estar
