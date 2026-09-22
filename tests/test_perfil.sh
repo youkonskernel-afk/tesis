@@ -178,13 +178,17 @@ MAN="$TMP/man.tsv"
   # que se escribe ahi es una variable DISTINTA del mensaje '>>>' de arriba, y
   # sin esta fila se puede romper uno sin que el otro se entere.
   printf 'dd\tTRIM1\tPRJ_D\tprimario\tapl\t100\t100\t30\tncRNA-Seq\tSINGLE\tTRANSCRIPTOMIC\n'
+  # PRJ_E es el caso galga PRJEB12164: casi todo tiene adaptador, pero el
+  # inserto modal es un dimero y muere en el piso de 15 nt. La retencion es
+  # mucho menor que el adapt_pct.
+  printf 'ee\tDIMERO1\tPRJ_E\tprimario\tapl\t100\t100\t150\tmiRNA-Seq\tSINGLE\tTRANSCRIPTOMIC\n'
 } > "$MAN"
 
 S=$(MANIFEST="$MAN" bash "$R" perfil --proyectos -n 2000 2>&1); RC=$?
 echo "$S" | sed -n '/RESUMEN$/,$p'
 
-[[ $(grep -c '^== ' <<<"$S") -eq 4 ]] && ok "perfila 4 proyectos, no 5 corridas" \
-  || mal "perfila 4 proyectos (vio $(grep -c '^== ' <<<"$S"))"
+[[ $(grep -c '^== ' <<<"$S") -eq 5 ]] && ok "perfila 5 proyectos, no 6 corridas" \
+  || mal "perfila 5 proyectos (vio $(grep -c '^== ' <<<"$S"))"
 grep -q "SRNA2" <<<"$S" && mal "no repite proyecto" || ok "no repite proyecto"
 rex(){ grep -qE -- "$2" <<<"$3" && ok "$1" || mal "$1 — falta: $2"; }
 rex   "PRJ_A pasa"            "PRJ_A .*PARECE sRNA-seq"  "$S"
@@ -207,6 +211,9 @@ tiene "avisa cuantos fallan"  "2 proyecto(s) sin veredicto favorable"  "$S"
 { printf 'org\trun\tbioproject\trol\tset_modelo\tread_count\tbase_count\tavg_len\tstrategy\tlayout\tsource\n'
   printf 'aa\tSRNA1\tPRJ_A\tprimario\tapl\t100\t100\t50\tmiRNA-Seq\tSINGLE\tTRANSCRIPTOMIC\n'
   printf 'dd\tTRIM1\tPRJ_D\tprimario\tapl\t100\t100\t30\tncRNA-Seq\tSINGLE\tTRANSCRIPTOMIC\n'
+  # El dimero pasa el veredicto igual, y es el unico con la retencion muy por
+  # debajo del adapt_pct: lo necesita el bloque --tsv de mas abajo.
+  printf 'ee\tDIMERO1\tPRJ_E\tprimario\tapl\t100\t100\t150\tmiRNA-Seq\tSINGLE\tTRANSCRIPTOMIC\n'
 } > "$MAN"
 S2=$(MANIFEST="$MAN" bash "$R" perfil --proyectos -n 2000 2>&1); RC2=$?
 [[ $RC2 -eq 0 ]] && ok "exit 0 si todos pasan" || mal "exit 0 si todos pasan (rc=$RC2)"
@@ -219,8 +226,8 @@ S3=$(MANIFEST="$MAN" bash "$R" perfil --proyectos --tsv -n 2000 2>&1)
 tiene "tiene el bloque"        "PARA data/adaptadores.tsv"   "$S3"
 # 8 columnas, las de adaptadores.tsv
 _fila=$(sed -n "/PARA data/,\$p" <<<"$S3" | grep -P "^aa\tPRJ_A\t")
-[[ $(awk -F'\t' '{print NF}' <<<"$_fila") -eq 8 ]] \
-  && ok "8 columnas" || mal "8 columnas (tiene $(awk -F'\t' '{print NF}' <<<"$_fila"))"
+[[ $(awk -F'\t' '{print NF}' <<<"$_fila") -eq 9 ]] \
+  && ok "9 columnas" || mal "9 columnas (tiene $(awk -F'\t' '{print NF}' <<<"$_fila"))"
 [[ $(cut -f3 <<<"$_fila") == "RA3" ]] && ok "columna familia" \
   || mal "columna familia (dio '$(cut -f3 <<<"$_fila")')"
 # La secuencia COMPLETA, no el prefijo que se usa para detectar
@@ -241,6 +248,22 @@ _trim=$(sed -n "/PARA data/,\$p" <<<"$S3" | grep -P "^dd\tPRJ_D\t")
 [[ $(cut -f6 <<<"$_trim") == "-" ]] && ok "ni inserto inventado" \
   || mal "ni inserto inventado (dio '$(cut -f6 <<<"$_trim")')"
 tiene "avisa de las que no se pueden recortar" "NO se pueden recortar" "$S3"
+
+# La retencion es la INTERSECCION de los dos filtros de cutadapt —tener
+# adaptador Y caer en 15-50—, no el adapt_pct. galga PRJEB12164 tiene 95% de
+# adaptador y retiene 52%, porque el 20% de sus insertos mide 6-7 nt.
+_dim=$(sed -n "/PARA data/,\$p" <<<"$S3" | grep -P "^ee\tPRJ_E\t")
+_ap=$(cut -f5 <<<"$_dim"); _ret=$(cut -f7 <<<"$_dim")
+[[ "$_ap" == "100" && "$_ret" -lt 70 ]] \
+  && ok "retencion < adapt_pct cuando el inserto cae fuera ($_ap% vs $_ret%)" \
+  || mal "retencion < adapt_pct (adapt=$_ap ret=$_ret)"
+tiene "y la tabla trae la columna" "RETIENE" "$S3"
+# La PRE-TRIMMED retiene 100 porque NO se le aplica ningun filtro, ni el de
+# longitud. El 0% que salia era la fraccion en ventana, que sin adaptador es 0
+# por definicion y no dice nada.
+[[ $(cut -f7 <<<"$_trim") == "100" ]] \
+  && ok "la PRE-TRIMMED retiene 100, no 0" \
+  || mal "la PRE-TRIMMED retiene 100 (dio $(cut -f7 <<<"$_trim"))"
 # La tabla y el TSV salen del MISMO comando: no pueden decir cosas distintas.
 _tab=$(sed -n "/RESUMEN/,/PARA data/p" <<<"$S3" | grep -E "^dd +PRJ_D")
 _tsv=$(sed -n "/PARA data/,\$p" <<<"$S3" | grep -P "^dd\tPRJ_D\t")
@@ -251,6 +274,6 @@ grep -qE " -$" <<<"$_tab" && ok "la tabla tampoco inventa familia" \
 
 echo "== sin --tsv no imprime el bloque"
 notiene "no esta"  "PARA data/adaptadores.tsv"  "$S2"
-tiene "y cuenta los 2" "Los 2 proyectos son sRNA-seq" "$S2"
+tiene "y cuenta los 3" "Los 3 proyectos son sRNA-seq" "$S2"
 
 echo; [[ $FALLAS -eq 0 ]] && echo "TODO OK" || { echo "$FALLAS fallas"; exit 1; }

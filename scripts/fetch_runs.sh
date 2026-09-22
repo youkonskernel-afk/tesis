@@ -624,8 +624,13 @@ cmd_perfil() {
         ver = "DUDOSA"
         printf "   >>> DUDOSA: hay adaptador pero el inserto cae fuera de %d-%d nt.\n", vmin, vmax
       }
-      printf "RESUMEN\t%.0f\t%s\t%d nt\t%s\t%s\n", 100*con/total,
-             (hay_ad ? modal" nt" : "-"), med_lr, ver, ad_top > "/dev/stderr"
+      # 'dentro' cuenta los reads con adaptador Y con el inserto en la ventana:
+      # es exactamente lo que sobrevive a --trimmed-only + --min/--maximum-length,
+      # o sea la retencion esperada del recorte. NO es el adapt_pct: para
+      # galga PRJEB12164 son 95% y 52%.
+      printf "RESUMEN\t%.0f\t%s\t%d nt\t%s\t%s\t%.0f\n", 100*con/total,
+             (hay_ad ? modal" nt" : "-"), med_lr, ver, ad_top,
+             100*dentro/total > "/dev/stderr"
     }' "$fq" 2> "$fq.res"
   RESUMEN_PERFIL=$(grep '^RESUMEN' "$fq.res" 2>/dev/null | cut -f2- || true)
   cat "$fq.res" | grep -v '^RESUMEN' >&2 || true
@@ -645,16 +650,16 @@ cmd_perfil_proyectos() {
   while IFS=$'\t' read -r org proy rol strat run; do
     cmd_perfil "$run" "$n" || true
     printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$org" "$proy" "$rol" "$strat" "$run" \
-      "${RESUMEN_PERFIL:-?\t?\t?\tSIN DATO\t?}" >> "$tabla"
+      "${RESUMEN_PERFIL:-?\t?\t?\tSIN DATO\t?\t?}" >> "$tabla"
     echo
   done < <(awk -F'\t' 'NR>1 && !(($1 FS $3) in v) {v[$1 FS $3]=1;
              print $1"\t"$3"\t"$4"\t"$9"\t"$2}' "$MANIFEST" | sort)
 
   echo "==================== RESUMEN"
-  printf '%-7s %-14s %-10s %-11s %6s %8s %7s  %-17s %s\n' \
-    ORG PROYECTO ROL ETIQUETA ADAPT INSERTO READ VEREDICTO ADAPTADOR
-  awk -F'\t' '{printf "%-7s %-14s %-10s %-11s %5s%% %8s %7s  %-17s %s\n", \
-    $1,$2,$3,$4,$6,$7,$8,$9,$10}' "$tabla"
+  printf '%-7s %-14s %-10s %-11s %6s %8s %7s %8s  %-17s %s\n' \
+    ORG PROYECTO ROL ETIQUETA ADAPT INSERTO READ RETIENE VEREDICTO ADAPTADOR
+  awk -F'\t' '{printf "%-7s %-14s %-10s %-11s %5s%% %8s %7s %7s%%  %-17s %s\n", \
+    $1,$2,$3,$4,$6,$7,$8,$11,$9,$10}' "$tabla"
   echo
   # Filas listas para data/adaptadores.tsv. Existe para no pasar a mano lo que
   # la herramienta ya midio: copiar 19 filas de una tabla formateada es
@@ -672,12 +677,24 @@ cmd_perfil_proyectos() {
         fam = $10; ver = $9; sec = "-"
         # La tabla para leer dice "22 nt"; un TSV lleva el numero solo.
         ins = $7; sub(/ nt$/, "", ins)
-        # Ya recortada: yasma la pasa de largo sin llamar a cutadapt. La familia
-        # y el inserto ya vienen en '-' desde el RESUMEN cuando no hay adaptador.
-        if (ver == "YA RECORTADA") sec = "PRE-TRIMMED"
+        ret = $11
+        if (ver == "YA RECORTADA") {
+          # Ya recortada: yasma la pasa de largo sin llamar a cutadapt. La
+          # familia y el inserto vienen sin dato desde el RESUMEN, y la
+          # retencion es 100 por una razon distinta del resto: no es que todo
+          # pase el filtro, es que NO SE LE APLICA ninguno. Ni el de longitud.
+          # El 0% que salia aca era la fraccion dentro de la ventana, que para
+          # una libreria sin adaptador es 0 por definicion y no significa nada.
+          #
+          # OJO con las comillas simples en estos comentarios: todo el programa
+          # awk va entre comillas simples del shell, asi que una sola las cierra
+          # y el programa llega truncado. El sintoma es un error de sintaxis de
+          # awk apuntando a una linea de comentario.
+          sec = "PRE-TRIMMED"; ret = "100"
+        }
         else if (fam in SEC)       sec = SEC[fam]
-        printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-               $1, $2, fam, sec, $6, ins, ver, hoy
+        printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+               $1, $2, fam, sec, $6, ins, ret, ver, hoy
       }' "$tabla"
     echo
     echo "Las filas con secuencia '-' NO se pueden recortar: o la familia es 5p"

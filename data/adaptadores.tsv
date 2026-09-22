@@ -20,6 +20,7 @@
 #                    (YASMA la pasa de largo sin tocarla).
 #   adapt_pct        % de reads con adaptador que midio `perfil`
 #   inserto_modal    largo modal del inserto, en nt
+#   retencion_est    % de reads que se espera que SOBREVIVAN al recorte
 #   veredicto        el de `perfil`
 #   fecha_utc        cuando se midio
 #
@@ -51,29 +52,35 @@
 # sobre 5 reads no es una medicion, asi que van '-'. El generador ya hace esto.
 #
 # LO QUE ESTAS FILAS IMPLICAN PARA EL QC DEL RECORTE
-# `--trimmed-only` descarta los reads sin adaptador, asi que la retencion
-# esperada de cada proyecto es su adapt_pct, NO ~100%. Los tres mas bajos —
-# cloro PRJEB51338 (62%), maggi PRJNA154615 (62%) y maldo PRJNA681626 (79%)—
-# van a perder esa fraccion a proposito. Y `gadmo PRJNA328800` tiene inserto
-# modal 10 nt (dimeros de adaptador), asi que ademas pierde lo que caiga bajo
-# el piso de 15 nt.
-org	bioproject	familia	secuencia	adapt_pct	inserto_modal	veredicto	fecha_utc
-cloro	PRJEB43636	-	PRE-TRIMMED	0	-	YA RECORTADA	2026-09-22
-cloro	PRJEB51338	RA3	TGGAATTCTCGGGTGCCAAGG	62	38	PARECE sRNA-seq	2026-09-22
-gadmo	PRJNA284846	RA3	TGGAATTCTCGGGTGCCAAGG	96	32	PARECE sRNA-seq	2026-09-22
-gadmo	PRJNA328800	RA3	TGGAATTCTCGGGTGCCAAGG	84	10	PARECE sRNA-seq	2026-09-22
-galga	PRJEB12164	RA3	TGGAATTCTCGGGTGCCAAGG	95	22	PARECE sRNA-seq	2026-09-22
-galga	PRJNA694114	RA3	TGGAATTCTCGGGTGCCAAGG	98	22	PARECE sRNA-seq	2026-09-22
-maggi	PRJNA154615	smallRNA_2011	TCGTATGCCGTCTTCTGCTTG	62	22	PARECE sRNA-seq	2026-09-22
-maggi	PRJNA232734	RA3	TGGAATTCTCGGGTGCCAAGG	90	22	PARECE sRNA-seq	2026-09-22
-maggi	PRJNA1254880	Illumina_universal	AGATCGGAAGAGCACACGTCT	97	22	PARECE sRNA-seq	2026-09-22
-maldo	PRJNA681626	RA3	TGGAATTCTCGGGTGCCAAGG	79	24	PARECE sRNA-seq	2026-09-22
-maldo	PRJNA784097	RA3	TGGAATTCTCGGGTGCCAAGG	99	24	PARECE sRNA-seq	2026-09-22
-phypa	PRJNA222997	RA3	TGGAATTCTCGGGTGCCAAGG	86	21	PARECE sRNA-seq	2026-09-22
-phypa	PRJNA277372	smallRNA_2011	TCGTATGCCGTCTTCTGCTTG	97	21	PARECE sRNA-seq	2026-09-22
-prupe	PRJNA780811	RA3	TGGAATTCTCGGGTGCCAAGG	96	21	PARECE sRNA-seq	2026-09-22
-prupe	PRJNA929031	RA3	TGGAATTCTCGGGTGCCAAGG	89	24	PARECE sRNA-seq	2026-09-22
-rhirr	PRJEB29180	RA3	TGGAATTCTCGGGTGCCAAGG	92	30	PARECE sRNA-seq	2026-09-22
-rhirr	PRJNA722321	RA3	TGGAATTCTCGGGTGCCAAGG	87	32	PARECE sRNA-seq	2026-09-22
-sclsc	PRJNA477286	RA3	TGGAATTCTCGGGTGCCAAGG	99	21	PARECE sRNA-seq	2026-09-22
-sclsc	PRJNA1135930	Illumina_universal	AGATCGGAAGAGCACACGTCT	98	22	PARECE sRNA-seq	2026-09-22
+# Mirar `retencion_est`, NO `adapt_pct`. cutadapt descarta dos cosas: los reads
+# sin adaptador (--trimmed-only) Y los que quedan fuera de 15-50 nt. La
+# retencion es la interseccion, y la brecha entre las dos columnas puede ser
+# enorme: galga PRJEB12164 tiene 95% de adaptador y retiene 52%, porque el 20%
+# de sus insertos mide 6-7 nt (dimeros) y muere en el piso de 15.
+#
+# Los tres mas bajos: gadmo PRJNA328800 (51%), galga PRJEB12164 (52%) y
+# cloro PRJEB51338 (57%). Esa perdida es correcta, no un fallo del recorte.
+#
+# cloro PRJEB43636 retiene 100% por un motivo distinto: es PRE-TRIMMED, asi que
+# YASMA la pasa de largo y NO le aplica ningun filtro. Ni el de longitud. Es la
+# unica de las 19 que entra al alineamiento sin pasar por la ventana 15-50.
+org	bioproject	familia	secuencia	adapt_pct	inserto_modal	retencion_est	veredicto	fecha_utc
+cloro	PRJEB43636	-	PRE-TRIMMED	0	-	100	YA RECORTADA	2026-09-22
+cloro	PRJEB51338	RA3	TGGAATTCTCGGGTGCCAAGG	62	38	57	PARECE sRNA-seq	2026-09-22
+gadmo	PRJNA284846	RA3	TGGAATTCTCGGGTGCCAAGG	96	32	94	PARECE sRNA-seq	2026-09-22
+gadmo	PRJNA328800	RA3	TGGAATTCTCGGGTGCCAAGG	84	10	51	PARECE sRNA-seq	2026-09-22
+galga	PRJEB12164	RA3	TGGAATTCTCGGGTGCCAAGG	95	22	52	PARECE sRNA-seq	2026-09-22
+galga	PRJNA694114	RA3	TGGAATTCTCGGGTGCCAAGG	98	22	94	PARECE sRNA-seq	2026-09-22
+maggi	PRJNA1254880	Illumina_universal	AGATCGGAAGAGCACACGTCT	97	22	95	PARECE sRNA-seq	2026-09-22
+maggi	PRJNA154615	smallRNA_2011	TCGTATGCCGTCTTCTGCTTG	62	22	62	PARECE sRNA-seq	2026-09-22
+maggi	PRJNA232734	RA3	TGGAATTCTCGGGTGCCAAGG	90	22	87	PARECE sRNA-seq	2026-09-22
+maldo	PRJNA681626	RA3	TGGAATTCTCGGGTGCCAAGG	79	24	77	PARECE sRNA-seq	2026-09-22
+maldo	PRJNA784097	RA3	TGGAATTCTCGGGTGCCAAGG	99	24	79	PARECE sRNA-seq	2026-09-22
+phypa	PRJNA222997	RA3	TGGAATTCTCGGGTGCCAAGG	86	21	69	PARECE sRNA-seq	2026-09-22
+phypa	PRJNA277372	smallRNA_2011	TCGTATGCCGTCTTCTGCTTG	97	21	97	PARECE sRNA-seq	2026-09-22
+prupe	PRJNA780811	RA3	TGGAATTCTCGGGTGCCAAGG	96	21	90	PARECE sRNA-seq	2026-09-22
+prupe	PRJNA929031	RA3	TGGAATTCTCGGGTGCCAAGG	89	24	87	PARECE sRNA-seq	2026-09-22
+rhirr	PRJEB29180	RA3	TGGAATTCTCGGGTGCCAAGG	92	30	73	PARECE sRNA-seq	2026-09-22
+rhirr	PRJNA722321	RA3	TGGAATTCTCGGGTGCCAAGG	87	32	86	PARECE sRNA-seq	2026-09-22
+sclsc	PRJNA1135930	Illumina_universal	AGATCGGAAGAGCACACGTCT	98	22	97	PARECE sRNA-seq	2026-09-22
+sclsc	PRJNA477286	RA3	TGGAATTCTCGGGTGCCAAGG	99	21	77	PARECE sRNA-seq	2026-09-22

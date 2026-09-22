@@ -223,10 +223,17 @@ probabilidad calibrada.
   Cuatro cosas del perfilado que conviene tener a mano cuando se mire el QC del
   recorte, para no perseguir un bug que no existe:
 
-  - **La retención esperada de cada proyecto es su `adapt_pct`, no ~100%**,
-    porque `--trimmed-only` descarta los reads sin adaptador. Los tres más bajos
-    son `cloro PRJEB51338` (62%), `maggi PRJNA154615` (62%) y
-    `maldo PRJNA681626` (79%).
+  - **La retención es la columna `retencion_est`, no `adapt_pct`.** cutadapt
+    descarta dos cosas: los reads sin adaptador (`--trimmed-only`) **y** los que
+    quedan fuera de 15-50. La retención es la intersección, y la brecha puede
+    ser enorme: `galga PRJEB12164` tiene **95% de adaptador y retiene 52%**,
+    porque el 20% de sus insertos mide 6-7 nt y muere en el piso de 15. Los tres
+    más bajos son `gadmo PRJNA328800` (51%), `galga PRJEB12164` (52%) y
+    `cloro PRJEB51338` (57%).
+  - **`cloro PRJEB43636` retiene 100% por un motivo distinto del resto**: es
+    `PRE-TRIMMED`, así que YASMA la pasa de largo y **no le aplica ningún
+    filtro**, ni el de longitud. Es la única de las 19 que entra al alineamiento
+    sin pasar por la ventana 15-50.
   - **`cloro PRJEB43636` viene ya recortado** (reads de 36 nt, 0% de adaptador
     porque el read *es* el inserto). Va `PRE-TRIMMED`: YASMA lo pasa de largo.
   - **`gadmo PRJNA328800`: el 28% de los reads tienen inserto de 10 nt** y
@@ -296,6 +303,11 @@ probabilidad calibrada.
   alineamiento largo (6 diferencias en 27 nt = 22%, sobre el 10% por defecto) y
   recién después aceptar el corto. Funciona, pero dependiendo del umbral de
   error. Con 21 nt no hay mismatch posible para ninguno de los dos kits.
+- **Una comilla simple adentro de un programa `awk` cierra la cadena del
+  shell.** Todo el `awk` va entre comillas simples, así que un `'-'` en un
+  **comentario** trunca el programa. El síntoma engaña: `awk` reporta un error
+  de sintaxis apuntando a una línea de comentario, que es donde se quedó sin
+  texto, no donde está el problema.
 - **Un porcentaje sobre 5 reads no es una medición, y el mismo comando no puede
   dar dos respuestas.** `cloro PRJEB43636` salió con
   `adaptador: RA3 (100% de los que tienen)` — de **5 reads de 20 000**, o sea
@@ -593,7 +605,7 @@ purga después. Ver `docs/colab.md` y `docs/plan_datos_colab.md`.
 Todo corre sin red y en segundos. Antes de cada push:
 
 ```bash
-./tests/run_all.sh              # 14 bancos, 339 chequeos, binarios falsos en el PATH
+./tests/run_all.sh              # 14 bancos, 342 chequeos, binarios falsos en el PATH
 ./tests/mutar.py                # rompe el codigo y exige que algun banco grite
 ./scripts/check_docs.py         # lo que afirman los docs contra data/
 ./scripts/validate_notebooks.py # los .ipynb parsean y no hay duplicados
@@ -604,7 +616,7 @@ y `check_docs.py` dos más.
 
 **Un banco que pasa no prueba nada.** Prueba algo el día que se rompe lo que
 cubre y el banco se queja, y la única forma de saberlo es romper el código a
-propósito: eso es `tests/mutar.py`, 40 mutaciones que tienen que dar todas
+propósito: eso es `tests/mutar.py`, 42 mutaciones que tienen que dar todas
 `[OK]`. Un `[HUECO]` es un chequeo que falta; un `[VIEJA]` es una mutación cuyo
 patrón ya no existe, que tampoco prueba nada. Así aparecieron los dos huecos que
 ninguna otra cosa mostró — el veredicto de `perfil` que iba a la tabla sin estar
