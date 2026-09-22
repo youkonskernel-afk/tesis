@@ -442,9 +442,17 @@ cmd_prefetch() {
 # lo mismo que el prefijo de ADAPTADORES: ese detecta, este recorta. Un 5p o un
 # sin_identificar no tienen entrada a proposito — no se recorta con ellos, y
 # trim.sh lo rechaza mirando la familia.
-SECUENCIAS="RA3:TGGAATTCTCGGGTGCCAAGG TruSeq_universal:AGATCGGAAGAGCACACGTCTGAACTCCAGTCA smallRNA_2011:TCGTATGCCGTCTTCTGCTTG"
+# Illumina_universal va con el PREFIJO COMUN de 21 nt, no con la version larga
+# de TruSeq: ese prefijo lo comparten TruSeq y el 3' SR de NEBNext Small RNA, y
+# divergen despues del nt 21. Si la libreria es NEBNext y se le da el de TruSeq,
+# cutadapt tiene que rechazar el alineamiento largo (6 diferencias en 27 nt, 22%,
+# sobre el 10% por defecto) y recien despues aceptar el corto. Funciona, pero por
+# el camino largo y dependiendo del umbral de error. Con 21 nt no hay mismatch
+# posible, y un adaptador inmediatamente 3' de un inserto de 22 nt en una
+# libreria de sRNA es NEBNext con mas probabilidad que TruSeq.
+SECUENCIAS="RA3:TGGAATTCTCGGGTGCCAAGG Illumina_universal:AGATCGGAAGAGCACACGTCT smallRNA_2011:TCGTATGCCGTCTTCTGCTTG"
 
-ADAPTADORES="TGGAATTCTCGGG:RA3 AGATCGGAAGAGC:TruSeq_universal GATCGTCGGACTG:5p:RA5 ATCTCGTATGCCG:smallRNA_2011 TCGTATGCCGTCTTCTGCTTG:smallRNA_2011 CGCCTTGGCCGT:??:sin_identificar"
+ADAPTADORES="TGGAATTCTCGGG:RA3 AGATCGGAAGAGC:Illumina_universal GATCGTCGGACTG:5p:RA5 ATCTCGTATGCCG:smallRNA_2011 TCGTATGCCGTCTTCTGCTTG:smallRNA_2011 CGCCTTGGCCGT:??:sin_identificar"
 
 # Ventana de fastp, que es la que decide que entra al pipeline. El veredicto la
 # usa en vez de un 18-30 propio: el proyecto eligio 15-50 a proposito para no
@@ -640,9 +648,13 @@ cmd_perfil_proyectos() {
         fam = $10; ver = $9; sec = "-"
         # La tabla para leer dice "22 nt"; un TSV lleva el numero solo.
         ins = $7; sub(/ nt$/, "", ins)
-        # Una libreria ya recortada se marca PRE-TRIMMED: yasma la pasa de largo
-        # sin llamar a cutadapt.
-        if (ver == "YA RECORTADA") sec = "PRE-TRIMMED"
+        if (ver == "YA RECORTADA") {
+          # Ya recortada: yasma la pasa de largo sin llamar a cutadapt. Y la
+          # familia y el inserto se van a '-' porque salen de los poquisimos
+          # reads que igual matchearon —5 de 20 000 en cloro PRJEB43636— y un
+          # "100% de los que tienen" sobre 5 reads no es una medicion.
+          sec = "PRE-TRIMMED"; fam = "-"; ins = "-"
+        }
         else if (fam in SEC)       sec = SEC[fam]
         printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
                $1, $2, fam, sec, $6, ins, ver, hoy

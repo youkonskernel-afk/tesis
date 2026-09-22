@@ -206,18 +206,35 @@ probabilidad calibrada.
   verdad: la etiqueta de la ENA está mal, la librería no. **El único dato que no era sRNA-seq en todo
   el dataset fue `SRR23277331`**, ya fuera del manifiesto.
 
-  Tres cosas del perfilado que conviene tener a mano cuando se mire el QC de
-  `fastp`, para no perseguir un bug que no existe:
+  **Y con qué adaptador cada uno**, que es lo que el recorte necesita:
+  14 de los 19 con RA3, 2 con el universal de Illumina (`maggi PRJNA1254880` y
+  `sclsc PRJNA1135930`), 2 con el small-RNA de 2011 (`maggi PRJNA154615` y
+  `phypa PRJNA277372`) y `cloro PRJEB43636` sin ninguno porque ya viene
+  recortado. Está en `data/adaptadores.tsv`, emitido por
+  `perfil --proyectos --tsv`.
 
-  - **`cloro PRJEB43636` viene ya recortado** (reads de 35 nt, 0% de adaptador
-    porque el read *es* el inserto). No necesita recorte.
-  - **`gadmo PRJNA328800`: el 37% de los reads tienen inserto de 10 nt** y
-    `phypa PRJNA222997` un 12% de inserto 0 — dímeros de adaptador. `fastp` los
-    descarta por el piso de 15 nt, así que esos dos proyectos van a mostrar una
-    retención baja **a propósito**, no por un fallo.
-  - **`maldo PRJNA784097` (151 nt) está resuelto**: 100% de adaptador con
-    inserto modal 24 nt, o sea que el recorte normal de `fastp` lo recupera. No
-    hace falta pre-trim especial.
+  **Que cada prefijo esté inmediatamente 3' del inserto se verificó con los
+  datos, no se supuso.** Si un prefijo estuviera desplazado aguas abajo del
+  inicio real del adaptador, el "inserto" medido saldría inflado por ese
+  desplazamiento. Dentro de `maggi` las **tres** familias dan el mismo inserto
+  modal (22/22/22), y en `phypa` las dos dan 21. Coinciden, así que los tres
+  anclan bien como `-a` de cutadapt.
+
+  Cuatro cosas del perfilado que conviene tener a mano cuando se mire el QC del
+  recorte, para no perseguir un bug que no existe:
+
+  - **La retención esperada de cada proyecto es su `adapt_pct`, no ~100%**,
+    porque `--trimmed-only` descarta los reads sin adaptador. Los tres más bajos
+    son `cloro PRJEB51338` (62%), `maggi PRJNA154615` (62%) y
+    `maldo PRJNA681626` (79%).
+  - **`cloro PRJEB43636` viene ya recortado** (reads de 36 nt, 0% de adaptador
+    porque el read *es* el inserto). Va `PRE-TRIMMED`: YASMA lo pasa de largo.
+  - **`gadmo PRJNA328800`: el 28% de los reads tienen inserto de 10 nt** y
+    `galga PRJEB12164` un 20% entre 6 y 7 nt — dímeros de adaptador. El piso de
+    15 nt los descarta, así que esos dos pierden **el doble**: lo que no tiene
+    adaptador y lo que queda demasiado corto.
+  - **`maldo PRJNA784097` (151 nt) está resuelto**: 99% de adaptador con inserto
+    modal 24 nt. No hace falta pre-trim especial.
 - **Reads de más de 50 nt: 143 de 417, y ninguna es un problema.** Verificado
   con `perfil`: 51 nt es una librería de 50 ciclos sin recortar, 65-75 nt una de
   75, y los 151 nt de `maldo` traen el adaptador al nt 24. `fastp` las resuelve
@@ -271,6 +288,18 @@ probabilidad calibrada.
   esto queda cubierto; pero llenarla con un solo adaptador para "maggi primario"
   sería un error, y no fallaría ruidosamente: `--trimmed-only` simplemente
   descartaría casi todo el proyecto cuya secuencia no corresponde.
+- **La secuencia universal va con el prefijo común de 21 nt, no con la de
+  TruSeq.** `AGATCGGAAGAGCACACGTCT` lo comparten TruSeq y el 3' SR de NEBNext
+  Small RNA, y divergen después del nt 21. Un adaptador inmediatamente 3' de un
+  inserto de 22 nt en una librería de sRNA es NEBNext antes que TruSeq; darle la
+  versión larga de TruSeq a una librería NEBNext obliga a cutadapt a rechazar el
+  alineamiento largo (6 diferencias en 27 nt = 22%, sobre el 10% por defecto) y
+  recién después aceptar el corto. Funciona, pero dependiendo del umbral de
+  error. Con 21 nt no hay mismatch posible para ninguno de los dos kits.
+- **Un porcentaje sobre 5 reads no es una medición.** `cloro PRJEB43636` salió
+  con `adaptador: RA3 (100% de los que tienen)` — de **5 reads de 20 000**. Es
+  ruido, y ponerlo en la columna `familia` de `adaptadores.tsv` afirma algo que
+  no se midió. Una `YA RECORTADA` va con `familia` e `inserto_modal` en `-`.
 - **`perfil --proyectos --tsv` emite las filas de `data/adaptadores.tsv`.**
   La tabla de `--proyectos` es para leer; pasar 19 filas de ahí a mano es
   exactamente donde se cuela un error que después no falla ruidosamente, solo
@@ -529,7 +558,7 @@ purga después. Ver `docs/colab.md` y `docs/plan_datos_colab.md`.
 Todo corre sin red y en segundos. Antes de cada push:
 
 ```bash
-./tests/run_all.sh              # 12 bancos, 288 chequeos, binarios falsos en el PATH
+./tests/run_all.sh              # 12 bancos, 290 chequeos, binarios falsos en el PATH
 ./tests/mutar.py                # rompe el codigo y exige que algun banco grite
 ./scripts/check_docs.py         # lo que afirman los docs contra data/
 ./scripts/validate_notebooks.py # los .ipynb parsean y no hay duplicados

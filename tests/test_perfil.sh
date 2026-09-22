@@ -202,6 +202,12 @@ _trim=$(sed -n "/PARA data/,\$p" <<<"$S3" | grep -P "^dd\tPRJ_D\t")
 [[ $(cut -f4 <<<"$_trim") == "PRE-TRIMMED" ]] \
   && ok "la ya recortada va PRE-TRIMMED" \
   || mal "la ya recortada va PRE-TRIMMED (dio '$(cut -f4 <<<"$_trim")')"
+# Su familia y su inserto salen de los poquisimos reads que igual matchearon
+# (5 de 20 000 en cloro): no es una medicion, asi que van a '-'.
+[[ $(cut -f3 <<<"$_trim") == "-" ]] && ok "y sin familia inventada" \
+  || mal "y sin familia inventada (dio '$(cut -f3 <<<"$_trim")')"
+[[ $(cut -f6 <<<"$_trim") == "-" ]] && ok "ni inserto inventado" \
+  || mal "ni inserto inventado (dio '$(cut -f6 <<<"$_trim")')"
 tiene "avisa de las que no se pueden recortar" "NO se pueden recortar" "$S3"
 
 echo "== sin --tsv no imprime el bloque"

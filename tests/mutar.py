@@ -92,7 +92,7 @@ MUTACIONES = [
      [('else if (fam in SEC)       sec = SEC[fam]', 'else                       sec = fam')]),
     ("perfil --tsv: una ya recortada deja de ir PRE-TRIMMED",
      "scripts/fetch_runs.sh",
-     [('if (ver == "YA RECORTADA") sec = "PRE-TRIMMED"', 'if (0) sec = "PRE-TRIMMED"')]),
+     [('sec = "PRE-TRIMMED"; fam = "-"; ins = "-"', 'sec = fam')]),
     ("celda4: lee el working tree en vez de git",
      "notebooks/10_descarga_runs.ipynb",
      [("'git', '-C', str(CLON), 'show', f'HEAD:{ruta_rel}'",
