@@ -8,8 +8,8 @@ TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
 FALLAS=0
 ok()  { printf '  ok   %s\n' "$1"; }
 mal() { printf '  MAL  %s\n' "$1"; FALLAS=$((FALLAS+1)); }
-tiene()   { if grep -qF "$2" <<<"$3"; then ok "$1"; else mal "$1 — falta: $2"; fi; }
-notiene() { if grep -qF "$2" <<<"$3"; then mal "$1 — no debia: $2"; else ok "$1"; fi; }
+tiene()   { if grep -qF -- "$2" <<<"$3"; then ok "$1"; else mal "$1 — falta: $2"; fi; }
+notiene() { if grep -qF -- "$2" <<<"$3"; then mal "$1 — no debia: $2"; else ok "$1"; fi; }
 
 # ---- spec sintetica: un organismo por desenlace ----
 SPEC="$TMP/genomas.tsv"

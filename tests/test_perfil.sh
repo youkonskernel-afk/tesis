@@ -6,7 +6,7 @@ R="$RAIZ/scripts/fetch_runs.sh"
 TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
 FALLAS=0
 ok(){ printf '  ok   %s\n' "$1"; }; mal(){ printf '  MAL  %s\n' "$1"; FALLAS=$((FALLAS+1)); }
-tiene(){ grep -qF "$2" <<<"$3" && ok "$1" || mal "$1 — falta: $2"; }
+tiene(){ grep -qF -- "$2" <<<"$3" && ok "$1" || mal "$1 — falta: $2"; }
 
 mkdir -p "$TMP/bin"
 cat > "$TMP/bin/fastq-dump" <<'FD'
@@ -29,6 +29,8 @@ for i in range(n):
         s = rnd(random.choice([21, 22, 22, 23, 24, 30]))
     elif 'TRF' in run:         # tRF: inserto 38 nt, dentro de la ventana 15-50
         s = (rnd(random.choice([37, 38, 38, 39])) + AD + rnd(150))[:150]
+    elif 'RA5' in run:         # adaptador 5p: dimero, no read-through 3'
+        s = (rnd(22) + "GATCGTCGGACTGTAGAACTCTGAAC" + rnd(150))[:150]
     elif 'VIEJO' in run:       # adaptador de 2011
         s = (rnd(22) + VIEJO + rnd(150))[:150]
     else:                      # dudosa: adaptador pero inserto fuera de 15-50
@@ -61,7 +63,7 @@ tiene "el inserto modal es de sRNA"      "22 nt"                      "$S"
 tiene "veredicto correcto"               ">>> PARECE sRNA-seq"        "$S"
 # CUAL adaptador, no solo cuanto: es el dato que el paso de recorte le pasa a
 # fastp, y "98% de adaptador" no sirve para eso.
-tiene "nombra el adaptador"              "adaptador: TruSeq_smallRNA" "$S"
+tiene "nombra el adaptador"              "adaptador: RA3"            "$S"
 
 echo "== libreria de mRNA (sin adaptador visible)"
 S=$(bash "$R" perfil MRNA1 -n 2000 2>&1)
@@ -76,7 +78,7 @@ tiene "veredicto correcto"               ">>> DUDOSA"                 "$S"
 echo "== REGRESION: ya recortada no es mRNA"
 S=$(bash "$R" perfil TRIM1 -n 2000 2>&1); echo "$S" | sed -n '3,6p'
 tiene "verdicto YA RECORTADA"      ">>> YA RECORTADA"          "$S"
-rex2(){ grep -qE "$2" <<<"$3" && ok "$1" || mal "$1 — falta: $2"; }
+rex2(){ grep -qE -- "$2" <<<"$3" && ok "$1" || mal "$1 — falta: $2"; }
 rex2  "dice el largo del read"     "largo mediano: 2[0-9] nt"  "$S"
 tiene "aclara que no hay que recortar" "no necesita recorte"   "$S"
 
@@ -98,9 +100,14 @@ echo "== adaptador viejo de 2011 se detecta"
 S=$(bash "$R" perfil VIEJO1 -n 2000 2>&1)
 tiene "lo encuentra"               "con adaptador: 2000 (100%)" "$S"
 tiene "y da PARECE"                ">>> PARECE sRNA-seq"        "$S"
-tiene "y lo nombra bien"           "adaptador: Illumina_2011"   "$S"
-grep -q "adaptador: TruSeq" <<<"$S" && mal "no lo confunde con el moderno" \
+tiene "y lo nombra bien"           "adaptador: smallRNA_2011"   "$S"
+grep -q "adaptador: RA3" <<<"$S" && mal "no lo confunde con el moderno" \
   || ok "no lo confunde con el moderno"
+
+echo "== un adaptador 5p se detecta pero NO se puede recortar con el"
+S=$(bash "$R" perfil RA5_1 -n 2000 2>&1)
+tiene "lo nombra como 5p"          "adaptador: 5p:RA5"          "$S"
+tiene "y avisa que no sirve"       "No sirve para recortar"     "$S"
 
 echo "== sin adaptador no inventa uno"
 for _r in TRIM1 MRNA1; do
@@ -146,7 +153,7 @@ echo "$S" | sed -n '/RESUMEN$/,$p'
 [[ $(grep -c '^== ' <<<"$S") -eq 4 ]] && ok "perfila 4 proyectos, no 5 corridas" \
   || mal "perfila 4 proyectos (vio $(grep -c '^== ' <<<"$S"))"
 grep -q "SRNA2" <<<"$S" && mal "no repite proyecto" || ok "no repite proyecto"
-rex(){ grep -qE "$2" <<<"$3" && ok "$1" || mal "$1 — falta: $2"; }
+rex(){ grep -qE -- "$2" <<<"$3" && ok "$1" || mal "$1 — falta: $2"; }
 rex   "PRJ_A pasa"            "PRJ_A .*PARECE sRNA-seq"  "$S"
 rex   "PRJ_B marcado"         "PRJ_B .*NO PARECE"        "$S"
 rex   "PRJ_C marcado"         "PRJ_C .*DUDOSA"           "$S"
@@ -157,7 +164,7 @@ rex   "cuenta las corridas"   "PRJ_B .*1 corridas"       "$S"
 tiene "muestra el % adaptador" "100%"                     "$S"
 tiene "la tabla trae el largo de read" "READ"                "$S"
 tiene "y la columna de adaptador"      "ADAPTADOR"           "$S"
-rex   "PRJ_A dice cual"       "PRJ_A .*TruSeq_smallRNA"  "$S"
+rex   "PRJ_A dice cual"       "PRJ_A .*RA3"              "$S"
 rex   "PRJ_D (recortada) dice -" "PRJ_D .*YA RECORTADA +-" "$S"
 tiene "avisa cuantos fallan"  "2 proyecto(s) sin veredicto favorable"  "$S"
 [[ $RC -ne 0 ]] && ok "exit != 0 si alguno falla" || mal "exit != 0 si alguno falla (rc=$RC)"

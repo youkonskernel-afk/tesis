@@ -40,6 +40,8 @@ notebooks/10_descarga_runs.ipynb   manifiesto + .sra a Drive, por tandas
 notebooks/90_estado.ipynb          qué falta y cuánto ocupa
 scripts/fetch_runs.sh     resuelve los 19 proyectos a corridas y las descarga
 scripts/fetch_genomes.sh  resuelve y descarga los ensamblados
+scripts/trim.sh           recorte de adaptador con yasma trim (cutadapt)
+data/adaptadores.tsv      qué adaptador recortar en cada BioProject
 scripts/drive_push.sh     sube a Drive vía rclone
 scripts/drive_pull.sh     baja de Drive, y purga la copia local
 scripts/loo_cv.py         validación dejando un organismo afuera
@@ -53,7 +55,7 @@ CLAUDE.md                 regla de ubicación + trampas conocidas
 ## Pipeline
 
 ```
-prefetch → fastp (15-50 nt) → bowtie1 (-m 50) → samtools → YASMA v1.1.1
+prefetch → yasma trim (15-50 nt) → bowtie1 (-m 50) → samtools → yasma tradeoff
                                                               ↓
                                               features por locus → PU learning
 ```

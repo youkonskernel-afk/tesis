@@ -106,9 +106,10 @@ en los 19. Pero por suerte, no por diseño: el único pre-recortado es
 criterio de YASMA necesita. Si algún reemplazo de BioProject llegara recortado
 a largo fijo, YASMA lo llamaría "sin adaptador" sin distinguirlo de mRNA.
 
-**Conclusión operativa: el que decide es `perfil`, no `yasma adapter`.** Nuestro
-pipeline recorta con `fastp`, no con YASMA, así que `yasma adapter` no está en
-el camino crítico — y está bien que no esté.
+**Conclusión operativa: el que decide es `perfil`, no `yasma adapter`.** El
+recorte lo hace `yasma trim` (ver abajo), pero el adaptador se lo damos nosotros
+desde `data/adaptadores.tsv`: `yasma adapter` no está en el camino crítico, y es
+a propósito.
 
 ### Detalle menor, pero conviene saberlo
 
@@ -129,3 +130,77 @@ python3.12 -m venv vy
 mkdir -p p && cp lib.fastq p/
 ( cd p && yasma adapter -ul "$PWD/lib.fastq" -o "$PWD" --override -n 20000 )
 ```
+
+## `yasma trim`: lo que le pasa a cutadapt, y lo que eso implica
+
+`yasma trim` es un wrapper de cutadapt. La llamada, literal:
+
+```
+cutadapt -a <sec> --minimum-length 15 --maximum-length 50 -j <cores> -O 4 \
+         --max-n 0 --trimmed-only -o <out> <in>
+```
+
+Los defaults de `--min_length`/`--max_length` son **15 y 50**, o sea la misma
+ventana que el proyecto eligió a propósito. Coincidencia afortunada, no diseño
+compartido: `scripts/trim.sh` los pasa explícitos igual, porque un default que
+cambie en una versión nueva no avisa.
+
+Cuatro consecuencias que hay que declarar en métodos:
+
+- **`--trimmed-only` descarta los reads sin adaptador.** Es distinto de `fastp`,
+  que los conservaría. Para sRNA-seq es lo correcto —un read sin adaptador tiene
+  el inserto más largo que el read, o sea que no es un sRNA— pero significa que
+  la retención esperada **es el `adapt_pct` de `data/adaptadores.tsv`**, no ~100%.
+- **`--max-n 0`** tira cualquier read con una sola N.
+- **No hay filtro de calidad**: cutadapt se llama sin `-q`. Eso **cierra la mitad
+  abierta de la nota de SRA Lite**: en este paso la calidad sintética única de
+  `SRR317135` y `SRR1066790` no distorsiona nada, porque no hay nada que
+  distorsionar. Queda solo la pregunta del alineamiento (`-v` contra `-n`/`-e`).
+- **Una librería `PRE-TRIMMED` no se filtra por longitud.** YASMA la pasa de
+  largo tal cual, sin llamar a cutadapt. Para `cloro` da igual —sus reads de
+  30-34 nt están todos dentro de 15-50— pero no es una regla general.
+
+### Por qué el adaptador NO se lo dejamos a `yasma adapter`
+
+`yasma trim` lee los adaptadores de `inputs.json`. Ante un adaptador `"None"`
+**descarta la librería**: no la suma a `trimmed_libraries` y desaparece del
+pipeline sin ningún error. Y `yasma adapter` devuelve `None` tanto para una
+librería ya recortada a largo fijo como para mRNA — medido arriba. Una librería
+mal clasificada se perdería en silencio.
+
+Así que el adaptador se decide con `fetch_runs.sh perfil`, se versiona en
+`data/adaptadores.tsv`, y `scripts/trim.sh` escribe `inputs.json` desde ahí. Un
+proyecto que no esté en la tabla hace fallar el script, que es mejor que
+recortar con una secuencia adivinada.
+
+### El prefijo que detecta no es la secuencia que recorta
+
+Los prefijos de `ADAPTADORES` sirven para **detectar**. Cotejados contra los 161
+adaptadores de la tabla de YASMA, tres cosas:
+
+| prefijo | qué es de verdad |
+| :-- | :-- |
+| `TGGAATTCTCGGG` | Illumina RNA 3p Adapter (RA3). Prefijo compartido por **50** entradas de la familia RPI: identifica la familia, no un adaptador |
+| `GATCGTCGGACTG` | `RNA_Adapter_(RA5)` — un adaptador **5'**. Encontrarlo es dímero o quimera, **no** read-through 3': no sirve como `-a` |
+| `CGCCTTGGCCGT` | **no aparece en ninguno de los 161.** Procedencia desconocida |
+
+`ATCTCGTATGCCG` y `TCGTATGCCGTCTTCTGCTTG` sí son el adaptador small-RNA de 2011;
+sus 110 coincidencias son constructos modernos que lo contienen aguas abajo.
+
+Por eso `perfil` marca los dos primeros con `5p:` y `??:`, y `trim.sh` **se
+niega a recortar** con ellos.
+
+### Dos nombres de salida que no se pueden adivinar
+
+Probado contra el YASMA real, no leído:
+
+- El fichero es **`<RUN>.t.fq.gz`**, no `<RUN>.tfq.gz`: YASMA hace
+  `'.t' + library_format` y ese formato ya viene con punto (`.fq`).
+- Una librería `PRE-TRIMMED` **no produce fichero nuevo**.
+
+Con el nombre adivinado nada contaba como recortado: ni la idempotencia ni el
+`estado`. `trim.sh` lee `trimmed_libraries` de `inputs.json`, que es el registro
+que YASMA deja de lo que produjo.
+
+Y un detalle que cuesta una corrida entera: **`yasma trim` no tiene
+`--override`** (sí lo tiene `yasma adapter`). Pasárselo por analogía aborta.

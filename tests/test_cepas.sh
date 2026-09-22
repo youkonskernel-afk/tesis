@@ -6,8 +6,8 @@ G="$RAIZ/scripts/fetch_genomes.sh"
 TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
 FALLAS=0
 ok(){ printf '  ok   %s\n' "$1"; }; mal(){ printf '  MAL  %s\n' "$1"; FALLAS=$((FALLAS+1)); }
-tiene(){ grep -qF "$2" <<<"$3" && ok "$1" || mal "$1 — falta: $2"; }
-notiene(){ grep -qF "$2" <<<"$3" && mal "$1 — no debia: $2" || ok "$1"; }
+tiene(){ grep -qF -- "$2" <<<"$3" && ok "$1" || mal "$1 — falta: $2"; }
+notiene(){ grep -qF -- "$2" <<<"$3" && mal "$1 — no debia: $2" || ok "$1"; }
 
 SPEC="$TMP/genomas.tsv"
 { printf 'org\tespecie\tfuente\tassembly\taccession\testado\tconfianza\tnota\n'

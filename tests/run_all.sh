@@ -24,6 +24,7 @@ BANCOS=(
   tests/test_perfil.sh
   tests/test_prefetch.sh
   tests/test_estado.sh
+  tests/test_trim.sh
   tests/test_genomes.sh
   tests/test_cepas.sh
   tests/test_verificar.sh

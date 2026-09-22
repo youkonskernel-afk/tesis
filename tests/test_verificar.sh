@@ -7,7 +7,7 @@ G="$RAIZ/scripts/fetch_genomes.sh"
 TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
 FALLAS=0
 ok(){ printf '  ok   %s\n' "$1"; }; mal(){ printf '  MAL  %s\n' "$1"; FALLAS=$((FALLAS+1)); }
-tiene(){ grep -qF "$2" <<<"$3" && ok "$1" || mal "$1 — falta: $2"; }
+tiene(){ grep -qF -- "$2" <<<"$3" && ok "$1" || mal "$1 — falta: $2"; }
 fila(){ grep -E "^$1 " <<<"$2"; }
 
 SPEC="$TMP/genomas.tsv"; LED="$TMP/genomas.sha256"; D="$TMP/genomes"

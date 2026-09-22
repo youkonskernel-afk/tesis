@@ -41,7 +41,7 @@ El pipeline bioinformático es el **upstream** que produce los loci candidatos,
 no el aporte de la tesis:
 
 1. Descarga ~425 corridas sRNA-seq de 9 organismos (~7.4 G spots)
-2. `fastp` (15-50 nt) → `bowtie1` estilo ShortStack3 → `samtools`
+2. `yasma trim` (cutadapt, 15-50 nt) → `bowtie1` estilo ShortStack3 → `samtools`
 3. Anotación de loci con YASMA v1.1.1
 4. Features por locus → PU learning → candidatos priorizados
 
@@ -249,6 +249,45 @@ probabilidad calibrada.
 
 ## Trampas conocidas — no re-introducir
 
+- **El recorte es `yasma trim`, que envuelve cutadapt — no `fastp`.** Sus
+  defaults `--min_length 15 --max_length 50` coinciden con la ventana del
+  proyecto, pero `scripts/trim.sh` los pasa explícitos igual: un default que
+  cambie de versión no avisa. Tres consecuencias que van en métodos, y que
+  **no** son las de `fastp`: `--trimmed-only` **descarta los reads sin
+  adaptador**, así que la retención esperada es el `adapt_pct` de
+  `data/adaptadores.tsv` y no ~100%; `--max-n 0` tira cualquier read con una N;
+  y **no hay filtro de calidad** (cutadapt va sin `-q`), lo que cierra la mitad
+  del asunto de SRA Lite — en el recorte la calidad sintética no distorsiona
+  nada porque no se mira. Detalle que cuesta una corrida: `yasma trim` **no
+  tiene `--override`**, aunque `yasma adapter` sí.
+- **El adaptador no se detecta en tiempo de corrida: sale de
+  `data/adaptadores.tsv`.** `yasma trim` ante un adaptador `"None"` **descarta
+  la librería** —no la suma a `trimmed_libraries` y desaparece del pipeline sin
+  error— y `yasma adapter` da `None` tanto para una ya recortada a largo fijo
+  como para mRNA. Una librería mal clasificada se perdería en silencio. Un
+  proyecto que no esté en la tabla hace fallar `trim.sh`, que es mejor que
+  recortar con una secuencia adivinada.
+- **El prefijo que detecta el adaptador no es la secuencia con la que se
+  recorta.** Cotejando los 6 prefijos de `perfil` contra los 161 adaptadores de
+  YASMA: `TGGAATTCTCGGG` es RA3 y lo comparten **50** entradas de la familia RPI
+  (identifica la familia, no un adaptador); `GATCGTCGGACTG` es el
+  `RNA_Adapter_(RA5)`, o sea un adaptador **5'** — encontrarlo es dímero o
+  quimera, no read-through, y como `-a` de cutadapt sería incorrecto; y
+  `CGCCTTGGCCGT` **no aparece en ninguno de los 161**. Por eso esos dos llevan
+  `5p:` y `??:` en la lista, `perfil` avisa, y `trim.sh` se niega a recortar con
+  ellos. (`ATCTCGTATGCCG` y `TCGTATGCCGTCTTCTGCTTG` sí son el adaptador de 2011;
+  sus 110 coincidencias son constructos modernos que lo contienen aguas abajo.)
+- **Los nombres de salida de `yasma trim` no se pueden adivinar.** Es
+  `<RUN>.t.fq.gz`, no `<RUN>.tfq.gz` —hace `'.t' + library_format` y ese formato
+  ya trae el punto— y una librería `PRE-TRIMMED` **no produce fichero nuevo**:
+  anota la ruta original. Con el nombre adivinado nada contaba como recortado, o
+  sea ni idempotencia ni `estado`. `trim.sh` lee `trimmed_libraries` de
+  `inputs.json`, que es el registro que YASMA deja de lo que hizo.
+- **Un `grep` cuyo patrón empieza con `-` lo toma como opción, y en un
+  `notiene()` eso hace que el chequeo pase SIEMPRE.** grep aborta, el exit
+  nonzero cae en la rama de éxito, y se imprime `ok`. Estaba en los **14**
+  helpers de los bancos; todos llevan `--` ahora. Al escribir un helper que
+  reciba un patrón como dato: `grep -qF -- "$2"`.
 - **`fastp --disable_length_filtering`**: desactiva el filtro de longitud, no el
   de Ns (eso es `--n_base_limit`). Con ese flag entraba mRNA fragmentado de
   50-150 nt y distorsionaba las *size class*. Ya se eliminó; no volver a ponerlo.
@@ -437,7 +476,7 @@ purga después. Ver `docs/colab.md` y `docs/plan_datos_colab.md`.
 Todo corre sin red y en segundos. Antes de cada push:
 
 ```bash
-./tests/run_all.sh              # 9 bancos, 196 chequeos, binarios falsos en el PATH
+./tests/run_all.sh              # 10 bancos, 235 chequeos, binarios falsos en el PATH
 ./tests/mutar.py                # rompe el codigo y exige que algun banco grite
 ./scripts/check_docs.py         # lo que afirman los docs contra data/
 ./scripts/validate_notebooks.py # los .ipynb parsean y no hay duplicados
@@ -448,7 +487,7 @@ y `check_docs.py` dos más.
 
 **Un banco que pasa no prueba nada.** Prueba algo el día que se rompe lo que
 cubre y el banco se queja, y la única forma de saberlo es romper el código a
-propósito: eso es `tests/mutar.py`, 14 mutaciones que tienen que dar todas
+propósito: eso es `tests/mutar.py`, 21 mutaciones que tienen que dar todas
 `[OK]`. Un `[HUECO]` es un chequeo que falta; un `[VIEJA]` es una mutación cuyo
 patrón ya no existe, que tampoco prueba nada. Así aparecieron los dos huecos que
 ninguna otra cosa mostró — el veredicto de `perfil` que iba a la tabla sin estar

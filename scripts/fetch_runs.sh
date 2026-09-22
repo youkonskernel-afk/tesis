@@ -424,7 +424,21 @@ cmd_prefetch() {
 # recorte necesita saber CUAL se encontro para pasarselo a fastp, y "hay
 # adaptador en el 98%" no alcanza para eso. Los tres ultimos son librerias
 # viejas: agregarlos hizo que maggi PRJNA154615 pasara de 0% a 92%.
-ADAPTADORES="TGGAATTCTCGGG:TruSeq_smallRNA AGATCGGAAGAGC:TruSeq_universal GATCGTCGGACTG:Nextera ATCTCGTATGCCG:Illumina_viejo TCGTATGCCGTCTTCTGCTTG:Illumina_2011 CGCCTTGGCCGT:Illumina_RA3"
+# El nombre de cada prefijo esta cotejado contra la tabla de 161 adaptadores de
+# YASMA (src/yasma/adapter.py), no puesto de memoria. Dos cosas que salieron de
+# ese cotejo y hay que respetar:
+#
+#  - RA5 es un adaptador 5'. Encontrarlo en un read significa dimero o quimera,
+#    NO read-through 3', asi que NO sirve como `-a` de cutadapt. Por eso lleva
+#    el prefijo `5p:`, que el recorte usa para no intentar recortar con el.
+#  - CGCCTTGGCCGT no aparece en ninguno de los 161. Queda como sonda porque
+#    detecta algo, pero marcado `??:` — no se recorta a ciegas con una secuencia
+#    cuya procedencia no se puede decir.
+#
+# El prefijo sirve para DETECTAR; la secuencia que va a cutadapt es la del
+# adaptador completo y esta en data/adaptadores.tsv. No son lo mismo: TGGAATTCTCGGG
+# es el prefijo compartido por 50 entradas de la familia RPI.
+ADAPTADORES="TGGAATTCTCGGG:RA3 AGATCGGAAGAGC:TruSeq_universal GATCGTCGGACTG:5p:RA5 ATCTCGTATGCCG:smallRNA_2011 TCGTATGCCGTCTTCTGCTTG:smallRNA_2011 CGCCTTGGCCGT:??:sin_identificar"
 
 # Ventana de fastp, que es la que decide que entra al pipeline. El veredicto la
 # usa en vez de un 18-30 propio: el proyecto eligio 15-50 a proposito para no
@@ -487,7 +501,13 @@ cmd_perfil() {
   awk -v ads="$ADAPTADORES" -v vmin="$VENT_MIN" -v vmax="$VENT_MAX" '
     BEGIN {
       na = split(ads, campo, " ")
-      for (i = 1; i <= na; i++) { split(campo[i], par, ":"); A[i] = par[1]; NOM[i] = par[2] }
+      for (i = 1; i <= na; i++) {
+        # El nombre es TODO lo que sigue al primer ':', porque hay nombres con
+        # ':' adentro (5p:RA5, ??:sin_identificar) y eso es el marcador de que
+        # no se puede recortar con ellos.
+        j = index(campo[i], ":")
+        A[i] = substr(campo[i], 1, j - 1); NOM[i] = substr(campo[i], j + 1)
+      }
     }
     NR % 4 == 2 {
       total++
@@ -522,6 +542,15 @@ cmd_perfil() {
       if (con > 0) {
         printf "   adaptador: %s (%.0f%% de los que tienen)\n", ad_top, 100*ad_mx/con
         for (k in ad) if (k != ad_top) printf "     tambien: %s  %.0f%%\n", k, 100*ad[k]/con
+        # Un 5p o un sin_identificar no se puede usar como `-a`: decirlo aca en
+        # vez de dejar que el recorte lo descubra con una secuencia equivocada.
+        if (ad_top ~ /^5p:/) {
+          print "   OJO: el mayoritario es un adaptador 5p: es dimero o quimera,"
+          print "        no read-through. No sirve para recortar."
+        }
+        if (ad_top ~ /^[?][?]:/) {
+          print "   OJO: el mayoritario no esta identificado. No recortar con el."
+        }
       }
       if (con > 0) {
         printf "   inserto (largo antes del adaptador), los mas frecuentes:\n"

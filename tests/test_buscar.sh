@@ -7,8 +7,8 @@ R="$RAIZ/scripts/fetch_runs.sh"
 TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
 FALLAS=0
 ok(){ printf '  ok   %s\n' "$1"; }; mal(){ printf '  MAL  %s\n' "$1"; FALLAS=$((FALLAS+1)); }
-tiene(){ grep -qE "$2" <<<"$3" && ok "$1" || mal "$1 — falta: $2"; }
-notiene(){ grep -qE "$2" <<<"$3" && mal "$1 — no debia: $2" || ok "$1"; }
+tiene(){ grep -qE -- "$2" <<<"$3" && ok "$1" || mal "$1 — falta: $2"; }
+notiene(){ grep -qE -- "$2" <<<"$3" && mal "$1 — no debia: $2" || ok "$1"; }
 
 SPEC="$TMP/organismos.tsv"
 { printf 'org\tespecie\treino\tclado\trol\tbioproject\truns\tspots_M\tstrategy\tassembly\tnota\tset_modelo\n'
