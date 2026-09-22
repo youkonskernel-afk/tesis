@@ -68,8 +68,17 @@ Toma unos 5 minutos:
      cansa, pasá la app a *En producción* (no requiere verificación mientras
      solo la uses vos con scopes de tu propia cuenta).
 5. **Credenciales → Crear credenciales → ID de cliente de OAuth**:
-   - Tipo de aplicación: **Aplicación de escritorio**.
-   - Guardá el **Client ID** y el **Client Secret**.
+   - Tipo de aplicación: **Aplicación de escritorio**. No *Aplicación web*:
+     esa exige declarar un *redirect URI* y rclone usa un puerto local que
+     cambia.
+   - Copiá el **Client ID** y el **Client Secret** con el botón de copiar, no
+     a mano. El Client ID **termina en `.apps.googleusercontent.com`**; si lo
+     que copiaste no termina así, copiaste otra cosa (el nombre de la
+     credencial, o el número de proyecto).
+
+Los dos valores tardan **unos minutos** en propagarse del lado de Google. Si
+autorizás en el mismo instante en que creaste la credencial, la primera vez
+puede fallar y andar en el segundo intento.
 
 ---
 
@@ -144,15 +153,76 @@ one-shot.
 
 ---
 
+## 4b. Cuando la autorización falla
+
+El fallo de OAuth **muere en la pestaña del navegador y no vuelve a rclone**.
+`rclone config` sigue como si nada y te ofrece `Keep this remote? y` — si decís
+que sí, queda un remoto **sin token**, y a partir de ahí todos los comandos
+fallan sin decir de dónde viene. Por eso `drive_check.sh` mira el token: es el
+rastro que deja este problema.
+
+### `Error 401: invalid_client` / *"The OAuth client was not found"*
+
+Google no pudo resolver el `client_id` que rclone le mandó. **No es un problema
+de permisos ni de la cuenta**: es que esa credencial, tal como llegó, no existe.
+Cinco causas, en orden de frecuencia:
+
+1. **El `client_id` está cortado o no es el `client_id`.** Tiene que terminar en
+   `.apps.googleusercontent.com`. Un valor como `1234567890-a1b2c3` a secas da
+   exactamente este error.
+2. **Un espacio o un salto de línea pegados al copiar.** No se ve en la consola
+   de rclone y Google lo manda igual.
+3. **Pegaste el Client Secret en el campo `client_id`**, o al revés.
+4. **La credencial está en otro proyecto de Google Cloud** que el de la Drive
+   API, o se creó con otra cuenta de Google (fijate el selector de proyecto
+   arriba a la izquierda en la consola).
+5. **La credencial se borró**, o todavía no propagó (esperá un par de minutos y
+   reintentá).
+
+Para ver qué tiene guardado rclone:
+
+```bash
+rclone config dump | python3 -m json.tool | grep -A1 client_id
+```
+
+Compará carácter por carácter contra **Credenciales → tu cliente OAuth** en la
+consola. Para corregirlo sin rehacer el remoto:
+
+```bash
+rclone config
+# e -> gdrive-tesis -> pegá de nuevo client_id y client_secret
+# -> al final dice "Already have a token - refresh?" -> y
+```
+
+### Otros dos que se confunden con este
+
+| lo que dice el navegador | qué es |
+| :-- | :-- |
+| `Error 400: redirect_uri_mismatch` | creaste el cliente como **Aplicación web** en vez de **Aplicación de escritorio** |
+| `Acceso bloqueado: ... no completó el proceso de verificación` | `seb.ugazm@gmail.com` no está en **Usuarios de prueba** de la pantalla de consentimiento (paso 2.4) |
+
+Ninguno de los dos se arregla desde rclone: son de la consola de Google.
+
+### Y el que aparece una semana después
+
+Con la app en modo *Testing*, el refresh token **caduca a los 7 días** y el
+próximo comando falla con `Token has been expired or revoked`. Se re-autoriza
+con `rclone config reconnect gdrive-tesis:`. Para que no vuelva a pasar, pasá la
+app a **En producción** en la pantalla de consentimiento — no requiere
+verificación mientras la uses solo vos sobre tu propia cuenta.
+
+---
+
 ## 5. Verificar
 
 ```bash
 ./scripts/drive_check.sh
 ```
 
-Chequea ocho cosas: rclone instalado, el remoto existe y es `drive`, el `scope`,
-que `root_folder_id` no choque con `DRIVE_ROOT`, la cuenta, que la raíz se vea,
-que estén las 8 carpetas del mapa de fases, y el espacio libre.
+Chequea nueve cosas: rclone instalado, el remoto existe y es `drive`, la
+credencial OAuth (`client_id` bien formado y token presente), el `scope`, que
+`root_folder_id` no choque con `DRIVE_ROOT`, la cuenta, que la raíz se vea, que
+estén las 8 carpetas del mapa de fases, y el espacio libre.
 
 Después, un dry-run de verdad — no baja nada:
 

@@ -565,6 +565,25 @@ probabilidad calibrada.
   `git status` muestre cientos de GB. El banco de rutas exige que **todos** los
   del mapa de fases estén ignorados, así que agregar una fase nueva sin su
   entrada ahora falla.
+- **Un OAuth que falla no vuelve a rclone: queda un remoto guardado sin
+  token.** El error de Google —`Error 401: invalid_client` cuando no pudo
+  resolver el `client_id`— muere en la pestaña del navegador, y `rclone config`
+  sigue adelante y ofrece `Keep this remote? y`. Después **todos** los comandos
+  fallan sin decir de dónde viene. Por eso `drive_check.sh` mira el `token` del
+  dump: es el rastro que deja. Y mira el `client_id`, que es la causa casi
+  siempre: tiene que terminar en `.apps.googleusercontent.com` y no traer
+  espacios pegados del copiar. Los dos errores que se confunden con éste son de
+  la consola de Google, no de rclone: `redirect_uri_mismatch` es haber creado el
+  cliente como *Aplicación web* en vez de *de escritorio*, y `Acceso bloqueado`
+  es la cuenta sin agregar a **Usuarios de prueba**. Todo en `docs/rclone.md`.
+- **`read` descarta tabs a la izquierda aunque `IFS` sea solo tab.** Espacio,
+  tab y salto de línea son *IFS whitespace* para bash pase lo que pase, así que
+  `IFS=$'\t' read -r a b c` sobre `"\t\t24"` deja `a=24`, no `a=''`. El
+  chequeo nuevo de `drive_check` nació con ese bug: un `client_id` vacío se leía
+  como el tercer campo y se reportaba como "trae espacios pegados". Lo agarró su
+  propio banco al primer escenario. Para campos que pueden venir vacíos:
+  `mapfile -t` con una línea por campo, o que el productor emita una palabra de
+  veredicto en vez del valor crudo.
 - **Dos formas de configurar rclone mal que no dan error: el remoto lista
   vacío.** (a) elegir `scope = drive.file` en vez de `drive` — rclone solo ve
   los ficheros que él mismo creó, y las carpetas de `tesis/` se hicieron a mano
@@ -618,7 +637,7 @@ purga después. Ver `docs/colab.md` y `docs/plan_datos_colab.md`.
 Todo corre sin red y en segundos. Antes de cada push:
 
 ```bash
-./tests/run_all.sh              # 15 bancos, 366 chequeos, binarios falsos en el PATH
+./tests/run_all.sh              # 15 bancos, 379 chequeos, binarios falsos en el PATH
 ./tests/mutar.py                # rompe el codigo y exige que algun banco grite
 ./scripts/check_docs.py         # lo que afirman los docs contra data/
 ./scripts/validate_notebooks.py # los .ipynb parsean y no hay duplicados
@@ -629,7 +648,7 @@ y `check_docs.py` dos más.
 
 **Un banco que pasa no prueba nada.** Prueba algo el día que se rompe lo que
 cubre y el banco se queja, y la única forma de saberlo es romper el código a
-propósito: eso es `tests/mutar.py`, 46 mutaciones que tienen que dar todas
+propósito: eso es `tests/mutar.py`, 47 mutaciones que tienen que dar todas
 `[OK]`. Un `[HUECO]` es un chequeo que falta; un `[VIEJA]` es una mutación cuyo
 patrón ya no existe, que tampoco prueba nada. Así aparecieron los dos huecos que
 ninguna otra cosa mostró — el veredicto de `perfil` que iba a la tabla sin estar

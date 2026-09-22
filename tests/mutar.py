@@ -141,6 +141,13 @@ MUTACIONES = [
      [('elif [[ -n "$DRIVE_ROOT" ]]; then', 'elif false; then')]),
     ("drive_check: una raiz vacia pasa desapercibida", "scripts/drive_check.sh",
      [('if [[ "$n" -eq 0 ]]; then', 'if false; then')]),
+    # `Error 401: invalid_client` muere en el navegador y no vuelve a rclone,
+    # que igual ofrece guardar el remoto. Queda uno sin token.
+    ("drive_check: un client_id malformado pasa", "scripts/drive_check.sh",
+     [("      'propio' if c.endswith('.apps.googleusercontent.com') else 'malo')",
+       "      'propio')")]),
+    ("drive_check: un remoto sin autorizar pasa", "scripts/drive_check.sh",
+     [('if [[ "${tok_len:-0}" -eq 0 ]]; then', 'if false; then')]),
     # DRIVE_ROOT='' es una config valida; `:-` la pisaria con el default.
     ("DRIVE_ROOT vacio se pisa con el default", "scripts/drive_pull.sh",
      [('DRIVE_ROOT="${DRIVE_ROOT-tesis}"', 'DRIVE_ROOT="${DRIVE_ROOT:-tesis}"')]),

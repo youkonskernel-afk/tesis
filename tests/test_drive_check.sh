@@ -7,6 +7,10 @@
 #   - root_folder_id apuntando a tesis/ con DRIVE_ROOT=tesis -> busca
 #     tesis/tesis/... Tambien lista vacio.
 # En los dos casos `drive_pull.sh sra <org> --go` baja 0 ficheros y sale con 0.
+#
+# Y un tercero que falla mas temprano: `Error 401: invalid_client`. Ese muere en
+# el navegador y no vuelve a rclone, que igual ofrece guardar el remoto — queda
+# uno sin token, y cada comando posterior falla sin decir de donde viene.
 set -uo pipefail
 RAIZ="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
@@ -24,8 +28,10 @@ case "$1 ${2:-}" in
   "version"*) echo "rclone v1.65.0"; exit 0 ;;
   "listremotes"*) echo "gdrive-tesis:"; exit 0 ;;
   "config dump")
-    printf '{"gdrive-tesis":{"type":"drive","scope":"%s","root_folder_id":"%s"}}\n' \
-      "${FAKE_SCOPE:-drive}" "${FAKE_RFID:-}"
+    printf '{"gdrive-tesis":{"type":"drive","scope":"%s","root_folder_id":"%s","client_id":"%s","token":"%s"}}\n' \
+      "${FAKE_SCOPE:-drive}" "${FAKE_RFID:-}" \
+      "${FAKE_CID-1234567890-a1b2c3.apps.googleusercontent.com}" \
+      "${FAKE_TOKEN-ya29.un-token-cualquiera}"
     exit 0 ;;
   "config userinfo")
     printf '{ "emailAddress": "%s" }\n' "${FAKE_EMAIL:-seb.ugazm@gmail.com}"; exit 0 ;;
@@ -53,6 +59,8 @@ echo "== 1. todo bien"
 S=$(corre); RC=$?
 [[ $RC -eq 0 ]] && ok "exit 0" || mal "exit 0 (rc=$RC)"
 tiene "ve el remoto"        "existe y es type=drive"  "$S"
+tiene "ve la credencial"   "client_id propio y bien formado" "$S"
+tiene "y el token"         "la autorizacion se completo"     "$S"
 tiene "ve las 8 carpetas"   "80_sra/"                 "$S"
 tiene "y cierra bien"       "TODO OK"                 "$S"
 
@@ -72,6 +80,29 @@ echo "== 3b. pero con DRIVE_ROOT vacio, root_folder_id esta bien"
 S=$(corre FAKE_RFID=1E_Q6XLg4 DRIVE_ROOT=)
 tiene "lo acepta" "root_folder_id=1E_Q6XLg4 con DRIVE_ROOT vacio" "$S"
 
+echo "== 3c. client_id malformado: el 'invalid_client' del navegador"
+S=$(corre FAKE_CID=1234567890-a1b2c3); RC=$?
+[[ $RC -ne 0 ]] && ok "exit != 0" || mal "exit != 0 (rc=$RC)"
+tiene "lo nombra"        "no termina en .apps.googleusercontent.com" "$S"
+tiene "y nombra el sintoma" "invalid_client"                         "$S"
+
+echo "== 3d. client_id con un salto de linea pegado"
+S=$(corre "FAKE_CID=1234567890-a1b2c3.apps.googleusercontent.com "); RC=$?
+[[ $RC -ne 0 ]] && ok "exit != 0" || mal "exit != 0 (rc=$RC)"
+tiene "lo nombra"        "espacios o un salto de linea"  "$S"
+
+echo "== 3e. sin client_id propio: avisa pero no es falla"
+S=$(corre FAKE_CID=); RC=$?
+[[ $RC -eq 0 ]] && ok "exit 0" || mal "exit 0 (rc=$RC)"
+tiene "avisa de la cuota" "compartido de rclone, saturado"  "$S"
+notiene "y no lo cuenta como falla" "[MAL]"                 "$S"
+
+echo "== 3f. remoto guardado sin autorizar (lo que deja un invalid_client)"
+S=$(corre FAKE_TOKEN=); RC=$?
+[[ $RC -ne 0 ]] && ok "exit != 0" || mal "exit != 0 (rc=$RC)"
+tiene "lo dice"          "la autorizacion nunca se completo"  "$S"
+tiene "y como retomarla" "Already have a token"               "$S"
+
 echo "== 4. la cuenta equivocada"
 S=$(corre FAKE_EMAIL=otro@gmail.com); RC=$?
 [[ $RC -ne 0 ]] && ok "exit != 0" || mal "exit != 0 (rc=$RC)"
@@ -81,7 +112,7 @@ echo "== 5. la raiz lista vacia"
 S=$(corre FAKE_VACIO=1); RC=$?
 [[ $RC -ne 0 ]] && ok "exit != 0" || mal "exit != 0 (rc=$RC)"
 tiene "lo dice"            "lista VACIO"                       "$S"
-tiene "y manda a los dos culpables" "scope (chequeo 3)"        "$S"
+tiene "y manda a los dos culpables" "scope (chequeo 4)"        "$S"
 tiene "y avisa del sintoma" "baje 0 ficheros y salga con 0"    "$S"
 
 echo "== 6. sin el remoto, no sigue adelante"
