@@ -551,11 +551,20 @@ cmd_perfil() {
              total, med_lr, con, 100*con/total
 
       # Cual adaptador, no solo cuanto. Es el dato que el recorte necesita.
+      #
+      # Pero SOLO si hay adaptador. El umbral es el mismo que usa el veredicto
+      # para decir que no lo hay, asi que no pueden contradecirse: cloro
+      # PRJEB43636 dio 5 matches de 20 000 —coincidencias al azar— y con eso se
+      # reportaba "RA3 (100% de los que tienen)" en la tabla mientras el TSV
+      # ponia '-'. El mismo comando daba dos respuestas.
+      hay_ad = (con >= 0.2 * total)
       ad_top = "-"; ad_mx = 0
-      for (k in ad) if (ad[k] + 0 > ad_mx) { ad_mx = ad[k] + 0; ad_top = k }
-      if (con > 0) {
+      if (hay_ad) for (k in ad) if (ad[k] + 0 > ad_mx) { ad_mx = ad[k] + 0; ad_top = k }
+      if (hay_ad) {
         printf "   adaptador: %s (%.0f%% de los que tienen)\n", ad_top, 100*ad_mx/con
-        for (k in ad) if (k != ad_top) printf "     tambien: %s  %.0f%%\n", k, 100*ad[k]/con
+        # Una familia secundaria que redondea a 0% es ruido; no se lista.
+        for (k in ad) if (k != ad_top && 100*ad[k]/con >= 0.5)
+          printf "     tambien: %s  %.0f%%\n", k, 100*ad[k]/con
         # Un 5p o un sin_identificar no se puede usar como `-a`: decirlo aca en
         # vez de dejar que el recorte lo descubra con una secuencia equivocada.
         if (ad_top ~ /^5p:/) {
@@ -584,8 +593,18 @@ cmd_perfil() {
 
       if (con >= 0.5*total && dentro >= 0.3*total) {
         ver = "PARECE sRNA-seq"
-        print "   >>> PARECE sRNA-seq: el adaptador aparece temprano y el inserto cae"
-        printf "       dentro de la ventana %d-%d nt.\n", vmin, vmax
+        # El mensaje da la fraccion medida, no una afirmacion categorica: el
+        # umbral es 30%, asi que un proyecto puede pasar con la mayoria de los
+        # insertos FUERA de la ventana. gadmo PRJNA328800 pasa con 51% y su
+        # inserto modal es de 10 nt; decir "el inserto cae dentro" ahi es falso,
+        # y al lado de un INSERTO de 10 nt en la tabla se lee como contradiccion.
+        printf "   >>> PARECE sRNA-seq: el adaptador aparece temprano y el %.0f%% de\n",
+               100*dentro/total
+        printf "       los insertos cae en la ventana %d-%d nt.\n", vmin, vmax
+        if (modal + 0 < vmin || modal + 0 > vmax) {
+          printf "       OJO: el inserto MODAL es de %s nt, fuera de la ventana. El\n", modal
+          print  "       recorte va a descartar esa fraccion a proposito."
+        }
       } else if (con < 0.2*total && med_lr <= vmax) {
         # Sin adaptador PERO reads cortos: el read ES el inserto. Confundir esto
         # con mRNA casi hace tirar las 34 corridas de cloro PRJEB43636.
@@ -601,7 +620,7 @@ cmd_perfil() {
         printf "   >>> DUDOSA: hay adaptador pero el inserto cae fuera de %d-%d nt.\n", vmin, vmax
       }
       printf "RESUMEN\t%.0f\t%s\t%d nt\t%s\t%s\n", 100*con/total,
-             (con>0 ? modal" nt" : "-"), med_lr, ver, ad_top > "/dev/stderr"
+             (hay_ad ? modal" nt" : "-"), med_lr, ver, ad_top > "/dev/stderr"
     }' "$fq" 2> "$fq.res"
   RESUMEN_PERFIL=$(grep '^RESUMEN' "$fq.res" 2>/dev/null | cut -f2- || true)
   cat "$fq.res" | grep -v '^RESUMEN' >&2 || true
@@ -648,13 +667,9 @@ cmd_perfil_proyectos() {
         fam = $10; ver = $9; sec = "-"
         # La tabla para leer dice "22 nt"; un TSV lleva el numero solo.
         ins = $7; sub(/ nt$/, "", ins)
-        if (ver == "YA RECORTADA") {
-          # Ya recortada: yasma la pasa de largo sin llamar a cutadapt. Y la
-          # familia y el inserto se van a '-' porque salen de los poquisimos
-          # reads que igual matchearon —5 de 20 000 en cloro PRJEB43636— y un
-          # "100% de los que tienen" sobre 5 reads no es una medicion.
-          sec = "PRE-TRIMMED"; fam = "-"; ins = "-"
-        }
+        # Ya recortada: yasma la pasa de largo sin llamar a cutadapt. La familia
+        # y el inserto ya vienen en '-' desde el RESUMEN cuando no hay adaptador.
+        if (ver == "YA RECORTADA") sec = "PRE-TRIMMED"
         else if (fam in SEC)       sec = SEC[fam]
         printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
                $1, $2, fam, sec, $6, ins, ver, hoy

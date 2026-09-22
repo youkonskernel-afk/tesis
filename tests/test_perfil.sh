@@ -28,6 +28,14 @@ for i in range(n):
         s = rnd(150)
     elif 'TRIM' in run:        # YA RECORTADA: el read ES el inserto, sin adaptador
         s = rnd(random.choice([21, 22, 22, 23, 24, 30]))
+        # El caso real (cloro PRJEB43636) tuvo 5 matches de 20 000: coincidencias
+        # al azar, no adaptador. Con 0 exactos el banco no reproduce el problema
+        # de que la tabla reporte una familia calculada sobre ese punado.
+        if i % 400 == 0:
+            s = rnd(19) + AD[:13] + rnd(4)   # 13 nt: el prefijo que busca perfil
+    elif 'DIMERO' in run:      # el caso gadmo PRJNA328800: inserto modal 10 nt
+        ins = 10 if i % 100 < 45 else random.choice([22, 23, 32, 33])
+        s = (rnd(ins) + AD + rnd(150))[:150]
     elif 'TRF' in run:         # tRF: inserto 38 nt, dentro de la ventana 15-50
         s = (rnd(random.choice([37, 38, 38, 39])) + AD + rnd(150))[:150]
     elif 'RA5' in run:         # adaptador 5p: dimero, no read-through 3'
@@ -76,6 +84,15 @@ echo "== dudosa: hay adaptador pero el inserto es largo"
 S=$(bash "$R" perfil OTRA1 -n 2000 2>&1)
 tiene "veredicto correcto"               ">>> DUDOSA"                 "$S"
 
+echo "== REGRESION: una familia no se reporta sobre un punado de reads"
+# cloro PRJEB43636 dio 5 matches de 20 000 —al azar— y con eso la tabla decia
+# "RA3 (100% de los que tienen)" mientras el TSV ponia '-'. El mismo comando,
+# dos respuestas. El umbral ahora es el mismo que usa el veredicto para decir
+# que no hay adaptador, asi que no pueden contradecirse.
+S=$(bash "$R" perfil TRIM1 -n 2000 2>&1)
+tiene "detecta los pocos matches"  "con adaptador: 5 (0%)"  "$S"
+notiene "pero NO reporta familia"  "   adaptador: "         "$S"
+
 echo "== REGRESION: ya recortada no es mRNA"
 S=$(bash "$R" perfil TRIM1 -n 2000 2>&1); echo "$S" | sed -n '3,6p'
 tiene "verdicto YA RECORTADA"      ">>> YA RECORTADA"          "$S"
@@ -92,6 +109,21 @@ echo "== tRF de 38 nt entra: esta dentro de la ventana 15-50 del proyecto"
 S=$(bash "$R" perfil TRF1 -n 2000 2>&1)
 tiene "PARECE, no DUDOSA"          ">>> PARECE sRNA-seq"       "$S"
 tiene "nombra la ventana"          "ventana de fastp (15-50 nt)" "$S"
+
+echo "== inserto modal FUERA de la ventana: pasa, pero lo dice"
+# El umbral de PARECE es 30%, asi que un proyecto puede pasar con la mayoria de
+# los insertos fuera. gadmo PRJNA328800 pasa con 51% y su inserto modal es de
+# 10 nt: "el inserto cae dentro de la ventana" ahi era falso, y al lado de un
+# INSERTO de 10 nt en la tabla se leia como contradiccion.
+S=$(bash "$R" perfil DIMERO1 -n 2000 2>&1)
+tiene "sigue siendo PARECE"        ">>> PARECE sRNA-seq"       "$S"
+rex2  "da la fraccion medida"      "el [0-9]+% de"             "$S"
+tiene "y avisa del inserto modal"  "el inserto MODAL es de 10 nt, fuera" "$S"
+tiene "y que eso se descarta"      "a proposito"               "$S"
+
+echo "== con el inserto modal DENTRO, no avisa de mas"
+S=$(bash "$R" perfil SRNA1 -n 2000 2>&1)
+notiene "sin el aviso"             "inserto MODAL"             "$S"
 
 echo "== inserto realmente largo sigue DUDOSA"
 S=$(bash "$R" perfil OTRA1 -n 2000 2>&1)
@@ -209,6 +241,13 @@ _trim=$(sed -n "/PARA data/,\$p" <<<"$S3" | grep -P "^dd\tPRJ_D\t")
 [[ $(cut -f6 <<<"$_trim") == "-" ]] && ok "ni inserto inventado" \
   || mal "ni inserto inventado (dio '$(cut -f6 <<<"$_trim")')"
 tiene "avisa de las que no se pueden recortar" "NO se pueden recortar" "$S3"
+# La tabla y el TSV salen del MISMO comando: no pueden decir cosas distintas.
+_tab=$(sed -n "/RESUMEN/,/PARA data/p" <<<"$S3" | grep -E "^dd +PRJ_D")
+_tsv=$(sed -n "/PARA data/,\$p" <<<"$S3" | grep -P "^dd\tPRJ_D\t")
+grep -qE " -$" <<<"$_tab" && ok "la tabla tampoco inventa familia" \
+  || mal "la tabla tampoco inventa familia (dijo '$_tab')"
+[[ $(cut -f3 <<<"$_tsv") == "-" ]] && ok "y el TSV dice lo mismo" \
+  || mal "y el TSV dice lo mismo (dio '$(cut -f3 <<<"$_tsv")')"
 
 echo "== sin --tsv no imprime el bloque"
 notiene "no esta"  "PARA data/adaptadores.tsv"  "$S2"

@@ -296,10 +296,22 @@ probabilidad calibrada.
   alineamiento largo (6 diferencias en 27 nt = 22%, sobre el 10% por defecto) y
   recién después aceptar el corto. Funciona, pero dependiendo del umbral de
   error. Con 21 nt no hay mismatch posible para ninguno de los dos kits.
-- **Un porcentaje sobre 5 reads no es una medición.** `cloro PRJEB43636` salió
-  con `adaptador: RA3 (100% de los que tienen)` — de **5 reads de 20 000**. Es
-  ruido, y ponerlo en la columna `familia` de `adaptadores.tsv` afirma algo que
-  no se midió. Una `YA RECORTADA` va con `familia` e `inserto_modal` en `-`.
+- **Un porcentaje sobre 5 reads no es una medición, y el mismo comando no puede
+  dar dos respuestas.** `cloro PRJEB43636` salió con
+  `adaptador: RA3 (100% de los que tienen)` — de **5 reads de 20 000**, o sea
+  coincidencias al azar. La tabla para leer mostraba `RA3` y `19 nt` mientras el
+  bloque `--tsv` del **mismo comando** ponía `-`: se había parcheado solo el
+  segundo. Ahora el umbral está en un lugar —`hay_ad = con >= 0.2*total`— y es
+  **el mismo que usa el veredicto** para decir que no hay adaptador, así que no
+  pueden contradecirse. Una familia secundaria que redondea a 0% tampoco se
+  lista.
+- **El veredicto `PARECE sRNA-seq` pasa con el 30% de los insertos en la
+  ventana, así que no puede afirmar que "el inserto cae dentro".**
+  `gadmo PRJNA328800` pasa con el **51%** y su inserto modal es de **10 nt** —
+  dímeros de adaptador—, o sea fuera de 15-50. El mensaje decía "el inserto cae
+  dentro de la ventana" al lado de un `INSERTO 10 nt` en la tabla, que se lee
+  como una contradicción. Ahora da la fracción medida y avisa aparte cuando el
+  modal queda fuera, porque es justo lo que el recorte va a descartar.
 - **`perfil --proyectos --tsv` emite las filas de `data/adaptadores.tsv`.**
   La tabla de `--proyectos` es para leer; pasar 19 filas de ahí a mano es
   exactamente donde se cuela un error que después no falla ruidosamente, solo
@@ -558,7 +570,7 @@ purga después. Ver `docs/colab.md` y `docs/plan_datos_colab.md`.
 Todo corre sin red y en segundos. Antes de cada push:
 
 ```bash
-./tests/run_all.sh              # 12 bancos, 290 chequeos, binarios falsos en el PATH
+./tests/run_all.sh              # 12 bancos, 299 chequeos, binarios falsos en el PATH
 ./tests/mutar.py                # rompe el codigo y exige que algun banco grite
 ./scripts/check_docs.py         # lo que afirman los docs contra data/
 ./scripts/validate_notebooks.py # los .ipynb parsean y no hay duplicados
@@ -569,7 +581,7 @@ y `check_docs.py` dos más.
 
 **Un banco que pasa no prueba nada.** Prueba algo el día que se rompe lo que
 cubre y el banco se queja, y la única forma de saberlo es romper el código a
-propósito: eso es `tests/mutar.py`, 31 mutaciones que tienen que dar todas
+propósito: eso es `tests/mutar.py`, 34 mutaciones que tienen que dar todas
 `[OK]`. Un `[HUECO]` es un chequeo que falta; un `[VIEJA]` es una mutación cuyo
 patrón ya no existe, que tampoco prueba nada. Así aparecieron los dos huecos que
 ninguna otra cosa mostró — el veredicto de `perfil` que iba a la tabla sin estar
