@@ -72,6 +72,21 @@ MUTACIONES = [
      [('--min_length 15 --max_length 50 </dev/null', '</dev/null')]),
     ("trim: vuelve a adivinar el nombre de salida", "scripts/trim.sh",
      [("print(q.name.split('.')[0])", "print(q.name.split('.tfq')[0])")]),
+    # §1 del notebook. Estuvo mal tres veces, asi que se muta igual que el
+    # codigo de scripts/.
+    ("celda1: vuelve a reusar la copia siempre",
+     "notebooks/10_descarga_runs.ipynb",
+     [('if any(revisar()):', 'if False:')]),
+    ("celda1: no chequea las exclusiones",
+     "notebooks/10_descarga_runs.ipynb",
+     [('mal = [r for r in _excluidas() if r in corridas]', 'mal = []')]),
+    ("celda1: no chequea los proyectos de la spec",
+     "notebooks/10_descarga_runs.ipynb",
+     [('faltan = sorted(_proyectos_spec() - proy_man)', 'faltan = []')]),
+    ("celda1: pisa la copia de Drive aunque la ENA falle",
+     "notebooks/10_descarga_runs.ipynb",
+     [("raise RuntimeError('fetch_runs.sh manifest fallo; no piso la copia de Drive')",
+       'pass')]),
     ("cepas: vuelve a una sola pagina de 20", "scripts/fetch_genomes.sh",
      [('page_size=100${tok:+&page_token=$tok}', 'page_size=20')]),
     ("cepas: la cepa solo del campo organism", "scripts/fetch_genomes.sh",
@@ -94,6 +109,7 @@ def main():
     base = tempfile.mkdtemp(prefix='mutar.')
     try:
         shutil.copytree(RAIZ / 'tests', pathlib.Path(base) / 'tests')
+        shutil.copytree(RAIZ / 'notebooks', pathlib.Path(base) / 'notebooks')
         huecos = viejas = 0
         elegidas = [m for m in MUTACIONES if filtro.lower() in m[0].lower()]
         if not elegidas:
@@ -101,8 +117,11 @@ def main():
             return 1
 
         for nombre, fich, pares in elegidas:
-            shutil.rmtree(pathlib.Path(base) / 'scripts', ignore_errors=True)
-            shutil.copytree(RAIZ / 'scripts', pathlib.Path(base) / 'scripts')
+            # Se restauran los dos arboles mutables antes de cada mutacion:
+            # las de celda1 tocan notebooks/, no scripts/.
+            for sub in ('scripts', 'notebooks'):
+                shutil.rmtree(pathlib.Path(base) / sub, ignore_errors=True)
+                shutil.copytree(RAIZ / sub, pathlib.Path(base) / sub)
             p = pathlib.Path(base) / fich
             texto = p.read_text()
             falta = next((v for v, _ in pares if v not in texto), None)

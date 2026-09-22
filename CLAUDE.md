@@ -292,6 +292,20 @@ probabilidad calibrada.
   anota la ruta original. Con el nombre adivinado nada contaba como recortado, o
   sea ni idempotencia ni `estado`. `trim.sh` lee `trimmed_libraries` de
   `inputs.json`, que es el registro que YASMA deja de lo que hizo.
+- **Si la celda ya sabe que algo está viejo, que lo arregle ella.** §1 del
+  notebook de descargas estuvo mal **tres veces**, y las tres fueron la misma
+  equivocación de altura: primero reusaba la copia de Drive siempre (cambiar
+  `organismos.tsv` o `excluidas.tsv` no tenía efecto visible); después detectaba
+  la copia vieja pero solo la **imprimía** y seguía, así que §2-§4 corrían sobre
+  el manifiesto viejo y §4 ofrecía la fila excluida para commitear; después
+  **cortaba** con `RuntimeError`, que frena el daño pero deja a la persona
+  moviendo un flag a mano para algo que la celda ya sabía hacer. Ahora
+  **regenera sola** cuando el chequeo falla, y solo corta si la ENA sigue sin
+  coincidir con la spec **después** de consultarla — que ya no es una copia
+  vieja sino un problema de datos, y el mensaje manda a `fetch_runs.sh buscar`
+  en vez de a mover un flag. `REGENERAR = True` quedó como forzado, no como
+  requisito. Tiene banco propio (`tests/test_celda1.py`, 7 escenarios) porque el
+  código de un notebook se rompe igual que el de `scripts/`.
 - **Un `grep` cuyo patrón empieza con `-` lo toma como opción, y en un
   `notiene()` eso hace que el chequeo pase SIEMPRE.** grep aborta, el exit
   nonzero cae en la rama de éxito, y se imprime `ok`. Estaba en los **14**
@@ -491,7 +505,7 @@ purga después. Ver `docs/colab.md` y `docs/plan_datos_colab.md`.
 Todo corre sin red y en segundos. Antes de cada push:
 
 ```bash
-./tests/run_all.sh              # 10 bancos, 235 chequeos, binarios falsos en el PATH
+./tests/run_all.sh              # 11 bancos, 258 chequeos, binarios falsos en el PATH
 ./tests/mutar.py                # rompe el codigo y exige que algun banco grite
 ./scripts/check_docs.py         # lo que afirman los docs contra data/
 ./scripts/validate_notebooks.py # los .ipynb parsean y no hay duplicados
@@ -502,7 +516,7 @@ y `check_docs.py` dos más.
 
 **Un banco que pasa no prueba nada.** Prueba algo el día que se rompe lo que
 cubre y el banco se queja, y la única forma de saberlo es romper el código a
-propósito: eso es `tests/mutar.py`, 21 mutaciones que tienen que dar todas
+propósito: eso es `tests/mutar.py`, 25 mutaciones que tienen que dar todas
 `[OK]`. Un `[HUECO]` es un chequeo que falta; un `[VIEJA]` es una mutación cuyo
 patrón ya no existe, que tampoco prueba nada. Así aparecieron los dos huecos que
 ninguna otra cosa mostró — el veredicto de `perfil` que iba a la tabla sin estar
