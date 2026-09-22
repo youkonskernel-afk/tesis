@@ -25,7 +25,11 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # Sobreescribible para poder probar el script contra una spec sintetica, igual
 # que MANIFEST en fetch_runs.sh.
 SPEC="${GENOMES_SPEC:-$ROOT/data/genomas.tsv}"
-DEST="${GENOMES_DIR:-$ROOT/genomes}"
+# La ruta local sale de _drive_lib.sh, igual que en fetch_runs.sh y trim.sh:
+# es el mismo directorio donde drive_pull.sh genomas deja los FASTA.
+# shellcheck source=_drive_lib.sh
+. "$ROOT/scripts/_drive_lib.sh"
+DEST="${GENOMES_DIR:-$(ruta_local genomas)}"
 LEDGER="${GENOMES_LEDGER:-$ROOT/data/genomas.sha256}"
 API="https://api.ncbi.nlm.nih.gov/datasets/v2alpha"
 

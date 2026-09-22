@@ -34,12 +34,18 @@
 *.ntf
 *.nto
 
-# Directorios de trabajo del pipeline
+# Directorios de trabajo del pipeline.
+# Tienen que estar TODOS los subdirectorios locales del mapa de fases de
+# scripts/_drive_lib.sh: son data adentro del repo, y uno que se escape hace
+# que `git status` muestre cientos de GB. tests/test_rutas.sh lo verifica.
 sra_cache/
 genomes/
 indexes/
 bams/
 yasma_out/
+qc/
+figures/
+trim/
 tmp/
 
 # Logs y ruido

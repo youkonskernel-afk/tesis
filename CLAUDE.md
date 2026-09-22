@@ -537,6 +537,29 @@ probabilidad calibrada.
   estilo ShortStack3) la calidad se ignora y el asunto se agota en `fastp`; si
   corriera `-n`/`-e` (suma de calidades del seed), las calidades sintéticas
   cambiarían el alineamiento de esas 2 corridas.
+- **Tres scripts creían que los `.sra` vivían en tres lugares distintos.**
+  `drive_pull.sh` los dejaba en `<repo>/sra_cache/<org>/`, `fetch_runs.sh` los
+  buscaba en **`/home/dev/sra_cache`** —un absoluto con un usuario que no existe
+  en ninguna máquina de este proyecto— y `trim.sh` en
+  `$HOME/tesis_data/80_sra/<org>/`. El síntoma habría sido `FALTA el .sra` en
+  las 417 después de bajarlas bien. Ahora la ruta sale de `ruta_local()` en
+  `scripts/_drive_lib.sh`, que ya era la fuente única del mapa de fases por
+  exactamente el mismo motivo —"si push y pull se desincronizaran, subirías a
+  una carpeta y bajarías de otra"—, solo que el razonamiento valía una vuelta
+  más ancha. `tests/test_rutas.sh` lo verifica preguntándole a cada script en
+  vez de leer su fuente.
+- **`qc/`, `figures/` y `trim/` no estaban en `.gitignore`.** Son
+  subdirectorios de data adentro del repo; uno que se escape hace que
+  `git status` muestre cientos de GB. El banco de rutas exige que **todos** los
+  del mapa de fases estén ignorados, así que agregar una fase nueva sin su
+  entrada ahora falla.
+- **`purge` borraba la copia local sin comprobar que estuviera en Drive.** Su
+  docstring decía "nunca toca Drive", que es verdad y no es el peligro: para
+  `bam`, `yasma`, `features` y `modelos` la copia local es lo que se **produjo**
+  acá, y si todavía no se subió, purgar la pierde. Los BAMs de un organismo son
+  horas de alineamiento. Ahora corre `rclone check --one-way` contra el remoto y
+  se niega si falta algo, salvo para `sra` y `genomas`, donde Drive es la fuente
+  y la copia local es descartable.
 - **`fasterq-dump` sin `-t`** crea temporales en el CWD; llegaron a 109 GB.
 - **Al matar el pipeline**: matar también `bowtie-align-s`, `fastp`,
   `fasterq-dump` y `samtools`, o quedan huérfanos escribiendo el mismo BAM.
@@ -570,7 +593,7 @@ purga después. Ver `docs/colab.md` y `docs/plan_datos_colab.md`.
 Todo corre sin red y en segundos. Antes de cada push:
 
 ```bash
-./tests/run_all.sh              # 12 bancos, 299 chequeos, binarios falsos en el PATH
+./tests/run_all.sh              # 14 bancos, 339 chequeos, binarios falsos en el PATH
 ./tests/mutar.py                # rompe el codigo y exige que algun banco grite
 ./scripts/check_docs.py         # lo que afirman los docs contra data/
 ./scripts/validate_notebooks.py # los .ipynb parsean y no hay duplicados
@@ -581,7 +604,7 @@ y `check_docs.py` dos más.
 
 **Un banco que pasa no prueba nada.** Prueba algo el día que se rompe lo que
 cubre y el banco se queja, y la única forma de saberlo es romper el código a
-propósito: eso es `tests/mutar.py`, 34 mutaciones que tienen que dar todas
+propósito: eso es `tests/mutar.py`, 40 mutaciones que tienen que dar todas
 `[OK]`. Un `[HUECO]` es un chequeo que falta; un `[VIEJA]` es una mutación cuyo
 patrón ya no existe, que tampoco prueba nada. Así aparecieron los dos huecos que
 ninguna otra cosa mostró — el veredicto de `perfil` que iba a la tabla sin estar

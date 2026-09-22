@@ -1,7 +1,17 @@
-# Compartido por drive_push.sh y drive_pull.sh. No se ejecuta solo.
+# shellcheck shell=bash
+# Compartido por drive_push.sh, drive_pull.sh, fetch_runs.sh y trim.sh.
+# No se ejecuta solo.
 #
-# El mapa de fases y la lista de organismos viven acá y en un solo lugar: si
-# push y pull se desincronizaran, subirías a una carpeta y bajarías de otra.
+# El mapa de fases, la lista de organismos y LA RUTA LOCAL viven acá y en un
+# solo lugar: si push y pull se desincronizaran, subirías a una carpeta y
+# bajarías de otra.
+#
+# Eso mismo paso con los .sra, una vuelta mas ancha: drive_pull los dejaba en
+# <repo>/sra_cache/<org>/, fetch_runs los buscaba en /home/dev/sra_cache —una
+# ruta absoluta con un usuario que no existe en ninguna maquina de este
+# proyecto— y trim.sh en $HOME/tesis_data/80_sra/<org>/. Tres lugares para la
+# misma data, y el sintoma habria sido "FALTA el .sra" en las 417 despues de
+# bajarlas bien.
 
 DRIVE_REMOTE_DEFAULT="gdrive-tesis"
 ORGS_VALIDOS="rhirr sclsc cloro phypa prupe maldo gadmo galga maggi"
@@ -19,6 +29,16 @@ fase_a_rutas() {
     sra)      echo "sra_cache|80_sra" ;;
     *) return 1 ;;
   esac
+}
+
+# Raiz de la data local. La usan los cuatro scripts; se cambia con LOCAL_ROOT.
+# Por defecto es la raiz del repo, y .gitignore cubre todos los subdirectorios
+# del mapa de arriba.
+ruta_local() {
+  local fase="$1" org="${2:-}" rutas raiz
+  rutas=$(fase_a_rutas "$fase") || return 1
+  raiz="${LOCAL_ROOT:-$(cd "${BASH_SOURCE[0]%/*}/.." && pwd)}"
+  printf '%s/%s%s\n' "$raiz" "${rutas%%|*}" "${org:+/$org}"
 }
 
 org_valido() {

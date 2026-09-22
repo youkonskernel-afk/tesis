@@ -39,8 +39,14 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MANIFEST="${MANIFEST:-$ROOT/data/srr_manifest.tsv}"
 ADAPTADORES_TSV="${ADAPTADORES_TSV:-$ROOT/data/adaptadores.tsv}"
-SRA_DEST="${SRA_DEST:-$HOME/tesis_data/80_sra}"
-TRIM_DIR="${TRIM_DIR:-$HOME/tesis_data/05_trim}"
+# shellcheck source=_drive_lib.sh
+. "$ROOT/scripts/_drive_lib.sh"
+# El mismo directorio donde drive_pull.sh deja los .sra, no uno propio.
+SRA_DEST="${SRA_DEST:-$(ruta_local sra)}"
+# Las lecturas recortadas NO se respaldan: se re-generan de forma determinista
+# desde los .sra y data/adaptadores.tsv, que si estan respaldados. Por eso no
+# hay fase 'trim' en el mapa de Drive.
+TRIM_DIR="${TRIM_DIR:-$ROOT/trim}"
 CORES="${CORES:-1}"
 # Sin -t los temporales de fasterq-dump van al CWD; llegaron a 109 GB.
 TMP_FASTERQ="${TMP_FASTERQ:-$TRIM_DIR/.tmp}"

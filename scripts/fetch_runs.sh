@@ -34,7 +34,12 @@ SPEC="${ORGANISMOS:-$ROOT/data/organismos.tsv}"
 # Corridas excluidas a mano, con motivo medido. Ver el encabezado del archivo.
 EXCLUIDAS="${EXCLUIDAS:-$ROOT/data/excluidas.tsv}"
 MANIFEST="${MANIFEST:-$ROOT/data/srr_manifest.tsv}"
-CACHE="${SRA_CACHE:-/home/dev/sra_cache}"
+# La ruta local sale de _drive_lib.sh, que es donde vive el mapa de fases: es
+# el mismo directorio donde drive_pull.sh deja los .sra. Antes era
+# /home/dev/sra_cache, un absoluto con un usuario que no existe acá.
+# shellcheck source=_drive_lib.sh
+. "$ROOT/scripts/_drive_lib.sh"
+CACHE="${SRA_CACHE:-$(ruta_local sra)}"
 # Destino final de los .sra. En Colab: /content/drive/MyDrive/tesis/80_sra
 DEST="${SRA_DEST:-$CACHE}"
 # Donde prefetch escribe primero. En Colab: disco efimero de la VM.

@@ -46,6 +46,29 @@ if [[ $PURGE -eq 1 ]]; then
   [[ -d "$DST_PATH" ]] || { echo "nada que purgar: $DST_PATH no existe"; exit 0; }
   local_n=$(find "$DST_PATH" -type f | wc -l)
   local_sz=$(du -sh "$DST_PATH" 2>/dev/null | cut -f1)
+
+  # "Drive intacto" no es lo mismo que "seguro". Para sra y genomas, Drive es
+  # la fuente y la copia local es descartable. Para el resto, la copia local es
+  # lo que se PRODUJO acá: si todavía no se subió, purgar la borra y no hay de
+  # dónde recuperarla. Los BAMs de un organismo son horas de alineamiento.
+  #
+  # `rclone check` compara por checksum contra el remoto y sale != 0 si falta
+  # algo o difiere. Es lo mismo que haría un push, pero sin escribir.
+  case "$FASE" in
+    sra|genomas) ;;   # Drive es la fuente; nada que confirmar
+    *)
+      echo ">> confirmando que $SRC_PATH tiene lo que hay acá, antes de borrar"
+      if ! rclone check "$DST_PATH" "$SRC_PATH" --checksum --one-way; then
+        echo >&2
+        echo "NO purgo: Drive no tiene todo lo que hay en $DST_PATH." >&2
+        echo "  Es data producida acá; borrarla ahora la pierde." >&2
+        echo "  Subila primero: ./scripts/drive_push.sh $FASE $ORG --go" >&2
+        exit 1
+      fi
+      echo "   está todo en Drive."
+      ;;
+  esac
+
   if [[ $GO -eq 1 ]]; then
     echo ">> borrando LOCAL $DST_PATH ($local_n archivos, $local_sz)"
     rm -rf "$DST_PATH"

@@ -40,6 +40,7 @@ notebooks/10_descarga_runs.ipynb   manifiesto + .sra a Drive, por tandas
 notebooks/90_estado.ipynb          qué falta y cuánto ocupa
 scripts/fetch_runs.sh     resuelve los 19 proyectos a corridas y las descarga
 scripts/fetch_genomes.sh  resuelve y descarga los ensamblados
+scripts/_drive_lib.sh     mapa de fases y ruta local — fuente única
 scripts/trim.sh           recorte de adaptador con yasma trim (cutadapt)
 data/adaptadores.tsv      qué adaptador recortar en cada BioProject
 scripts/drive_push.sh     sube a Drive vía rclone
