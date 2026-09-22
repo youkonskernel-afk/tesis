@@ -38,6 +38,17 @@ CITAS_SIN_FICHERO = {
     "environment_pip.txt": "idem config.sh",
 }
 
+# Ficheros que el pipeline PRODUCE al correr y que, por la regla de ubicacion del
+# proyecto, no van a estar nunca en git. No son deuda: no hay nada que esperar.
+# Se listan aparte para que CITAS_SIN_FICHERO siga queriendo decir "esto tendria
+# que llegar algun dia".
+CITAS_DE_SALIDA = {
+    "recortadas.tsv": "ledger que escribe scripts/trim.sh en trim/<org>_<rol>/",
+    "log.txt": "el log de cutadapt que deja yasma trim",
+    "inputs.json": "lo escribe trim.sh y lo pisa yasma; es estado de corrida",
+    "loci.gff3": "salida de yasma tradeoff",
+}
+
 ORGS = ["rhirr", "sclsc", "cloro", "phypa", "prupe", "maldo", "gadmo", "galga",
         "maggi"]
 
@@ -71,6 +82,8 @@ def citas_rotas(fallos):
         base = cita.rsplit("/", 1)[-1]
         existe = any((RAIZ / p / cita).exists() or (RAIZ / p / base).exists()
                      for p in ("", "scripts", "data", "docs", "notebooks", "tests"))
+        if base in CITAS_DE_SALIDA:
+            continue
         if existe:
             if base in CITAS_SIN_FICHERO:
                 fallos.append(

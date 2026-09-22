@@ -43,7 +43,7 @@ notebooks/90_estado.ipynb          qué falta y cuánto ocupa
 scripts/fetch_runs.sh     resuelve los 19 proyectos a corridas y las descarga
 scripts/fetch_genomes.sh  resuelve y descarga los ensamblados
 scripts/_drive_lib.sh     mapa de fases y ruta local — fuente única
-scripts/trim.sh           recorte de adaptador con yasma trim (cutadapt)
+scripts/trim.sh           recorte con yasma trim, por tandas, 18 proyectos
 data/adaptadores.tsv      qué adaptador recortar en cada BioProject
 scripts/drive_push.sh     sube a Drive vía rclone
 scripts/drive_pull.sh     baja de Drive, y purga la copia local
@@ -87,6 +87,25 @@ tests/run_all.sh                     # los bancos, sin red
 ./scripts/fetch_genomes.sh fetch     # los ensamblados a Drive
 ./scripts/fetch_genomes.sh verificar # recalcula los sha256 contra el ledger
 ```
+
+Y en la máquina local, una vez que rclone esté configurado (`docs/rclone.md`)
+y los `.sra` bajados:
+
+```bash
+./scripts/drive_pull.sh sra galga --go   # traer un organismo
+./scripts/trim.sh plan galga             # qué recortaría, y cuánto disco
+./scripts/trim.sh correr galga           # recorta, en tandas
+./scripts/trim.sh verificar galga        # ¿la retención da lo que perfil predijo?
+```
+
+El recorte produce **18 proyectos YASMA**, uno por organismo y rol
+(`trim/galga_primario/`, `trim/galga_duplicado/`): el duplicado es la validación
+independiente y no puede compartir anotación con el primario.
+
+`verificar` no es opcional. cutadapt corre con `--trimmed-only`, así que recortar
+con la secuencia equivocada **no da error**: deja el `.t.fq.gz` casi vacío y
+`estado` sigue diciendo "0 faltan". Lo único que lo delata es la retención medida
+contra la `retencion_est` de `data/adaptadores.tsv`.
 
 El manifiesto y los ensamblados **no se editan a mano**: se regeneran. Sacar una
 corrida va en `data/excluidas.tsv`, con el motivo medido; editar

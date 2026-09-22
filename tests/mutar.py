@@ -72,7 +72,29 @@ MUTACIONES = [
     ("trim: la ventana deja de ir explicita", "scripts/trim.sh",
      [('--min_length 15 --max_length 50 </dev/null', '</dev/null')]),
     ("trim: vuelve a adivinar el nombre de salida", "scripts/trim.sh",
-     [("print(q.name.split('.')[0])", "print(q.name.split('.tfq')[0])")]),
+     [("run = q.name.split('.')[0]", "run = q.name.split('.tfq')[0]")]),
+    # yasma trim v1.1.1 PISA trimmed_libraries con lo de su propia llamada. Sin
+    # el ledger acumulativo, la tanda 2 desmiente a la 1 y todo se re-recorta.
+    ("trim: la tanda N vuelve a pisar el registro de la N-1", "scripts/trim.sh",
+     [('previas, orden = {}, []\nif led.is_file():',
+       'previas, orden = {}, []\nif False:')]),
+    # El duplicado es la validacion independiente: comparte directorio de
+    # proyecto con el primario y deja de serlo.
+    ("trim: el primario y el duplicado vuelven a un solo directorio",
+     "scripts/trim.sh",
+     [('dir="$TRIM_DIR/${org}_${rol}"', 'dir="$TRIM_DIR/${org}"')] * 4),
+    # maggi_primario cruza dos BioProjects con 62% y 87% de retencion esperada.
+    ("trim: el ledger pone el bioproject del primero de la tanda",
+     "scripts/trim.sh",
+     [("de_proyecto.get(run, '-')", "list(de_proyecto.values() or ['-'])[0]")] * 2),
+    # Recortar con la secuencia equivocada no da error: --trimmed-only descarta
+    # todo lo que no matchea y deja un .t.fq.gz casi vacio.
+    ("trim: verificar deja pasar una retencion vacia", "scripts/trim.sh",
+     [('if (m < 5)       print "VACIA', 'if (0)           print "VACIA')]),
+    # Para una PRE-TRIMMED el fastq sin recortar ES la salida que YASMA anoto.
+    ("trim: borra el fastq de una PRE-TRIMMED", "scripts/trim.sh",
+     [('        [[ "$sec" == "PRE-TRIMMED" ]] && continue\n        rm -f',
+       '        rm -f')]),
     # §1 del notebook. Estuvo mal tres veces, asi que se muta igual que el
     # codigo de scripts/.
     ("celda1: vuelve a reusar la copia siempre",

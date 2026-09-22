@@ -286,6 +286,51 @@ probabilidad calibrada.
   del asunto de SRA Lite — en el recorte la calidad sintética no distorsiona
   nada porque no se mira. Detalle que cuesta una corrida: `yasma trim` **no
   tiene `--override`**, aunque `yasma adapter` sí.
+- **`yasma trim` pisa `trimmed_libraries` en vez de acumularlo, y eso rompe
+  cualquier recorte por tandas.** Hace `ic.inputs['trimmed_libraries'] = []` al
+  entrar y `= <lo de esta llamada>` al salir. Medido: tras recortar RUNA el json
+  dice `['trim/RUNA.t.fq.gz']`, y tras recortar RUNB dice
+  `['trim/RUNB.t.fq.gz']` — RUNA **sigue en disco y desapareció del registro**.
+  Como `trim.sh` lee de ahí para saber qué está hecho, cada tanda desmentía a la
+  anterior: `estado` reporta la corrida como faltante y `correr` la vuelve a
+  volcar y recortar, para siempre. Por eso hay un ledger propio
+  (`recortadas.tsv`, acumulativo) y por eso después de cada tanda se re-escribe
+  `inputs.json` con la lista completa, que es lo que los comandos YASMA de aguas
+  abajo leen. Pasarle todas las librerías en cada llamada tampoco sirve: no
+  saltea las que ya tienen salida, las re-recorta.
+  Del mismo palo, medidos a la vez: **`trim/log.txt` se trunca en cada llamada**
+  (`Logger` lo abre con `"w"`), así que las estadísticas de cutadapt de las
+  tandas previas se pierden y cada tanda se loguea aparte; y **`--cleanup` no se
+  puede usar** —itera `ic.inputs['srrs']`, que en nuestro json es `None` →
+  `TypeError`, y además vaciaría `untrimmed_libraries`, que para una librería
+  `PRE-TRIMMED` es donde está la salida.
+- **Volcar los 417 `.sra` a fastq antes de recortar son ~1.1 TB.** Calculado
+  desde `base_count` del manifiesto (`2*bases + 35*reads`): `galga` solo son
+  376 GB —245 el duplicado y 131 el primario— y eso no entra en el disco junto
+  con los `.sra` y los ~340 GB de BAMs. `trim.sh` trabaja en **tandas acotadas
+  por `PRESUPUESTO_GB`** (40 por defecto), borra el fastq sin recortar apenas la
+  tanda termina, y vuelca la tanda siguiente mientras recorta la actual
+  (`SOLAPAR=0` lo apaga). El pico es ~2× el presupuesto.
+  **La excepción es `cloro PRJEB43636`**: al ser `PRE-TRIMMED`, YASMA anota el
+  fastq sin recortar como su propia salida, así que ese fichero no se puede
+  borrar — se guarda comprimido (53 GB → ~14).
+- **El primario y el duplicado son proyectos YASMA distintos:
+  `trim/<org>_<rol>/`.** 18 directorios, no 9. El duplicado es la validación
+  independiente, y aguas abajo el directorio de proyecto **es** la unidad de
+  `yasma tradeoff`: si comparten directorio, la separación queda en "acordarse
+  de filtrar por la columna `rol`" y la validación deja de ser independiente el
+  día que alguien no se acuerde. `maggi_primario` junta `PRJNA154615` y
+  `PRJNA232734` en un solo directorio y está bien: el `adapters` de
+  `inputs.json` es un dict **por fichero**, así que cada uno lleva su secuencia.
+- **Recortar con la secuencia equivocada no falla: deja el `.t.fq.gz` casi
+  vacío.** cutadapt corre con `--trimmed-only`, así que lo que no matchea se
+  descarta y el pipeline sigue en verde — `estado` diría "recortadas, 0 faltan".
+  Para eso existe `./scripts/trim.sh verificar`, que compara la retención
+  **medida** (de los conteos de cutadapt, guardados en el ledger) contra la
+  `retencion_est` de `data/adaptadores.tsv`, y grita `VACIA` por debajo del 5% y
+  `DESVIADA` más allá de 15 puntos. Es el único chequeo del recorte que atrapa
+  el caso de `maggi`: dos BioProjects de 2011 y 2014 con kits distintos, donde
+  una sola fila de adaptador habría vaciado el proyecto que no corresponde.
 - **`maggi` primario son dos BioProjects de eras distintas, y eso es una fila
   de adaptador cada uno.** `vdb-dump --info` da la fecha de carga:
   `SRR317135` (`PRJNA154615`) es de **julio de 2011** y `SRR1066790`
@@ -624,6 +669,7 @@ Lo que necesita red va en otro lado:
 | ver qué falta | Colab | `notebooks/90_estado.ipynb` |
 | configurar rclone | máquina local | `docs/rclone.md` + `scripts/drive_check.sh` |
 | traer `.sra` para alinear | máquina local | `scripts/drive_pull.sh sra <org> --go` |
+| recorte | máquina local | `scripts/trim.sh plan/correr/verificar` |
 | alineamiento y YASMA | máquina local | `orchestrate.sh` |
 | BAMs a Drive | máquina local | `scripts/drive_push.sh` |
 
@@ -637,7 +683,7 @@ purga después. Ver `docs/colab.md` y `docs/plan_datos_colab.md`.
 Todo corre sin red y en segundos. Antes de cada push:
 
 ```bash
-./tests/run_all.sh              # 15 bancos, 379 chequeos, binarios falsos en el PATH
+./tests/run_all.sh              # 15 bancos, 413 chequeos, binarios falsos en el PATH
 ./tests/mutar.py                # rompe el codigo y exige que algun banco grite
 ./scripts/check_docs.py         # lo que afirman los docs contra data/
 ./scripts/validate_notebooks.py # los .ipynb parsean y no hay duplicados
@@ -648,7 +694,7 @@ y `check_docs.py` dos más.
 
 **Un banco que pasa no prueba nada.** Prueba algo el día que se rompe lo que
 cubre y el banco se queja, y la única forma de saberlo es romper el código a
-propósito: eso es `tests/mutar.py`, 47 mutaciones que tienen que dar todas
+propósito: eso es `tests/mutar.py`, 52 mutaciones que tienen que dar todas
 `[OK]`. Un `[HUECO]` es un chequeo que falta; un `[VIEJA]` es una mutación cuyo
 patrón ya no existe, que tampoco prueba nada. Así aparecieron los dos huecos que
 ninguna otra cosa mostró — el veredicto de `perfil` que iba a la tabla sin estar

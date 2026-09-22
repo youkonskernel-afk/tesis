@@ -190,6 +190,41 @@ sus 110 coincidencias son constructos modernos que lo contienen aguas abajo.
 Por eso `perfil` marca los dos primeros con `5p:` y `??:`, y `trim.sh` **se
 niega a recortar** con ellos.
 
+### Tres cosas del propio `trim` que obligan a envolverlo
+
+Las tres medidas contra el binario de `v1.1.1`, no leídas:
+
+**1. `trimmed_libraries` se pisa, no se acumula.** `trim()` hace
+`ic.inputs['trimmed_libraries'] = []` al entrar y `= <lo de esta llamada>` al
+salir. Comprobado con dos librerías en tandas separadas:
+
+| | `trimmed_libraries` tras la llamada | qué hay en `trim/` |
+| :-- | :-- | :-- |
+| tanda 1 (RUNA) | `['trim/RUNA.t.fq.gz']` | `RUNA.t.fq.gz` |
+| tanda 2 (RUNB) | `['trim/RUNB.t.fq.gz']` | `RUNA.t.fq.gz`, `RUNB.t.fq.gz` |
+
+El fichero de la tanda 1 **sigue en disco y desaparece del registro**. Como
+`trim.sh` lee de ahí para saber qué está recortado, sin corregirlo cada tanda
+desmentiría a la anterior: `estado` reportaría la corrida como faltante y
+`correr` la volvería a volcar y recortar — con 417 corridas, para siempre. De
+ahí el ledger `recortadas.tsv`, que es acumulativo, y la re-escritura de
+`inputs.json` con la lista completa después de cada tanda (que es lo que
+`tradeoff` y compañía van a leer).
+
+Pasarle **todas** las librerías en cada llamada tampoco sirve: no saltea las que
+ya tienen salida, las re-recorta desde cero.
+
+**2. `trim/log.txt` se trunca en cada llamada.** `Logger.__init__` abre el
+fichero con `"w"`. Las estadísticas de cutadapt de las tandas anteriores se
+pierden, así que cada tanda se loguea aparte y de esos logs salen los conteos
+de `trim.sh verificar`.
+
+**3. `--cleanup` no se puede usar.** Itera `ic.inputs['srrs']`, que en un
+`inputs.json` que no escribió `yasma download` queda en `None` → `TypeError`. Y
+además vacía `untrimmed_libraries`, que para una librería `PRE-TRIMMED` es
+justamente donde está la salida. El borrado del fastq sin recortar lo hace
+`trim.sh`.
+
 ### Dos nombres de salida que no se pueden adivinar
 
 Probado contra el YASMA real, no leído:
