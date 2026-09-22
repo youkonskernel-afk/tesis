@@ -36,9 +36,8 @@ fallo que `check_env.sh` está hecho para atrapar.
 y lo indexa si le falta el índice. **Nuestro alineamiento es el que se anota**,
 así que la decisión de `bowtie -m 50` vale tal como está.
 
-`yasma align` **no está en nuestro camino y no debería estarlo**: envuelve a
-`ShortStack` (`--align_only --mmap u`) y pide `-tl/--trimmed_libraries`. Usarlo
-reemplazaría nuestro bowtie y con él el `-m 50`, que está medido y justificado.
+`yasma align` **sí es un camino viable, al contrario de lo que decía esta
+página**. Ver la sección propia más abajo: en `v1.1.1` no envuelve a ShortStack.
 
 ### El BAM tiene que traer `@RG` o `tradeoff` revienta
 
@@ -68,6 +67,90 @@ es la utilidad para inspeccionarlos.
    después la abre desde el CWD.
 
 O sea: `cd` al directorio del proyecto, librerías adentro, `-o .` absoluto.
+
+## `yasma align` no es el wrapper de ShortStack — es bowtie1 nativo
+
+Esta página decía que `yasma align` envolvía a `ShortStack --align_only --mmap u`
+y que usarlo nos costaría el `-m 50`. **Las dos cosas son falsas en `v1.1.1`.**
+
+El wrapper de ShortStack existe —`src/yasma/align.py`, función
+`shortstack_align`— pero está **comentado en `__init__.py`**:
+
+```python
+# from .align import *
+...
+from .nativealign import *
+```
+
+El comando `yasma align` que se registra es `nativealign.py:align()`, un
+alineador **bowtie1 nativo con el pesado estilo ShortStack3**. Los defaults:
+
+| opción | default | qué es |
+| :-- | :-- | :-- |
+| `--max_multi` | **50** | el `-m` de bowtie — **es exactamente nuestro `-m 50`** |
+| `--max_random` | 3 | sitios empatados por encima de los cuales el read queda sin mapear |
+| `--unique_locality` | 50 | ventana en nt para pesar por cobertura única local |
+| `--offrate` | 3 | de `bowtie-build`; bowtie usa 5 |
+| `--min_length` / `--max_length` | 15 / 50 | filtro aplicado **en el alineamiento** |
+
+### Tres etapas por librería, contra el mismo índice
+
+1. **`unique`** — `bowtie -v 1 -p <cores> -S -m 1 --best --strata --offrate 3
+   --max <RG>.max1.fq`. Lo que mapea a un solo sitio entra al BAM; el resto cae
+   al fichero de `--max`.
+2. **`multi`** — sobre ese fichero: `bowtie -v 1 -S -m <max_multi> -a --best
+   --strata --offrate 3 --max <RG>.max50.fq`. Con todas las posiciones en mano,
+   pesa cada una por la cobertura única en una ventana de `unique_locality/2` a
+   cada lado y elige una por sorteo ponderado. Si todos los pesos empatan **y**
+   hay más de `max_random` sitios, el read queda sin mapear. Tags: `XY:Z:U/R/P/Q`
+   y `XZ:f:<prob>`.
+3. **`over`** — los reads que pasaron `max_multi` **no se tiran**: entran al BAM
+   como no mapeados con `XY:Z:H`. Esta etapa no corre bowtie, lee el fichero de
+   `--max`.
+
+El filtro de longitud y el de N se aplican acá (`XY:Z:F`), no antes.
+
+### Lo que esto resuelve
+
+- **`bowtie` corre en `-v 1` en las dos pasadas.** `-v` cuenta mismatches y
+  **ignora las calidades**, así que la calidad sintética única de `SRR317135` y
+  `SRR1066790` (las dos SRA Lite) no cambia el alineamiento. Era la mitad
+  abierta de esa nota de métodos, y se cierra sin necesitar `config.sh`.
+- **`-m 50` no se pierde: es el default.** El hallazgo de `danre` —que subirlo
+  inunda la anotación de tRF-5— sigue valiendo y no hay que pelearlo.
+- **Escribe `@RG` por librería**, tanto en la cabecera (`header['RG']`) como por
+  read (`a.set_tag("RG", rg, "Z")`), que es justo lo que `tradeoff` exige sin
+  `.get()`. El nombre del read group sale de `get_rg()`, que pela `.gz`, `.t`,
+  `.fq`/`.fastq`: de `SRR123.t.fq.gz` sale **`SRR123`**, y de un PRE-TRIMMED
+  `SRR123.fastq.gz` también. O sea **un `@RG` por corrida, ya resuelto**.
+- Deja `align/alignment.bam` ordenado por coordenada, la tabla de profundidad
+  que `tradeoff` consume, y `alignment_file` anotado en `inputs.json`.
+
+### Dos cosas que hay que tener listas antes
+
+- **El genoma no puede estar comprimido con `gzip`.** `make_bam_header()` hace
+  `pysam.FastaFile(genome_file)`, y `bowtie-build` recibe el mismo fichero.
+  Nuestros ensamblados están en `70_genomas/<acc>.fna.gz` hechos con `gzip -c`.
+  Medido:
+
+  | fichero | `pysam.FastaFile` |
+  | :-- | :-- |
+  | `g.fna` | OK |
+  | `g.fna.gz` (gzip) | `OSError error when opening file` |
+
+  Hay que descomprimirlo, o re-comprimirlo con `bgzip`. El `sha256` del ledger
+  es el del `.gz`, así que la copia descomprimida es derivada y no se respalda.
+- **El índice se construye solo** si falta `<genoma>.rev.1.ebwt`, con
+  `bowtie-build --offrate 3`, **al lado del FASTA**. Coincide con la regla del
+  proyecto de no respaldar índices.
+
+### Lo que sigue sin resolver
+
+`yasma align` alinea **un proyecto entero a un BAM único**, con un `@RG` por
+librería. Eso encaja con `trim/<org>_<rol>/`: un BAM por organismo y rol, que es
+la unidad que `tradeoff` anota. Lo que falta decidir es si reemplaza al bowtie de
+`orchestrate.sh` —que todavía no está en este repo— o convive con él. No se puede
+comparar hasta que ese script llegue del `main` local.
 
 ## `yasma adapter`: su criterio de "ya recortada" es más débil que el nuestro
 

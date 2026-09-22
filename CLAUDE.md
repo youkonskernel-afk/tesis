@@ -231,9 +231,12 @@ probabilidad calibrada.
     más bajos son `gadmo PRJNA328800` (51%), `galga PRJEB12164` (52%) y
     `cloro PRJEB51338` (57%).
   - **`cloro PRJEB43636` retiene 100% por un motivo distinto del resto**: es
-    `PRE-TRIMMED`, así que YASMA la pasa de largo y **no le aplica ningún
-    filtro**, ni el de longitud. Es la única de las 19 que entra al alineamiento
-    sin pasar por la ventana 15-50.
+    `PRE-TRIMMED`, así que YASMA la pasa de largo en el recorte y **no le aplica
+    ningún filtro**, ni el de longitud. Es la única de las 19 que sale del
+    recorte sin pasar por la ventana 15-50. Dónde se filtra entonces depende del
+    alineador: `yasma align` aplica 15-50 y descarta los reads con N **al
+    alinear** (`XY:Z:F`), así que ahí se empareja con las otras 18; un bowtie
+    propio no lo haría y habría que filtrarla aparte.
   - **`cloro PRJEB43636` viene ya recortado** (reads de 36 nt, 0% de adaptador
     porque el read *es* el inserto). Va `PRE-TRIMMED`: YASMA lo pasa de largo.
   - **`gadmo PRJNA328800`: el 28% de los reads tienen inserto de 10 nt** y
@@ -547,10 +550,22 @@ probabilidad calibrada.
   `KeyError: 'RG'`. Y no es cosmético — agrega profundidad por read group, así
   que sin `@RG` no podría separar librerías aunque no se cayera. Medido; ver
   `docs/yasma.md`.
-- **`yasma align` no es nuestro camino.** Envuelve a `ShortStack` y pediría las
-  librerías ya recortadas; usarlo reemplazaría nuestro bowtie y con él el
-  `-m 50`, que está medido. Lo que usamos es `yasma tradeoff -a <BAM>`, que
-  consume **nuestro** alineamiento.
+- **`yasma align` NO envuelve a ShortStack, y esta línea decía que sí.** El
+  wrapper existe (`src/yasma/align.py`, `shortstack_align`) pero está
+  **comentado en `__init__.py`**; el comando que se registra es
+  `nativealign.py`, un **bowtie1 nativo con pesado estilo ShortStack3**. Y no
+  costaría el `-m 50`: `--max_multi` **vale 50 por defecto**. Tres pasadas por
+  librería —`-m 1`, después `-m 50 -a --best --strata` con sorteo ponderado por
+  cobertura única local, y los que se pasan de 50 al BAM como no mapeados con
+  `XY:Z:H`—, `@RG` por corrida en la cabecera y por read, y
+  `align/alignment.bam` ordenado. Detalle en `docs/yasma.md`.
+  Queda por decidir si reemplaza al bowtie de `orchestrate.sh`, y eso no se
+  puede comparar hasta que ese script llegue del `main` local.
+  **Dos cosas que hay que tener listas antes**: el genoma no puede ir
+  comprimido con `gzip` —`make_bam_header()` hace `pysam.FastaFile()`, que sobre
+  nuestro `70_genomas/<acc>.fna.gz` tira `OSError` (medido); hay que
+  descomprimir o re-comprimir con `bgzip`— y el índice se construye solo con
+  `bowtie-build --offrate 3` al lado del FASTA.
 - **`yasma adapter` no reemplaza a `perfil`: su criterio es más débil.** Marca
   `PRE-TRIMMED` con `read_length_freq < 0.8 and best_perc < 0.10`, o sea que usa
   la **dispersión** del largo del read, no su magnitud. Corrido cabeza a cabeza
@@ -589,11 +604,14 @@ probabilidad calibrada.
   todas las bases**: en esas 2 corridas el filtro de calidad de `fastp` no
   descarta nada y en las otras 414 sí. La columna `formato` de
   `data/sra_md5.tsv` dice cuáles son; el archivo en Drive no, porque se guarda
-  como `<RUN>.sra` igual que los demás. **Pendiente de confirmar contra
-  `config.sh`**: si `bowtie` corre en modo `-v` (conteo de mismatches, el
-  estilo ShortStack3) la calidad se ignora y el asunto se agota en `fastp`; si
-  corriera `-n`/`-e` (suma de calidades del seed), las calidades sintéticas
-  cambiarían el alineamiento de esas 2 corridas.
+  como `<RUN>.sra` igual que los demás. **La mitad del recorte está cerrada**:
+  `yasma trim` llama a cutadapt sin `-q`, así que no hay filtro de calidad que
+  distorsionar. **Y la del alineamiento también, si se usa `yasma align`**: sus
+  dos pasadas de bowtie van con `-v 1`, que cuenta mismatches e **ignora las
+  calidades**. Lo único que quedaría abierto es el bowtie de `orchestrate.sh`,
+  que todavía no está en este repo: si corriera `-n`/`-e` (suma de calidades del
+  seed) las calidades sintéticas sí cambiarían el alineamiento de esas 2
+  corridas. Leer sus flags cuando llegue del `main` local.
 - **Tres scripts creían que los `.sra` vivían en tres lugares distintos.**
   `drive_pull.sh` los dejaba en `<repo>/sra_cache/<org>/`, `fetch_runs.sh` los
   buscaba en **`/home/dev/sra_cache`** —un absoluto con un usuario que no existe

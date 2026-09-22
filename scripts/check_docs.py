@@ -49,6 +49,17 @@ CITAS_DE_SALIDA = {
     "loci.gff3": "salida de yasma tradeoff",
 }
 
+# Ficheros de una dependencia externa, citados para decir DONDE se midio algo.
+# Tampoco son deuda: no van a estar nunca en este repo. Llevan el repo al lado
+# para que se sepa contra que se verifican.
+CITAS_EXTERNAS = {
+    "nativealign.py": "NateyJay/YASMA@v1.1.1 — el `yasma align` real",
+    "align.py": "NateyJay/YASMA@v1.1.1 — el wrapper de ShortStack, comentado",
+    "__init__.py": "NateyJay/YASMA@v1.1.1 — es donde align.py esta comentado",
+    "trim.py": "NateyJay/YASMA@v1.1.1",
+    "generics.py": "NateyJay/YASMA@v1.1.1",
+}
+
 ORGS = ["rhirr", "sclsc", "cloro", "phypa", "prupe", "maldo", "gadmo", "galga",
         "maggi"]
 
@@ -82,7 +93,7 @@ def citas_rotas(fallos):
         base = cita.rsplit("/", 1)[-1]
         existe = any((RAIZ / p / cita).exists() or (RAIZ / p / base).exists()
                      for p in ("", "scripts", "data", "docs", "notebooks", "tests"))
-        if base in CITAS_DE_SALIDA:
+        if base in CITAS_DE_SALIDA or base in CITAS_EXTERNAS:
             continue
         if existe:
             if base in CITAS_SIN_FICHERO:
