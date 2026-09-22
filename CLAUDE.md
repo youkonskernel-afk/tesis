@@ -50,21 +50,19 @@ no el aporte de la tesis:
 **9 organismos, 3 por reino, cada uno con BioProject primario y duplicado.**
 `data/organismos.tsv` es la especificación: 19 accessions en 18 slots (el
 primario de `maggi` son dos BioProjects combinados). `data/srr_manifest.tsv` es
-el manifiesto resuelto: **415 corridas**, generado con
+el manifiesto resuelto: **417 corridas**, generado con
 `./scripts/fetch_runs.sh manifest` contra la ENA desde Colab
 (`notebooks/10_descarga_runs.ipynb`).
 
-**415 de 415 bajadas en `80_sra/`**, con los 415 md5 en `data/sra_md5.tsv` y
-reconciliado contra el manifiesto en las dos direcciones. Eran 416 hasta que
-`SRR23277331` salió por no ser sRNA-seq — ver más abajo.
+**417 de 417 bajadas en `80_sra/`**, con los 417 md5 en `data/sra_md5.tsv` y
+reconciliado contra el manifiesto en las dos direcciones. `./scripts/check_docs.py`
+lo comprueba y hoy pasa en verde. Eran 416 hasta que `SRR23277331` salió por no
+ser sRNA-seq, y 415 hasta que el duplicado nuevo de `sclsc` sumó 2 — ver abajo.
 
-**Falta una corrida, y el conteo no lo delata.** El manifiesto resuelve 18 de
-los 19 BioProjects de la spec: el duplicado nuevo de `sclsc` (`PRJNA1135930`)
-entró a `organismos.tsv` y el manifiesto todavía no se regeneró contra la ENA,
-así que `415 de 415` está completo **respecto de la spec anterior**. Se ve con
-`./scripts/check_docs.py`, que compara los dos ficheros en vez de creerle al
-total; a ojo no se ve, porque el manifiesto al día también da 416 —una corrida
-menos por la exclusión, una más por `sclsc`—.
+**El conteo no delata una spec desactualizada**, y por eso el chequeo compara
+los ficheros en vez de los totales: mientras faltaba `sclsc`, el manifiesto
+viejo y el al día daban los dos 416 —una corrida menos por la exclusión, una más
+por `sclsc`— así que a ojo eran indistinguibles.
 Las dos últimas —`SRR317135` y `SRR1066790`, del primario de `maggi`— costaron
 una ronda entera porque **solo existen en formato SRA Lite** y el script buscaba
 únicamente `.sra`: `prefetch` las bajaba bien, salía con código 0, y el
@@ -72,8 +70,8 @@ una ronda entera porque **solo existen en formato SRA Lite** y el script buscaba
 `prefetch` más abajo, que es donde está lo que hay que declarar en métodos.
 `data/srr_manifest_r1.tsv` es el de la ronda anterior, como referencia.
 
-**Los genomas están cerrados** (9 de 9 con `sha256` versionado) y los `.sra`
-casi: falta la corrida de `sclsc` de arriba. Se comprueba con
+**El upstream está cerrado**: 417 `.sra` y 9 genomas en Drive, los dos con
+checksum versionado, y los 19 BioProjects de la spec resueltos. Se comprueba con
 `./scripts/fetch_runs.sh estado`, `./scripts/fetch_genomes.sh verificar` —que
 recalcula los sha256 contra el ledger en vez de confiar en el tamaño— y
 `./scripts/check_docs.py`, que cruza los docs contra `data/`. Lo que sigue es
@@ -190,8 +188,8 @@ probabilidad calibrada.
   concluyente porque la lista incluye `AGATCGGAAGAGC`, el universal de Illumina,
   así que un inserto corto habría dado read-through con cualquier kit — cero
   significa que todos los insertos pasan los 150 nt. **El manifiesto queda en
-  415**, `prupe` primario en 8 corridas, y el ledger reconcilia en cero por
-  ambos lados. El `.sra` de 3 GB sigue en Drive como peso muerto; `90_estado` lo
+  417 sin ella**, `prupe` primario en 8 corridas, y el ledger reconcilia en
+  cero por ambos lados. El `.sra` de 3 GB sigue en Drive como peso muerto; `90_estado` lo
   va a listar como "sobra", que es correcto.
 
   **La lección importante no es esa corrida, es que la etiqueta engañó.** Decía
@@ -220,7 +218,7 @@ probabilidad calibrada.
   - **`maldo PRJNA784097` (151 nt) está resuelto**: 100% de adaptador con
     inserto modal 24 nt, o sea que el recorte normal de `fastp` lo recupera. No
     hace falta pre-trim especial.
-- **Reads de más de 50 nt: 143 de 415, y ninguna es un problema.** Verificado
+- **Reads de más de 50 nt: 143 de 417, y ninguna es un problema.** Verificado
   con `perfil`: 51 nt es una librería de 50 ciclos sin recortar, 65-75 nt una de
   75, y los 151 nt de `maldo` traen el adaptador al nt 24. `fastp` las resuelve
   todas recortando. El resumen del manifiesto agrupa por proyecto en vez de
@@ -231,10 +229,14 @@ probabilidad calibrada.
   antes de adoptarlo: 98% de adaptador, inserto modal 22 nt, 97% dentro de la
   ventana. Con esto **los 9 organismos tienen primario y duplicado**.
 
-  **Es UNA sola corrida (12 M spots), y eso va declarado en métodos**: la
-  validación de `sclsc` es más débil que la de los otros 8. Alcanza para lo que
-  el duplicado existe —preguntar si un locus priorizado reaparece en un
-  experimento independiente— pero no da para nada estadístico.
+  **Son 2 corridas y 32.4 M spots** (`SRR31851668` 12.4 M, `SRR31851669`
+  20.0 M). Al elegirlo se había anotado **1 corrida de 12 M**, y eso se escribió
+  acá como un hecho de métodos —"la validación de `sclsc` es más débil"— cuando
+  venía de la columna `runs` de la spec, que es una estimación. El manifiesto
+  resuelto contra la ENA devolvió 2. **Sigue siendo el duplicado más chico de
+  los 9** —la mediana está en 23 corridas— así que la validación de `sclsc`
+  efectivamente es la más débil del set y eso va en métodos; pero no tanto como
+  se había declarado.
 
   El otro candidato, `PRJNA379694` (6 corridas, 758 M spots, etiquetado
   `miRNA-Seq`), **se descartó**: `perfil` dio 1% de adaptador con reads de 100 nt
@@ -293,7 +295,7 @@ probabilidad calibrada.
   sea ni idempotencia ni `estado`. `trim.sh` lee `trimmed_libraries` de
   `inputs.json`, que es el registro que YASMA deja de lo que hizo.
 - **La columna `runs` de `organismos.tsv` es una estimación, no un hecho** —
-  difiere del manifiesto resuelto en **7 de los 18** proyectos (`prupe
+  difiere del manifiesto resuelto en **7 de los 19** proyectos (`prupe
   PRJNA780811` declara 5 y trae 7; `galga PRJNA694114` declara 96 y trae 95;
   los dos de `maggi` declaran `NA`). Eso está bien: el manifiesto es la verdad
   y la columna es de cuando se eligió el proyecto. **Lo que no está bien es
@@ -521,7 +523,7 @@ purga después. Ver `docs/colab.md` y `docs/plan_datos_colab.md`.
 Todo corre sin red y en segundos. Antes de cada push:
 
 ```bash
-./tests/run_all.sh              # 12 bancos, 278 chequeos, binarios falsos en el PATH
+./tests/run_all.sh              # 12 bancos, 280 chequeos, binarios falsos en el PATH
 ./tests/mutar.py                # rompe el codigo y exige que algun banco grite
 ./scripts/check_docs.py         # lo que afirman los docs contra data/
 ./scripts/validate_notebooks.py # los .ipynb parsean y no hay duplicados
@@ -538,9 +540,9 @@ patrón ya no existe, que tampoco prueba nada. Así aparecieron los dos huecos q
 ninguna otra cosa mostró — el veredicto de `perfil` que iba a la tabla sin estar
 cubierto, y `estado` sin banco.
 
-`check_docs.py` falla hoy a propósito, con `PRJNA1135930` sin corridas en el
-manifiesto. Es el pendiente de `sclsc`, no un falso positivo: se cierra
-regenerando el manifiesto desde Colab.
+`check_docs.py` pasa en verde: los 19 BioProjects de la spec están resueltos,
+el manifiesto y el ledger reconcilian en las dos direcciones, y cada fichero que
+los docs citan existe o está declarado como deuda.
 
 ## Entorno
 

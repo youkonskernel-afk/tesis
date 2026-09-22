@@ -129,6 +129,10 @@ def main():
             ok('y confirma que coincide')
         else:
             mal('y confirma que coincide')
+        # Corria revisar() dos veces en este camino: una para decidir si
+        # regenerar y otra al final. Imprimia el bloque duplicado.
+        n = out.count('manifiesto en uso:')
+        (ok if n == 1 else mal)(f'revisa una sola vez (reviso {n})')
 
         print('== 2. copia vieja: REGENERA SOLA, sin pedir que se mueva un flag')
         out, exc = escenario(tmp, VIEJA, AL_DIA)
@@ -141,6 +145,9 @@ def main():
             ('coincide con organismos.tsv', 'y termina coincidiendo'),
         ):
             (ok if frag in out else mal)(etiq)
+        # Aca si revisa dos veces, y es correcto: antes y despues de regenerar.
+        n = out.count('manifiesto en uso:')
+        (ok if n == 2 else mal)(f'revisa antes y despues de regenerar (reviso {n})')
         if 'REGENERAR = True' in out:
             mal('no manda a mover el flag a mano')
         else:

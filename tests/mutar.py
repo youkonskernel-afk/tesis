@@ -76,7 +76,7 @@ MUTACIONES = [
     # codigo de scripts/.
     ("celda1: vuelve a reusar la copia siempre",
      "notebooks/10_descarga_runs.ipynb",
-     [('if any(revisar()):', 'if False:')]),
+     [('if any(visto):', 'if False:')]),
     ("celda1: no chequea las exclusiones",
      "notebooks/10_descarga_runs.ipynb",
      [('mal = [r for r in _excluidas() if r in corridas]', 'mal = []')]),
