@@ -197,10 +197,12 @@ MUTACIONES = [
        'man_faltan = []')]),
     ("celda4: ofrece filas del ledger que no estan en el manifiesto",
      "notebooks/10_descarga_runs.ipynb",
-     # OJO: en un .ipynb el codigo va JSON-escapado, asi que un \\t del codigo
-     # Python aparece como \\\\t en el fichero. mutar.py muta el texto crudo.
-     [(r"if l not in led_git[1:] and l.split('\\t')[1] in en_manifiesto]",
-       "if l not in led_git[1:]]")]),
+     # Es el caso de SRR23277331: excluida del manifiesto, pero su md5 sigue en
+     # el ledger de Drive. Empujarla desharia la exclusion sin que nadie lo vea.
+     # OJO: en un .ipynb el codigo va JSON-escapado, asi que un \t del codigo
+     # Python aparece como \\t en el fichero. mutar.py muta el texto crudo.
+     [(r"led_bueno = [l for l in lineas[1:] if l.split('\\t')[1] in en_manifiesto]",
+       r"led_bueno = list(lineas[1:])")]),
     ("celda4: el guardia de excluidas deja de cortar",
      "notebooks/10_descarga_runs.ipynb",
      [('_mal = [r for r in _excl if r in en_manifiesto]', '_mal = []')]),
