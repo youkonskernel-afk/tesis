@@ -1,0 +1,2 @@
+org	run	bioproject	rol	set_modelo	read_count	base_count	avg_len	strategy	layout	source
+aa	SRR_A1	PRJ_A	primario	apl	100	100	50	miRNA-Seq	SINGLE	TRANSCRIPTOMIC
