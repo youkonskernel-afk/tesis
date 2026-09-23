@@ -133,7 +133,7 @@ export LOG_FQ="$TMP/fq.log" LOG_YA="$TMP/ya.log"
 # es lo que ejercita el ledger. SOLAPAR=0 para que el log de fasterq sea
 # determinista; el solapado tiene su propio chequeo.
 corre() {
-  MANIFEST="$MAN" ADAPTADORES_TSV="$TABLA" SRA_DEST="$DEST" TRIM_DIR="$TMP/trim" \
+  MANIFEST="$MAN" ADAPTADORES_TSV="$TABLA" SRA_DEST="$DEST" PROY_DIR="$TMP/trim" \
   PRESUPUESTO_GB="${PRES:-2}" SOLAPAR="${SOL:-0}" CORES=2 bash "$T" "$@" 2>&1
 }
 
@@ -295,7 +295,7 @@ tiene "y dice como traerla"         "drive_pull.sh sra"            "$S"
 echo "== 15. errores"
 tiene "modo desconocido"            "modo desconocido"             "$(corre nosequé 2>&1 || true)"
 S=$(MANIFEST="$TMP/noexiste.tsv" ADAPTADORES_TSV="$TABLA" SRA_DEST="$DEST" \
-    TRIM_DIR="$TMP/trim" bash "$T" plan 2>&1 || true)
+    PROY_DIR="$TMP/trim" bash "$T" plan 2>&1 || true)
 tiene "sin manifiesto no sigue"     "no existe"                    "$S"
 
 echo; [[ $FALLAS -eq 0 ]] && echo "TODO OK" || { echo "$FALLAS fallas"; exit 1; }

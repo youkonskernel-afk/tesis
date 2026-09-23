@@ -25,6 +25,7 @@ BANCOS=(
   tests/test_prefetch.sh
   tests/test_estado.sh
   tests/test_trim.sh
+  tests/test_align.sh
   tests/test_rutas.sh
   tests/test_drive.sh
   tests/test_drive_check.sh

@@ -82,7 +82,9 @@ MUTACIONES = [
     # proyecto con el primario y deja de serlo.
     ("trim: el primario y el duplicado vuelven a un solo directorio",
      "scripts/trim.sh",
-     [('dir="$TRIM_DIR/${org}_${rol}"', 'dir="$TRIM_DIR/${org}"')] * 4),
+     [('dir="$PROY_DIR/${org}_${rol}"', 'dir="$PROY_DIR/${org}"')] * 4),
+    ("align: el primario y el duplicado comparten BAM", "scripts/align.sh",
+     [('dir="$PROY_DIR/${org}_${rol}"', 'dir="$PROY_DIR/${org}"')] * 5),
     # maggi_primario cruza dos BioProjects con 62% y 87% de retencion esperada.
     ("trim: el ledger pone el bioproject del primero de la tanda",
      "scripts/trim.sh",
@@ -95,6 +97,33 @@ MUTACIONES = [
     ("trim: borra el fastq de una PRE-TRIMMED", "scripts/trim.sh",
      [('        [[ "$sec" == "PRE-TRIMMED" ]] && continue\n        rm -f',
        '        rm -f')]),
+    # --- align.sh ---
+    # El ledger de sha256 es el unico registro de contra que se alineo.
+    ("align: alinea sin comprobar el sha256 del genoma", "scripts/align.sh",
+     [('[[ "$real" == "$esp" ]] || die "el sha256', '[[ 1 ]] || die "el sha256')]),
+    # ic.check() hace relative_to(output_directory) sin protegerlo: un genoma de
+    # afuera tira ValueError. Y el symlink tiene que ser AL DIRECTORIO, o
+    # bowtie-build corre una vez por proyecto en vez de una por organismo.
+    ("align: el genoma vuelve a ir de afuera del -o", "scripts/align.sh",
+     [('-g "$dir/genome/$(basename "$fna")"', '-g "$fna"')]),
+    ("align: el symlink del genoma apunta al fichero, no al directorio",
+     "scripts/align.sh",
+     [('ln -sfn "$GENOMES_DIR/$org" "$dir/genome"',
+       'mkdir -p "$dir/genome" && ln -sfn "$fna" "$dir/genome/$(basename "$fna")"')]),
+    # Alinear contra el genoma equivocado no falla: yasma sale con 0 y 0% alineado.
+    ("align: verificar deja pasar una fraccion alineada muy baja",
+     "scripts/align.sh",
+     [('if (al < 10)       v = "MUY BAJA', 'if (0)             v = "MUY BAJA')]),
+    ("align: no reporta una corrida que no llego al BAM", "scripts/align.sh",
+     [('    while read -r run; do', '    while false; do')]),
+    ("align: alinea un proyecto a medio recortar", "scripts/align.sh",
+     [('    if [[ "$n_rec" -lt "$n_man" ]]; then', '    if false; then')]),
+    ("align: el -m 50 deja de ir explicito", "scripts/align.sh",
+     [('--max_multi "$MAX_MULTI" ', '')]),
+    ("align: el BAM no llega a donde drive_push lo busca", "scripts/align.sh",
+     [('    enlazar_bam "$org" "$rol" "$dir"', '    :')]),
+    ("align: no queda registrado contra que genoma se alineo", "scripts/align.sh",
+     [('    registrar "$dir" "$org" "$rol" "$acc" "$esp"', '    :')]),
     # §1 del notebook. Estuvo mal tres veces, asi que se muta igual que el
     # codigo de scripts/.
     ("celda1: vuelve a reusar la copia siempre",

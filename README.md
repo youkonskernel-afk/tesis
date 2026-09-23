@@ -44,6 +44,7 @@ scripts/fetch_runs.sh     resuelve los 19 proyectos a corridas y las descarga
 scripts/fetch_genomes.sh  resuelve y descarga los ensamblados
 scripts/_drive_lib.sh     mapa de fases y ruta local — fuente única
 scripts/trim.sh           recorte con yasma trim, por tandas, 18 proyectos
+scripts/align.sh          alineamiento con yasma align (bowtie1 -v 1 -m 50)
 data/adaptadores.tsv      qué adaptador recortar en cada BioProject
 scripts/drive_push.sh     sube a Drive vía rclone
 scripts/drive_pull.sh     baja de Drive, y purga la copia local
@@ -58,16 +59,16 @@ CLAUDE.md                 regla de ubicación + trampas conocidas
 ## Pipeline
 
 ```
-prefetch → yasma trim (15-50 nt) → bowtie1 (-m 50) → samtools → yasma tradeoff
-                                                              ↓
-                                              features por locus → PU learning
+prefetch → yasma trim (15-50 nt) → yasma align (bowtie1 -v 1 -m 50) → yasma tradeoff
+                                                                            ↓
+                                                    features por locus → PU learning
 ```
 
-**El upstream está acá; el alineamiento todavía no.** Lo que este repo corre hoy
-es la mitad de arriba: resolver el manifiesto, bajar los `.sra` y los genomas, y
-verificarlos. `config.sh`, `orchestrate.sh`, `verify.sh`, `check_env.sh` y
-`environment.yml` están en el `main` local sin subir, así que los comandos que
-los usan **no se pueden correr desde un clon de este repo**. Mientras no lleguen,
+**El upstream, el recorte y el alineamiento están acá.** El alineamiento dejó de
+depender del `orchestrate.sh` que nunca se subió: lo hace `yasma align`, que es
+bowtie1 nativo con `--max_multi` en 50 por defecto — o sea el mismo `-m 50` que
+el proyecto tenía medido. `config.sh`, `orchestrate.sh`, `verify.sh`,
+`check_env.sh` y `environment.yml` siguen en el `main` local sin subir, y
 `scripts/check_docs.py` los lista como deuda declarada en vez de dejar que el
 README los cite como si funcionaran.
 
@@ -96,16 +97,30 @@ y los `.sra` bajados:
 ./scripts/trim.sh plan galga             # qué recortaría, y cuánto disco
 ./scripts/trim.sh correr galga           # recorta, en tandas
 ./scripts/trim.sh verificar galga        # ¿la retención da lo que perfil predijo?
+
+./scripts/drive_pull.sh genomas galga --go
+./scripts/align.sh genoma galga          # sha256 contra el ledger, y descomprime
+./scripts/align.sh plan galga            # qué alinearía, contra qué ensamblado
+./scripts/align.sh correr galga          # yasma align: bowtie1 -v 1 -m 50
+./scripts/align.sh verificar galga       # ¿qué fracción alineó? ¿están los @RG?
+./scripts/drive_push.sh bam galga --go   # los BAMs a Drive
 ```
 
 El recorte produce **18 proyectos YASMA**, uno por organismo y rol
-(`trim/galga_primario/`, `trim/galga_duplicado/`): el duplicado es la validación
+(`proyectos/galga_primario/`, `proyectos/galga_duplicado/`): el duplicado es la validación
 independiente y no puede compartir anotación con el primario.
 
-`verificar` no es opcional. cutadapt corre con `--trimmed-only`, así que recortar
-con la secuencia equivocada **no da error**: deja el `.t.fq.gz` casi vacío y
-`estado` sigue diciendo "0 faltan". Lo único que lo delata es la retención medida
-contra la `retencion_est` de `data/adaptadores.tsv`.
+Los dos `verificar` no son opcionales, y por el mismo motivo. cutadapt corre con
+`--trimmed-only`, así que recortar con la secuencia equivocada **no da error**:
+deja el `.t.fq.gz` casi vacío y `estado` sigue diciendo "0 faltan". Y alinear
+contra el genoma equivocado tampoco: medido, `yasma align` sale con código 0 y
+0% alineado. Lo único que delata cada caso es un número —la retención contra
+`data/adaptadores.tsv`, la fracción alineada contra el sentido común— y eso es
+lo que los dos `verificar` miran.
+
+El BAM queda en `proyectos/<org>_<rol>/align/alignment.bam`, donde `tradeoff` lo
+espera, y enlazado (hard link, no copia) a `bams/<org>/<rol>.bam`, que es de
+donde `drive_push.sh` lo sube.
 
 El manifiesto y los ensamblados **no se editan a mano**: se regeneran. Sacar una
 corrida va en `data/excluidas.tsv`, con el motivo medido; editar

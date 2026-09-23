@@ -38,6 +38,9 @@
 # Tienen que estar TODOS los subdirectorios locales del mapa de fases de
 # scripts/_drive_lib.sh: son data adentro del repo, y uno que se escape hace
 # que `git status` muestre cientos de GB. tests/test_rutas.sh lo verifica.
+# proyectos/ no es fase de Drive pero es lo mismo: adentro viven los proyectos
+# YASMA (trim/, align/, annotations/). Se llamaba trim/, que queda por si
+# alguien tiene la carpeta vieja.
 sra_cache/
 genomes/
 indexes/
@@ -45,6 +48,7 @@ bams/
 yasma_out/
 qc/
 figures/
+proyectos/
 trim/
 tmp/
 

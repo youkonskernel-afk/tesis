@@ -8,7 +8,7 @@
 #
 # El filtro es un organismo (`galga`) o un organismo y un rol (`galga/primario`).
 #
-# Variables: SRA_DEST, TRIM_DIR, ADAPTADORES_TSV, MANIFEST, CORES,
+# Variables: SRA_DEST, PROY_DIR, ADAPTADORES_TSV, MANIFEST, CORES,
 # PRESUPUESTO_GB, SOLAPAR.
 #
 # LA UNIDAD DE TRABAJO ES <org>_<rol>, NO <org>
@@ -80,8 +80,10 @@ ADAPTADORES_TSV="${ADAPTADORES_TSV:-$ROOT/data/adaptadores.tsv}"
 SRA_DEST="${SRA_DEST:-$(ruta_local sra)}"
 # Las lecturas recortadas NO se respaldan: se re-generan de forma determinista
 # desde los .sra y data/adaptadores.tsv, que si estan respaldados. Por eso no
-# hay fase 'trim' en el mapa de Drive.
-TRIM_DIR="${TRIM_DIR:-$ROOT/trim}"
+# hay fase 'trim' en el mapa de Drive. El directorio es el PROYECTO YASMA
+# completo —trim/, align/, annotations/— y la ruta sale de _drive_lib.sh, que es
+# de donde la lee align.sh.
+PROY_DIR="${PROY_DIR:-$(ruta_proyectos)}"
 CORES="${CORES:-$(nproc 2>/dev/null || echo 1)}"
 # Cuanto fastq sin recortar se permite tener en disco a la vez. Las 417 corridas
 # son ~1.1 TB descomprimidas: volcarlas todas antes de recortar no entra en
@@ -93,7 +95,7 @@ PRESUPUESTO_GB="${PRESUPUESTO_GB:-40}"
 # disco y cutadapt de CPU, asi que se tapan bastante bien. SOLAPAR=0 lo apaga.
 SOLAPAR="${SOLAPAR:-1}"
 # Sin -t los temporales de fasterq-dump van al CWD; llegaron a 109 GB.
-TMP_FASTERQ="${TMP_FASTERQ:-$TRIM_DIR/.tmp}"
+TMP_FASTERQ="${TMP_FASTERQ:-$PROY_DIR/.tmp}"
 
 die() { echo "ERROR: $*" >&2; exit 1; }
 
@@ -253,7 +255,7 @@ cmd_plan() {
   echo "manifiesto : $MANIFEST"
   echo "adaptadores: $ADAPTADORES_TSV"
   echo "origen     : $SRA_DEST"
-  echo "destino    : $TRIM_DIR"
+  echo "destino    : $PROY_DIR"
   echo "presupuesto: $PRESUPUESTO_GB GB de fastq sin recortar por tanda"
   echo
   validar "$filtro" || return 1
@@ -262,7 +264,7 @@ cmd_plan() {
   local total=0 listo=0 hay=0 sin_sra=0
   printf '%-18s %-14s %-12s %-22s %8s  %s\n' PROYECTO BIOPROJECT CORRIDA SECUENCIA FASTQ_GB ESTADO
   while IFS=$'\t' read -r org rol; do
-    dir="$TRIM_DIR/${org}_${rol}"
+    dir="$PROY_DIR/${org}_${rol}"
     ya=" $(recortadas_de "$dir" | tr '\n' ' ')"
     while IFS=$'\t' read -r run proy rc bc; do
       sec=$(secuencia_de "$org" "$proy")
@@ -290,7 +292,7 @@ cmd_estado() {
   local org rol run proy rc bc dir ya n_ok n_no t_ok=0 t_no=0
   printf '%-18s %10s %8s\n' PROYECTO RECORTADAS FALTAN
   while IFS=$'\t' read -r org rol; do
-    dir="$TRIM_DIR/${org}_${rol}"
+    dir="$PROY_DIR/${org}_${rol}"
     ya=" $(recortadas_de "$dir" | tr '\n' ' ')"
     n_ok=0; n_no=0
     while IFS=$'\t' read -r run proy rc bc; do
@@ -476,7 +478,7 @@ cmd_correr() {
   local n_proy=0
   while IFS=$'\t' read -r org rol; do
     n_proy=$((n_proy+1))
-    dir="$TRIM_DIR/${org}_${rol}"
+    dir="$PROY_DIR/${org}_${rol}"
     mkdir -p "$dir/untrimmed" "$dir/trim" "$dir/logs"
     echo "== ${org}_${rol}  ($dir)"
 
@@ -573,7 +575,7 @@ cmd_verificar() {
   printf '%-18s %-14s %-12s %10s %10s %11s %7s  %s\n' \
     PROYECTO BIOPROJECT CORRIDA READS_IN READS_OUT MEDIDA ESPERA VEREDICTO
   while IFS=$'\t' read -r org rol; do
-    dir="$TRIM_DIR/${org}_${rol}"
+    dir="$PROY_DIR/${org}_${rol}"
     [[ -f "$dir/$LEDGER" ]] || { echo "   sin recortar: ${org}_${rol}" >&2; continue; }
     local run proy fich rin rout pct fecha
     while IFS=$'\t' read -r run proy fich rin rout pct fecha; do

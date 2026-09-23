@@ -68,6 +68,25 @@ es la utilidad para inspeccionarlos.
 
 O sea: `cd` al directorio del proyecto, librerías adentro, `-o .` absoluto.
 
+**Y una cuarta, del mismo tipo, que aparece en `yasma align`: el genoma también
+tiene que estar adentro.** `inputClass.check()` hace
+`value.relative_to(self.output_directory)` sin protegerlo, así que un genoma
+compartido fuera del proyecto no da un mensaje — tira
+
+```
+ValueError: '.../genomes/aa/GCF_TEST.1.fna' is not in the subpath of '.../proyectos/aa_primario'
+```
+
+La salida **no** es copiar el FASTA a cada proyecto: `validate_path` hace
+`Path(v).absolute()` y **no** `.resolve()`, así que un symlink alcanza y la ruta
+queda lexicalmente adentro. Y tiene que ser un symlink **al directorio** del
+organismo, no al fichero: `yasma align` construye el índice en
+`genome_file.with_suffix(".rev.1.ebwt")`, o sea **al lado del FASTA que le
+pasaste**. Con un symlink por fichero, el índice cae dentro del proyecto y
+`bowtie-build` corre dos veces por organismo — en un genoma de 1 Gb, horas de
+más y 18 índices en vez de 9. `scripts/align.sh` hace
+`ln -sfn <genomes>/<org> <proyecto>/genome`.
+
 ## `yasma align` no es el wrapper de ShortStack — es bowtie1 nativo
 
 Esta página decía que `yasma align` envolvía a `ShortStack --align_only --mmap u`
@@ -144,13 +163,27 @@ El filtro de longitud y el de N se aplican acá (`XY:Z:F`), no antes.
   `bowtie-build --offrate 3`, **al lado del FASTA**. Coincide con la regla del
   proyecto de no respaldar índices.
 
-### Lo que sigue sin resolver
+### Corrido de verdad
 
-`yasma align` alinea **un proyecto entero a un BAM único**, con un `@RG` por
-librería. Eso encaja con `trim/<org>_<rol>/`: un BAM por organismo y rol, que es
-la unidad que `tradeoff` anota. Lo que falta decidir es si reemplaza al bowtie de
-`orchestrate.sh` —que todavía no está en este repo— o convive con él. No se puede
-comparar hasta que ese script llegue del `main` local.
+No quedó en lectura de código: se corrió `yasma align` de `v1.1.1` con bowtie
+1.3.1 compilado del repo de Langmead, sobre un genoma sintético de 200 kb y
+librerías recortadas por `trim.sh`. Lo que salió:
+
+- `align/alignment.bam` ordenado por coordenada, con su `.bam.bai`
+  (`make_depth_file` lo indexa al final) y `alignment.depth.txt`.
+- `@RG` = el accession de la corrida: `['SRR_P1', 'SRR_P2']` en el primario,
+  `['SRR_D1']` en el duplicado. Justo lo que `tradeoff` necesita.
+- `align/library_stats.txt` con los conteos por read group:
+  `umap mmap_wg mmap_nw xmap_nw xmap_ma xmap_nv xmap_fr` = U, P, R, Q, H, N, F.
+  De ahí salen los números de `align.sh verificar`.
+- Con reads sacados del propio genoma: 100% `umap`, como corresponde.
+
+**Y el caso que importa: contra un genoma de otro azar, `yasma align` sale con
+código 0 y 0.0% alineado.** No hay error, no hay aviso. Es el mismo modo de
+fallo que recortar con el adaptador equivocado, un paso más abajo, y la única
+cosa que lo delata es la fracción alineada — por eso `align.sh verificar` existe
+y por eso `align.sh` se niega a alinear si el `sha256` del `.gz` no coincide con
+`data/genomas.sha256`.
 
 ## `yasma adapter`: su criterio de "ya recortada" es más débil que el nuestro
 

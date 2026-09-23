@@ -1,5 +1,5 @@
 # shellcheck shell=bash
-# Compartido por drive_push.sh, drive_pull.sh, fetch_runs.sh y trim.sh.
+# Compartido por drive_push.sh, drive_pull.sh, fetch_runs.sh, trim.sh y align.sh.
 # No se ejecuta solo.
 #
 # El mapa de fases, la lista de organismos y LA RUTA LOCAL viven acá y en un
@@ -39,6 +39,19 @@ ruta_local() {
   rutas=$(fase_a_rutas "$fase") || return 1
   raiz="${LOCAL_ROOT:-$(cd "${BASH_SOURCE[0]%/*}/.." && pwd)}"
   printf '%s/%s%s\n' "$raiz" "${rutas%%|*}" "${org:+/$org}"
+}
+
+# Raiz de los PROYECTOS YASMA: un directorio por organismo y rol, con inputs.json,
+# trim/, align/ y annotations/ adentro. No es una fase de Drive —lo de adentro se
+# re-genera de los .sra y del genoma, que si estan respaldados— pero vive aca por
+# el mismo motivo que ruta_local: trim.sh escribe y align.sh lee, y si cada uno
+# tuviera su idea de donde estan, align no encontraria nada recortado.
+#
+# Se llamaba trim/ cuando solo guardaba el recorte. Con `yasma align` escribiendo
+# align/alignment.bam adentro, ese nombre pasaba a mentir.
+ruta_proyectos() {
+  local raiz="${LOCAL_ROOT:-$(cd "${BASH_SOURCE[0]%/*}/.." && pwd)}"
+  printf '%s/proyectos%s\n' "$raiz" "${1:+/$1}"
 }
 
 org_valido() {

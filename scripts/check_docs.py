@@ -47,6 +47,8 @@ CITAS_DE_SALIDA = {
     "log.txt": "el log de cutadapt que deja yasma trim",
     "inputs.json": "lo escribe trim.sh y lo pisa yasma; es estado de corrida",
     "loci.gff3": "salida de yasma tradeoff",
+    "library_stats.txt": "conteos por read group que escribe yasma align",
+    "alineado.tsv": "contra que genoma alineo cada proyecto; lo escribe align.sh",
 }
 
 # Ficheros de una dependencia externa, citados para decir DONDE se midio algo.

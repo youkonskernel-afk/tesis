@@ -41,7 +41,8 @@ El pipeline bioinformático es el **upstream** que produce los loci candidatos,
 no el aporte de la tesis:
 
 1. Descarga ~425 corridas sRNA-seq de 9 organismos (~7.4 G spots)
-2. `yasma trim` (cutadapt, 15-50 nt) → `bowtie1` estilo ShortStack3 → `samtools`
+2. `yasma trim` (cutadapt, 15-50 nt) → `yasma align` (bowtie1 `-v 1 -m 50`,
+   pesado estilo ShortStack3)
 3. Anotación de loci con YASMA v1.1.1
 4. Features por locus → PU learning → candidatos priorizados
 
@@ -559,13 +560,54 @@ probabilidad calibrada.
   cobertura única local, y los que se pasan de 50 al BAM como no mapeados con
   `XY:Z:H`—, `@RG` por corrida en la cabecera y por read, y
   `align/alignment.bam` ordenado. Detalle en `docs/yasma.md`.
-  Queda por decidir si reemplaza al bowtie de `orchestrate.sh`, y eso no se
-  puede comparar hasta que ese script llegue del `main` local.
-  **Dos cosas que hay que tener listas antes**: el genoma no puede ir
-  comprimido con `gzip` —`make_bam_header()` hace `pysam.FastaFile()`, que sobre
-  nuestro `70_genomas/<acc>.fna.gz` tira `OSError` (medido); hay que
-  descomprimir o re-comprimir con `bgzip`— y el índice se construye solo con
-  `bowtie-build --offrate 3` al lado del FASTA.
+  **Es el alineamiento del proyecto**, vía `scripts/align.sh`: reemplaza al
+  bowtie de `orchestrate.sh`, que nunca llegó a este repo.
+- **El genoma tiene que estar ADENTRO del `-o` de `yasma align`, y por symlink
+  al directorio.** `inputClass.check()` hace
+  `value.relative_to(self.output_directory)` sin protegerlo: un genoma
+  compartido fuera del proyecto no da un mensaje, tira `ValueError`. Copiar el
+  FASTA a cada proyecto no hace falta —`validate_path` usa `.absolute()` y
+  **no** `.resolve()`, así que un symlink queda lexicalmente adentro— pero el
+  symlink tiene que ser **al directorio** del organismo y no al fichero: el
+  índice se construye en `genome_file.with_suffix(".rev.1.ebwt")`, o sea **al
+  lado del FASTA que le pasaste**. Con un symlink por fichero habría 18 índices
+  en vez de 9 y `bowtie-build` correría dos veces por organismo — en un genoma
+  de 1 Gb, horas. `align.sh` hace `ln -sfn <genomes>/<org> <proyecto>/genome`.
+- **`pysam.FastaFile` no lee un FASTA comprimido con `gzip` plano.** Los 9
+  ensamblados están en `70_genomas/<acc>.fna.gz` hechos con `gzip -c`, y
+  `make_bam_header()` de `yasma align` los abre con `pysam.FastaFile`. Medido:
+  `g.fna` OK, `g.fna.gz` → `OSError error when opening file`. (Con `bgzip`
+  andaría, pero no es lo que tenemos.) Por eso `align.sh genoma` **verifica el
+  `sha256` del `.gz` contra `data/genomas.sha256` y recién entonces
+  descomprime**: el `.fna` y el índice `.ebwt` son derivados, no se respaldan y
+  están en `.gitignore`, pero el ledger sigue siendo el ancla de qué se alineó.
+- **Alinear contra el genoma equivocado no falla: sale con 0 y 0% alineado.**
+  Medido contra el `yasma align` real, con un genoma del mismo tamaño y otro
+  azar: código de salida 0, `alignment.bam` escrito, `estado` diciendo "2 de 2
+  proyectos con BAM al día". Es el mismo modo de fallo que recortar con el
+  adaptador equivocado, un paso más abajo, y lo único que lo delata es la
+  fracción alineada. Por eso `./scripts/align.sh verificar` lee
+  `align/library_stats.txt` —los conteos por read group que YASMA escribe— y
+  grita `MUY BAJA` por debajo del 10% alineado. También reporta la corrida del
+  manifiesto que **no tiene `@RG` en el BAM**: `tradeoff` agrega por read group,
+  así que una librería que no llegó desaparece del análisis sin ruido. Y avisa
+  —sin fallar— cuando más del 50% se pasa de `-m 50`, que es el fenómeno de los
+  tRF medido en `danre`: hay que mirar la distribución de longitudes antes de
+  tocar `-m`, no al revés.
+- **El BAM vive en dos lugares a propósito, y son hard links.** `yasma align` lo
+  deja en `<proyecto>/align/alignment.bam` y anota esa ruta absoluta en
+  `inputs.json`, que es de donde `tradeoff` la lee; moverlo rompe la anotación.
+  Pero `drive_push.sh bam <org>` sube `bams/<org>/`. `align.sh` enlaza
+  (`ln`, no `cp`) a `bams/<org>/<rol>.bam`: mismo inodo, cero disco de más, las
+  dos rutas válidas. Si el hard link no se puede —otro filesystem— copia y
+  **avisa**, porque 340 GB duplicados son una decisión y no un detalle.
+- **`proyectos/<org>_<rol>/`, no `trim/<org>_<rol>/`.** El directorio guarda el
+  proyecto YASMA entero —`trim/`, `align/`, `annotations/`— así que llamarlo
+  `trim` pasó a mentir en cuanto `yasma align` escribió adentro. La ruta sale de
+  `ruta_proyectos()` en `scripts/_drive_lib.sh`, por el mismo motivo que
+  `ruta_local`: `trim.sh` escribe y `align.sh` lee, y si cada uno tuviera su
+  idea, `align` diría "NADA RECORTADO" — que se lee como un problema del recorte
+  y no de la ruta. `tests/test_rutas.sh` lo verifica preguntándoles a los dos.
 - **`yasma adapter` no reemplaza a `perfil`: su criterio es más débil.** Marca
   `PRE-TRIMMED` con `read_length_freq < 0.8 and best_perc < 0.10`, o sea que usa
   la **dispersión** del largo del read, no su magnitud. Corrido cabeza a cabeza
@@ -688,7 +730,7 @@ Lo que necesita red va en otro lado:
 | configurar rclone | máquina local | `docs/rclone.md` + `scripts/drive_check.sh` |
 | traer `.sra` para alinear | máquina local | `scripts/drive_pull.sh sra <org> --go` |
 | recorte | máquina local | `scripts/trim.sh plan/correr/verificar` |
-| alineamiento y YASMA | máquina local | `orchestrate.sh` |
+| alineamiento | máquina local | `scripts/align.sh genoma/plan/correr/verificar` |
 | BAMs a Drive | máquina local | `scripts/drive_push.sh` |
 
 **Colab es el administrador de datos**: baja, valida y escribe a Drive sin pasar
@@ -701,7 +743,7 @@ purga después. Ver `docs/colab.md` y `docs/plan_datos_colab.md`.
 Todo corre sin red y en segundos. Antes de cada push:
 
 ```bash
-./tests/run_all.sh              # 15 bancos, 413 chequeos, binarios falsos en el PATH
+./tests/run_all.sh              # 16 bancos, 472 chequeos, binarios falsos en el PATH
 ./tests/mutar.py                # rompe el codigo y exige que algun banco grite
 ./scripts/check_docs.py         # lo que afirman los docs contra data/
 ./scripts/validate_notebooks.py # los .ipynb parsean y no hay duplicados
@@ -712,7 +754,7 @@ y `check_docs.py` dos más.
 
 **Un banco que pasa no prueba nada.** Prueba algo el día que se rompe lo que
 cubre y el banco se queja, y la única forma de saberlo es romper el código a
-propósito: eso es `tests/mutar.py`, 52 mutaciones que tienen que dar todas
+propósito: eso es `tests/mutar.py`, 62 mutaciones que tienen que dar todas
 `[OK]`. Un `[HUECO]` es un chequeo que falta; un `[VIEJA]` es una mutación cuyo
 patrón ya no existe, que tampoco prueba nada. Así aparecieron los dos huecos que
 ninguna otra cosa mostró — el veredicto de `perfil` que iba a la tabla sin estar

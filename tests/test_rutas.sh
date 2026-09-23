@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Que los cuatro scripts crean que la data local vive en el MISMO lugar.
+# Que los cinco scripts crean que la data local vive en el MISMO lugar.
 #
 # Por que existe: habia tres respuestas distintas para donde estan los .sra.
 #   drive_pull.sh los dejaba en  <repo>/sra_cache/<org>/
@@ -78,10 +78,24 @@ for fase in bam yasma qc features modelos figuras genomas sra; do
   if grep -qxF "$sub/" "$GI"; then ok "$sub/ ignorado"
   else mal "$sub/ NO esta en .gitignore"; fi
 done
-# y el de trim, que no es fase de Drive pero tambien es data
-TD=$(ruta_de_script "$L" trim.sh TRIM_DIR)
-sub_trim=$(basename "$TD")
-grep -qxF "$sub_trim/" "$GI" && ok "$sub_trim/ ignorado" \
-  || mal "$sub_trim/ NO esta en .gitignore (TRIM_DIR=$TD)"
+# y el de los proyectos YASMA, que no es fase de Drive pero tambien es data
+TD=$(ruta_de_script "$L" trim.sh PROY_DIR)
+sub_proy=$(basename "$TD")
+grep -qxF "$sub_proy/" "$GI" && ok "$sub_proy/ ignorado" \
+  || mal "$sub_proy/ NO esta en .gitignore (PROY_DIR=$TD)"
+
+echo "== 6. trim.sh y align.sh escriben y leen el MISMO proyecto"
+# trim.sh deja <org>_<rol>/trim/*.t.fq.gz y align.sh los busca ahi. Si cada uno
+# tuviera su idea de donde esta el directorio, align no encontraria nada
+# recortado y lo diria como "NADA RECORTADO", que se lee como un problema del
+# recorte y no de la ruta.
+AD=$(ruta_de_script "$L" align.sh PROY_DIR)
+igual "align.sh coincide con trim.sh"  "$AD" "$TD"
+
+echo "== 7. align.sh toma el genoma y el BAM del mapa de fases"
+AG=$(ruta_de_script "$L" align.sh GENOMES_DIR)
+igual "el genoma, de donde lo deja fetch_genomes" "$AG" "$(ruta_de_pull "$L" genomas)"
+AB=$(ruta_de_script "$L" align.sh BAM_DIR)
+igual "y el BAM, de donde lo sube drive_push"     "$AB" "$(ruta_de_pull "$L" bam)"
 
 echo; [[ $FALLAS -eq 0 ]] && echo "TODO OK" || { echo "$FALLAS fallas"; exit 1; }
