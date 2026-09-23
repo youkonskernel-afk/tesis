@@ -71,6 +71,31 @@ def valida(path):
     return fallos
 
 
+def preambulos(fallos):
+    """La celda de clon esta copiada en todos los notebooks y tiene que ser
+    IDENTICA en todos.
+
+    No se puede factorizar a scripts/: es el bootstrap, y el modulo que la
+    tendria vive adentro del repo que esa celda clona. Copiada esta bien; lo que
+    no esta bien es que derive. Si alguien arregla el clon en un cuaderno y no
+    en los otros, los otros siguen con el bug y nadie lo ve — es la misma forma
+    de la trampa de las tres rutas de los .sra, un nivel mas arriba.
+    """
+    vistas = {}
+    for nb in sorted(NB_DIR.glob("*.ipynb")):
+        celdas = json.loads(nb.read_text()).get("cells", [])
+        for c in celdas:
+            src = "".join(c.get("source", []))
+            if c.get("cell_type") == "code" and "URL_ANON" in src:
+                vistas.setdefault(src, []).append(nb.name)
+                break
+    if len(vistas) > 1:
+        fallos.append(
+            "la celda de clon derivo: hay " + str(len(vistas)) + " versiones\n"
+            + "\n".join("       " + ", ".join(v) for v in vistas.values())
+            + "\n       Tiene que ser identica en todos (ver tests/test_clon.py).")
+
+
 def sueltos():
     """Notebooks fuera de notebooks/.
 
@@ -103,6 +128,15 @@ def main():
         else:
             n = len(json.loads(nb.read_text())["cells"])
             print(f"[OK ] {nb.name}  ({n} celdas)")
+    comunes = []
+    preambulos(comunes)
+    if comunes:
+        malos += len(comunes)
+        print()
+        print("[MAL] preámbulo:")
+        for x in comunes:
+            print(f"       {x}")
+
     fuera = sueltos()
     if fuera:
         malos += len(fuera)

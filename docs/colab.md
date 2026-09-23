@@ -17,14 +17,13 @@ y a la ENA, y monta Drive como sistema de archivos: el dato va de la fuente a
 | ensamblados | Colab — `descarga_genomas.ipynb` |
 | manifiesto y `.sra` | Colab — `10_descarga_runs.ipynb` |
 | ver qué falta | Colab — `90_estado.ipynb` |
+| recorte y alineamiento | Colab — `20_alinear.ipynb`, **si el proyecto entra** |
 | traer `.sra` para alinear | local — `scripts/drive_pull.sh sra <org> --go` |
-| alineamiento y YASMA | local — `orchestrate.sh` |
+| recorte y alineamiento | local — `scripts/trim.sh` + `scripts/align.sh` |
 | BAMs a Drive | local — `scripts/drive_push.sh bam <org> --go` |
 
-Con Colab Free el cómputo largo se queda local: son ~2 vCPU y sesiones de hasta
-12 h con desconexión por inactividad, y el alineamiento son 30-40 h. El patrón
-de cola reanudable de `10_descarga_runs` es el mismo que necesitaría un
-`20_alinear.ipynb`, así que moverlo si pasás a Pro es incremental.
+El alineamiento está en los dos lados, y no es indecisión: hay proyectos que no
+entran en una VM de Colab. Ver **Qué entra en Colab** más abajo.
 
 ## Cómo se usa
 
@@ -35,6 +34,7 @@ Links directos — Colab abre el notebook desde GitHub sin descargar nada:
 | 00 setup | https://colab.research.google.com/github/youkonskernel-afk/tesis/blob/claude/github-google-drive-setup-cwapri/notebooks/00_setup.ipynb |
 | genomas | https://colab.research.google.com/github/youkonskernel-afk/tesis/blob/claude/github-google-drive-setup-cwapri/notebooks/descarga_genomas.ipynb |
 | 10 corridas | https://colab.research.google.com/github/youkonskernel-afk/tesis/blob/claude/github-google-drive-setup-cwapri/notebooks/10_descarga_runs.ipynb |
+| 20 alinear | https://colab.research.google.com/github/youkonskernel-afk/tesis/blob/claude/github-google-drive-setup-cwapri/notebooks/20_alinear.ipynb |
 | 90 estado | https://colab.research.google.com/github/youkonskernel-afk/tesis/blob/claude/github-google-drive-setup-cwapri/notebooks/90_estado.ipynb |
 
 Ojo: la rama está en la URL. Cuando el default pase a `main` y esta rama se
@@ -46,6 +46,52 @@ mergee, hay que actualizar estos links.
 3. Montá con la cuenta `seb.ugazm@gmail.com`, que es la que tiene el árbol.
 4. En `10_descarga_runs.ipynb`, ajustá `LIMITE` y corré la celda de descarga
    tantas veces como aguante la sesión.
+
+## Qué entra en Colab, y qué no
+
+**Un proyecto no se puede partir.** `yasma align` acumula la cobertura única de
+*todas* las librerías del proyecto antes de pesar los reads multimapeados
+(`unique_d` en `nativealign.py`), así que partirlo en varias llamadas cambia a
+qué locus va cada uno. La unidad reanudable es el proyecto entero: si la sesión
+se muere a la mitad de uno, ese se rehace; los que ya terminaron están en Drive.
+
+El pico de disco es `recortado + 2 × BAM` — `pysam.sort` escribe el BAM ordenado
+**antes** de borrar el sin ordenar, así que los dos conviven. Con ~78 GB libres
+en una VM de Colab Free entran 12 de los 18 proyectos. Los cuatro más grandes
+(`galga_duplicado`, `maldo_primario`, `cloro_duplicado`, `cloro_primario`) no, y
+`galga_duplicado` no entra ni en Pro.
+
+**§1 de `20_alinear.ipynb` lo mide antes de empezar** y ordena del más chico al
+más grande. Eso se sabe en un segundo o a las seis horas.
+
+Los `.sra` **no se copian** a la VM: Drive está montado, así que `SRA_DEST`
+apunta al mount. La regla de abajo es no *escribir* archivos grandes al FUSE;
+leerlos está bien, y ahorra ~190 GB de copia.
+
+## De vuelta a GitHub
+
+Colab ya no solo lee. `scripts/colab_git.py` commitea y empuja, y reemplazó los
+bloques de "copiá esta salida al repo" de §4 de `10_descarga_runs` y §6 de
+`descarga_genomas`.
+
+Hace falta un **PAT con permiso de escritura** guardado como `GITHUB_TOKEN` en
+los Secrets de Colab (la llave a la izquierda), habilitado para el notebook. El
+token vive ahí: no va al repo ni a Drive.
+
+Tres cosas que el módulo garantiza, y que tienen banco:
+
+- **Nunca `git add -A`.** Solo las rutas que se le pasan, y solo bajo `data/`.
+  Esta VM tiene Drive montado en `/content/drive`: un `add -A` es exactamente
+  donde se cuela un `.sra`.
+- **El token no aparece en ningún mensaje**, ni cuando git falla — git mete la
+  URL, con el token adentro, en sus errores.
+- **Un push rechazado falla fuerte.** Se reintenta una vez rebasando sobre lo
+  que haya (dos sesiones de Colab sobre el mismo ledger divergen) y si vuelve a
+  fallar, revienta. Un push rechazado que nadie mira deja el resultado en Drive
+  y no en git.
+
+Las celdas que empujan arrancan con `REVISAR_PRIMERO = True`: imprimen el diff y
+**no** empujan. Es el mismo criterio que `--go` en `drive_push.sh`.
 
 ## Cuatro reglas que no son opcionales
 

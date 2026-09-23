@@ -124,6 +124,40 @@ MUTACIONES = [
      [('    enlazar_bam "$org" "$rol" "$dir"', '    :')]),
     ("align: no queda registrado contra que genoma se alineo", "scripts/align.sh",
      [('    registrar "$dir" "$org" "$rol" "$acc" "$esp"', '    :')]),
+    # --- colab_git.py: empujar a GitHub desde Colab ---
+    # Una VM de Colab tiene Drive montado al lado con ~190 GB de .sra. Un
+    # `add -A` desde ahi es exactamente donde se cuela lo que no va al repo.
+    ("colab_git: vuelve a `git add -A`", "scripts/colab_git.py",
+     [('"add", "--", *limpias', '"add", "-A"')]),
+    ("colab_git: deja pasar rutas fuera de data/", "scripts/colab_git.py",
+     [('elif p.parts[:1] != ("data",):', 'elif False:')]),
+    # git mete la URL —con el token adentro— en sus mensajes de error.
+    ("colab_git: el token se filtra", "scripts/colab_git.py",
+     [('return txt.replace(secreto, "***") if secreto else txt', 'return txt')]),
+    # Un push rechazado que nadie mira deja el resultado en Drive y no en git,
+    # que es el estado que este modulo existe para evitar.
+    ("colab_git: un push rechazado no revienta", "scripts/colab_git.py",
+     [('    raise RuntimeError(\n        "el push fue rechazado dos veces.',
+       '    return (\n        "el push fue rechazado dos veces.')]),
+    ("colab_git: revisar=True empuja igual", "scripts/colab_git.py",
+     [('    if revisar:', '    if False:')]),
+    # Con la URL cableada, cualquier clon empujaria al repo de verdad apenas
+    # hubiera un GITHUB_TOKEN en el entorno.
+    ("colab_git: empuja a github aunque el origin sea otro", "scripts/colab_git.py",
+     [('    if tok and "github.com" in url:', '    if tok:')]),
+    # La celda de clon esta copiada en todos los notebooks: si deriva, alguien
+    # arregla el bug en uno y los otros siguen rotos.
+    ("notebooks: la celda de clon puede derivar", "scripts/validate_notebooks.py",
+     [('    if len(vistas) > 1:', '    if False:')]),
+    # §1 de 20_alinear: un proyecto que no entra en disco tiene que saberse en
+    # un segundo, no a las seis horas.
+    ("alinear: un proyecto que no entra se da por bueno",
+     "notebooks/20_alinear.ipynb",
+     [('    ok = pico + MARGEN < libre', '    ok = True')]),
+    ("alinear: mide los reads crudos y no lo que sobrevive al recorte",
+     "notebooks/20_alinear.ipynb",
+     [("int(r['read_count']) * _ret.get((r['org'], r['bioproject']), 80) / 100",
+       "int(r['read_count'])")]),
     # §1 del notebook. Estuvo mal tres veces, asi que se muta igual que el
     # codigo de scripts/.
     ("celda1: vuelve a reusar la copia siempre",

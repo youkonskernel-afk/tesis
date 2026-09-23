@@ -1,0 +1,23 @@
+# Contra que ensamblado y con que parametros se alineo cada proyecto YASMA.
+#
+# Lo escribe `./scripts/align.sh ledger`, que junta los alineado.tsv que cada
+# proyecto deja en proyectos/<org>_<rol>/. Ese directorio esta en .gitignore —es
+# de trabajo— asi que este es el que va a git: es texto, es chico, y es el unico
+# registro de contra que se alineo. Mismo criterio que data/genomas.sha256.
+#
+# COLUMNAS
+#   proyecto        <org>_<rol>; el primario y el duplicado son proyectos YASMA
+#                   distintos y se alinean por separado
+#   accession       el ensamblado, como en data/genomas.tsv
+#   sha256_gz       del .fna.gz en Drive. inputs.json guarda la RUTA del genoma,
+#                   que dentro de dos años no dice nada; esto si.
+#   max_multi       el -m de bowtie. 50 esta medido en danre: subirlo inunda la
+#                   anotacion de fragmentos de tRNA.
+#   max_random      sitios empatados por encima de los cuales el read queda sin
+#                   mapear
+#   unique_locality ventana en nt para pesar por cobertura unica local
+#   offrate         de bowtie-build
+#   corridas        cuantas librerias entraron al BAM
+#
+# Vacio salvo la cabecera = todavia no se alineo nada.
+proyecto	org	rol	accession	sha256_gz	max_multi	max_random	unique_locality	offrate	corridas	fecha_utc

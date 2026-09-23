@@ -562,6 +562,43 @@ probabilidad calibrada.
   `align/alignment.bam` ordenado. Detalle en `docs/yasma.md`.
   **Es el alineamiento del proyecto**, vía `scripts/align.sh`: reemplaza al
   bowtie de `orchestrate.sh`, que nunca llegó a este repo.
+- **Un proyecto no se puede partir en varias llamadas a `yasma align`.**
+  `nativealign.py` crea `unique_d` una sola vez (línea 439) y lo acumula sobre
+  **todas** las librerías del proyecto antes de que la etapa `multi` lo use para
+  pesar (línea 628): el peso de cada posición multimapeada sale de la cobertura
+  única **agrupada de todo el proyecto**. Partirlo no cambia la contabilidad,
+  cambia a qué locus se asigna cada read multimapeado. Así que la unidad
+  reanudable es el **proyecto entero**, no la corrida — que es lo que decide el
+  diseño de `20_alinear.ipynb`: de a un proyecto, del más chico al más grande, y
+  el BAM a Drive apenas termina.
+- **El alineamiento en Colab lo limita el disco, no el tiempo.** El pico es
+  `recortado + 2 × BAM`, porque `pysam.sort` escribe el BAM ordenado **antes**
+  de borrar el sin ordenar. Con ~78 GB libres en una VM de Colab Free entran 12
+  de los 18 proyectos; `galga_duplicado` (~173 GB estimados) no entra ni en Pro.
+  §1 del notebook lo mide antes de empezar y lo dice — se sabe en un segundo o a
+  las seis horas. Los bytes por read son **estimaciones** (~25 B en `.t.fq.gz`,
+  ~45 B en BAM): §5 imprime lo medido para corregirlas con el primer proyecto
+  real. Los `.sra` no se copian a la VM: Drive está montado y `SRA_DEST` apunta
+  al mount — la regla es no **escribir** grande al FUSE, leer está bien.
+- **Colab ya no solo lee de GitHub: `scripts/colab_git.py` empuja.** Reemplazó
+  los bloques de "copiá esta salida al repo" de §4 de `10_descarga_runs` y §6 de
+  `descarga_genomas`. Tres reglas que tienen banco
+  (`tests/test_colab_git.py`, contra un repo bare de verdad):
+  **nunca `git add -A`** —una VM de Colab tiene Drive montado en
+  `/content/drive` y un `add -A` es donde se cuela un `.sra`— y solo rutas bajo
+  `data/`; **el token no aparece en ningún mensaje**, porque git mete la URL con
+  el token adentro en sus errores; y **un push rechazado revienta** tras un
+  reintento rebasando, porque uno que nadie mira deja el resultado en Drive y no
+  en git. El destino sale del `origin` del clon y no de una URL cableada: con la
+  URL cableada, cualquier clon empujaba al repo de verdad apenas hubiera un
+  `GITHUB_TOKEN` en el entorno. Las celdas arrancan con `REVISAR_PRIMERO = True`.
+- **El clon NO está en `colab_git.py`, y es a propósito.** Ese módulo vive
+  adentro del repo, así que no se puede importar antes de clonarlo: el clon es
+  el bootstrap y tiene que estar en la celda. Duplicarlo en el módulo dejaría
+  dos implementaciones de lo mismo —la trampa de las tres rutas de los `.sra`,
+  un nivel más arriba— y la del módulo no correría nunca. La celda está copiada
+  en los cuatro notebooks que clonan y **tiene que ser idéntica**:
+  `scripts/validate_notebooks.py` falla si una deriva.
 - **El genoma tiene que estar ADENTRO del `-o` de `yasma align`, y por symlink
   al directorio.** `inputClass.check()` hace
   `value.relative_to(self.output_directory)` sin protegerlo: un genoma
@@ -727,6 +764,8 @@ Lo que necesita red va en otro lado:
 | genomas | Colab | `notebooks/descarga_genomas.ipynb` |
 | manifiesto y `.sra` | Colab | `notebooks/10_descarga_runs.ipynb` |
 | ver qué falta | Colab | `notebooks/90_estado.ipynb` |
+| recorte y alineamiento (los 12 que entran) | Colab | `notebooks/20_alinear.ipynb` |
+| empujar a git desde Colab | Colab | `scripts/colab_git.py` + un PAT en Secrets |
 | configurar rclone | máquina local | `docs/rclone.md` + `scripts/drive_check.sh` |
 | traer `.sra` para alinear | máquina local | `scripts/drive_pull.sh sra <org> --go` |
 | recorte | máquina local | `scripts/trim.sh plan/correr/verificar` |
@@ -734,16 +773,18 @@ Lo que necesita red va en otro lado:
 | BAMs a Drive | máquina local | `scripts/drive_push.sh` |
 
 **Colab es el administrador de datos**: baja, valida y escribe a Drive sin pasar
-por el disco local. Con Free el cómputo largo (30-40 h de bowtie) se queda en la
-máquina local, que trae los `.sra` de a un organismo con `drive_pull.sh` y los
-purga después. Ver `docs/colab.md` y `docs/plan_datos_colab.md`.
+por el disco local. Y desde `20_alinear.ipynb` también recorta y alinea — pero
+solo los proyectos que entran en el disco de una VM, que son 12 de los 18. Los
+cuatro grandes se quedan en la máquina local, que trae los `.sra` de a un
+organismo con `drive_pull.sh` y los purga después. Ver `docs/colab.md` y
+`docs/plan_datos_colab.md`.
 
 ## Chequeos
 
 Todo corre sin red y en segundos. Antes de cada push:
 
 ```bash
-./tests/run_all.sh              # 16 bancos, 472 chequeos, binarios falsos en el PATH
+./tests/run_all.sh              # 18 bancos, 519 chequeos, binarios falsos en el PATH
 ./tests/mutar.py                # rompe el codigo y exige que algun banco grite
 ./scripts/check_docs.py         # lo que afirman los docs contra data/
 ./scripts/validate_notebooks.py # los .ipynb parsean y no hay duplicados
@@ -754,7 +795,7 @@ y `check_docs.py` dos más.
 
 **Un banco que pasa no prueba nada.** Prueba algo el día que se rompe lo que
 cubre y el banco se queja, y la única forma de saberlo es romper el código a
-propósito: eso es `tests/mutar.py`, 62 mutaciones que tienen que dar todas
+propósito: eso es `tests/mutar.py`, 71 mutaciones que tienen que dar todas
 `[OK]`. Un `[HUECO]` es un chequeo que falta; un `[VIEJA]` es una mutación cuyo
 patrón ya no existe, que tampoco prueba nada. Así aparecieron los dos huecos que
 ninguna otra cosa mostró — el veredicto de `perfil` que iba a la tabla sin estar

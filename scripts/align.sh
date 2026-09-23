@@ -6,6 +6,7 @@
 #   ./scripts/align.sh correr    [<org>[/<rol>]]    alinea
 #   ./scripts/align.sh estado    [<org>[/<rol>]]    que esta alineado y que falta
 #   ./scripts/align.sh verificar [<org>[/<rol>]]    el BAM contra el manifiesto
+#   ./scripts/align.sh ledger                       junta los alineado.tsv en data/
 #
 # El filtro es un organismo (`galga`) o un organismo y un rol (`galga/primario`),
 # igual que en trim.sh. La unidad es el proyecto YASMA <org>_<rol>: un BAM por
@@ -423,6 +424,35 @@ cmd_verificar() {
   return 1
 }
 
+# Junta los alineado.tsv de cada proyecto en data/alineamientos.tsv.
+#
+# El per-proyecto vive en proyectos/<org>_<rol>/, que esta en .gitignore —es un
+# directorio de trabajo— asi que no hay nada que commitear ahi. Este es el que
+# va a git: es texto, es chico, y es el unico registro de contra que ensamblado
+# y con que parametros se alineo cada proyecto. Mismo criterio que
+# data/genomas.sha256 y data/sra_md5.tsv.
+cmd_ledger() {
+  local salida="${1:-$ROOT/data/alineamientos.tsv}" org rol dir f n=0
+  local tmp; tmp=$(mktemp); trap 'rm -f "$tmp"' RETURN
+  while IFS=$'\t' read -r org rol; do
+    f="$PROY_DIR/${org}_${rol}/$LEDGER_ALIN"
+    [[ -f "$f" ]] || continue
+    # Solo la ULTIMA fila de cada proyecto: el per-proyecto acumula una por
+    # corrida de align, y lo que vale es con que se alineo el BAM que quedo.
+    tail -n +2 "$f" | tail -1 >> "$tmp"
+    n=$((n+1))
+  done < <(proyectos "")
+  # El bloque de comentarios de arriba del fichero se conserva: documenta las
+  # columnas y por que existe, y regenerar el ledger no tiene por que borrarlo.
+  {
+    [[ -f "$salida" ]] && sed -n '/^#/p' "$salida"
+    printf 'proyecto\torg\trol\taccession\tsha256_gz\tmax_multi\tmax_random\tunique_locality\toffrate\tcorridas\tfecha_utc\n'
+    sort "$tmp"
+  } > "$salida.nuevo" && mv "$salida.nuevo" "$salida"
+  echo "$n proyecto(s) -> $salida"
+  [[ $n -gt 0 ]] || echo "   (ninguno alineado todavía)" >&2
+}
+
 [[ $# -ge 1 ]] || { sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
 case "$1" in
   genoma)    shift; cmd_genoma    "${1:-}" ;;
@@ -430,6 +460,7 @@ case "$1" in
   estado)    shift; cmd_estado    "${1:-}" ;;
   correr)    shift; cmd_correr    "${1:-}" ;;
   verificar) shift; cmd_verificar "${1:-}" ;;
+  ledger)    shift; cmd_ledger    "${1:-}" ;;
   -h|--help) sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//' ;;
-  *) die "modo desconocido: $1 (genoma|plan|correr|estado|verificar)" ;;
+  *) die "modo desconocido: $1 (genoma|plan|correr|estado|verificar|ledger)" ;;
 esac

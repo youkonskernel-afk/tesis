@@ -59,12 +59,19 @@ def git(clon, *args):
                    capture_output=True, text=True, check=True)
 
 
-def escenario(tmp, man_git, led_git, man_uso, led_drive):
+def escenario(tmp, man_git, led_git, man_uso, led_drive, revisar=True):
     """man_git/led_git son lo COMMITEADO; man_uso/led_drive lo que hay en Drive."""
     clon = tmp / 'clon'
-    if clon.exists():
-        subprocess.run(['rm', '-rf', str(clon)], check=True)
+    bare = tmp / 'remoto.git'
+    for d in (clon, bare):
+        if d.exists():
+            subprocess.run(['rm', '-rf', str(d)], check=True)
     (clon / 'data').mkdir(parents=True)
+    # La celda hace `import colab_git` desde el clon. Se copia el de verdad: el
+    # push se prueba empujando, no mirando lo que se le pasa a un git falso.
+    (clon / 'scripts').mkdir()
+    (clon / 'scripts' / 'colab_git.py').write_text(
+        (RAIZ / 'scripts' / 'colab_git.py').read_text())
 
     (clon / 'data' / 'excluidas.tsv').write_text(
         '# corridas que no entran\n'
@@ -78,6 +85,9 @@ def escenario(tmp, man_git, led_git, man_uso, led_drive):
     git(clon, 'config', 'user.name', 't')
     git(clon, 'add', '-A')
     git(clon, 'commit', '-q', '-m', 'estado commiteado')
+    subprocess.run(['git', 'init', '-q', '--bare', '-b', 'master', str(bare)], check=True)
+    git(clon, 'remote', 'add', 'origin', str(bare))
+    git(clon, 'push', '-q', 'origin', 'HEAD')
 
     # §1 pisa el fichero del clon con la copia de Drive: el working tree deja de
     # decir que hay en git, y por eso la celda tiene que usar `git show`.
@@ -88,7 +98,9 @@ def escenario(tmp, man_git, led_git, man_uso, led_drive):
 
     nb = json.loads(NB.read_text())
     src = ''.join(nb['cells'][CELDA]['source'])
-    ns = {'CLON': clon, 'LEDGER_DRIVE': ledger}
+    if not revisar:
+        src = src.replace('REVISAR_PRIMERO = True', 'REVISAR_PRIMERO = False', 1)
+    ns = {'CLON': clon, 'LEDGER_DRIVE': ledger, '__BARE__': bare}
     buf, exc = io.StringIO(), None
     try:
         with redirect_stdout(buf):
@@ -96,6 +108,12 @@ def escenario(tmp, man_git, led_git, man_uso, led_drive):
     except Exception as e:      # noqa: BLE001 — cualquier fallo se reporta
         exc = e
     return buf.getvalue(), exc
+
+
+def en_remoto(bare, ruta):
+    r = subprocess.run(['git', '-C', str(bare), 'show', f'master:{ruta}'],
+                       capture_output=True, text=True)
+    return r.stdout if r.returncode == 0 else None
 
 
 def main():
@@ -115,12 +133,12 @@ def main():
         for frag, etiq in (
             ('manifiesto en uso : 3 corridas', 'cuenta el manifiesto en uso'),
             ('manifiesto en git : 1 corridas', 'y el de git, que es el viejo'),
-            ('AGREGÁ estas filas a data/srr_manifest.tsv', 'pide las filas del manifiesto'),
-            ('AGREGÁ estas filas a data/sra_md5.tsv', 'y las del ledger'),
+            ('ENTRAN a data/srr_manifest.tsv', 'pide las filas del manifiesto'),
+            ('ENTRAN a data/sra_md5.tsv', 'y las del ledger'),
         ):
             (ok if frag in out else mal)(etiq)
         # las 2 filas nuevas del manifiesto, y NINGUNA de las viejas
-        bloque_man = out.split('AGREGÁ estas filas a data/srr_manifest.tsv ---')[1]
+        bloque_man = out.split('ENTRAN a data/srr_manifest.tsv ---')[1]
         bloque_man = bloque_man.split('---')[0]
         (ok if 'SRR_B1' in bloque_man and 'SRR_B2' in bloque_man else mal)(
             'las dos corridas nuevas')
@@ -140,7 +158,7 @@ def main():
             man_uso=[fila_man('SRR_A1')], led_drive=[fila_led('SRR_A1')])
         (ok if exc is None else mal)(f'sin excepcion ({exc})')
         (ok if 'nada que commitear' in out else mal)('lo dice')
-        (ok if 'AGREGÁ' not in out else mal)('y no pide ninguna fila')
+        (ok if 'ENTRAN' not in out else mal)('y no pide ninguna fila')
 
         print('== 4. una corrida excluida adentro: CORTA sin imprimir filas')
         out, exc = escenario(
@@ -152,7 +170,7 @@ def main():
             ok('corta con RuntimeError')
         else:
             mal(f'corta con RuntimeError (dio {exc!r})')
-        if 'AGREGÁ' in out or 'SRR_MALA' in out:
+        if 'ENTRAN' in out or 'SRR_MALA' in out:
             mal('y NO llega a imprimir ninguna fila')
         else:
             ok('y NO llega a imprimir ninguna fila')
@@ -166,9 +184,9 @@ def main():
             man_uso=[fila_man('SRR_A1')],
             led_drive=[fila_led('SRR_A1'), fila_led('SRR_VIEJA')])
         (ok if exc is None else mal)(f'sin excepcion ({exc})')
-        (ok if 'NO commitear' in out else mal)('la reporta como no commiteable')
+        (ok if 'no entran' in out else mal)('la reporta como no commiteable')
         (ok if 'Corré §3' in out else mal)('y dice como sacarla')
-        bloque_led = out.split('AGREGÁ estas filas a data/sra_md5.tsv')
+        bloque_led = out.split('ENTRAN a data/sra_md5.tsv')
         if len(bloque_led) > 1 and 'SRR_VIEJA' in bloque_led[1]:
             mal('y NO la ofrece para commitear')
         else:
@@ -181,9 +199,41 @@ def main():
             led_git=[fila_led('SRR_A1')],
             man_uso=[fila_man('SRR_A1')], led_drive=[fila_led('SRR_A1')])
         (ok if exc is None else mal)(f'sin excepcion ({exc})')
-        (ok if 'SACÁ estas de data/srr_manifest.tsv' in out else mal)(
+        (ok if 'SALEN de data/srr_manifest.tsv' in out else mal)(
             'pide sacarla, en vez de ignorarla')
         (ok if 'SRR_FUERA' in out else mal)('y la nombra')
+
+        print('== 7. con REVISAR_PRIMERO en False, escribe y empuja de verdad')
+        out, exc = escenario(
+            tmp,
+            man_git=[fila_man('SRR_A1')], led_git=[fila_led('SRR_A1')],
+            man_uso=[fila_man('SRR_A1'), fila_man('SRR_B1', 'PRJ_B', 'bb')],
+            led_drive=[fila_led('SRR_A1'), fila_led('SRR_B1', 'bb'),
+                       fila_led('SRR_VIEJA')],
+            revisar=False)
+        (ok if exc is None else mal)(f'sin excepcion ({exc})')
+        bare = tmp / 'remoto.git'
+        man = en_remoto(bare, 'data/srr_manifest.tsv') or ''
+        led = en_remoto(bare, 'data/sra_md5.tsv') or ''
+        (ok if 'SRR_B1' in man else mal)('el manifiesto llego al remoto')
+        (ok if 'SRR_B1' in led else mal)('y el ledger tambien')
+        # La fila de una corrida fuera del manifiesto NO se empuja: seria
+        # deshacer una exclusion. Es el caso de SRR23277331.
+        (ok if 'SRR_VIEJA' not in led else mal)(
+            'y la fila fuera del manifiesto NO')
+        (ok if en_remoto(bare, 'scripts/colab_git.py') is not None else mal)(
+            'lo que ya estaba sigue estando')
+
+        print('== 8. con REVISAR_PRIMERO en True (el default) NO empuja')
+        out, exc = escenario(
+            tmp,
+            man_git=[fila_man('SRR_A1')], led_git=[fila_led('SRR_A1')],
+            man_uso=[fila_man('SRR_A1'), fila_man('SRR_B1', 'PRJ_B', 'bb')],
+            led_drive=[fila_led('SRR_A1'), fila_led('SRR_B1', 'bb')])
+        (ok if exc is None else mal)(f'sin excepcion ({exc})')
+        (ok if 'no empuje nada' in out else mal)('lo dice')
+        man = en_remoto(tmp / 'remoto.git', 'data/srr_manifest.tsv') or ''
+        (ok if 'SRR_B1' not in man else mal)('y el remoto sigue sin la fila nueva')
 
     print()
     if FALLAS:

@@ -2,14 +2,18 @@
 
 Estado: **implementado.** Queda como registro de por qué el diseño es así.
 
-Dos cosas quedan fuera de lo que Claude puede hacer, ambas en Settings de GitHub:
+**El repo ya es público** (verificado por API: `"visibility":"public"`), así que
+los notebooks clonan sin credenciales. Queda una sola cosa fuera de lo que Claude
+puede hacer, en Settings de GitHub:
 
-1. **Poner el repo en público.** Verificado por API: sigue `private`. Hasta que
-   se haga, los notebooks no pueden clonar.
-2. **Cambiar el default branch a `main`** una vez que exista con la historia
+1. **Cambiar el default branch a `main`** una vez que exista con la historia
    mergeada. Hoy el default es `claude/github-google-drive-setup-cwapri` porque
    GitHub tomó la primera rama empujada al repo vacío, y los notebooks clonan la
    rama por defecto.
+
+Y una que sí depende de vos pero no de Settings: para que Colab **empuje** hace
+falta un PAT con permiso de escritura en los Secrets de la sesión
+(`GITHUB_TOKEN`). Ver `docs/colab.md`.
 
 ## Contexto
 
@@ -27,13 +31,16 @@ ingreso de datos.
 ### Decisiones tomadas
 
 - **Alcance, con Colab Free**: Colab es el puente de descarga y el administrador de
-  Drive. Alineamiento y YASMA siguen locales — en Free son ~2 vCPU y sesiones de
-  hasta 12 h con desconexión por inactividad, así que 30-40 h de bowtie saldrían a
-  los tirones. El diseño queda portable por si se pasa a Pro.
+  Drive. El alineamiento **también corre en Colab ahora** (`20_alinear.ipynb`),
+  pero solo para los proyectos que entran en el disco de la VM: 12 de los 18. Los
+  cuatro más grandes se quedan locales. No es por tiempo sino por disco — el pico
+  es `recortado + 2 × BAM`, y un proyecto no se puede partir sin cambiar el
+  resultado. Ver `docs/colab.md`.
 - **Los `.sra` se guardan en Drive** (~190 GB). Rompe a propósito la regla de no
   respaldar lo público. Es lo que hace funcionar el reparto: una sesión de Colab que
   se muere no pierde la descarga, y el alineamiento local se desacopla de ella.
 - **El repo pasa a público**, para que los notebooks clonen sin credenciales.
+  Hecho.
 
 ## Arquitectura
 
@@ -42,7 +49,7 @@ ingreso de datos.
 | GitHub (público) | código, specs, manifiestos, checksums | fuente de verdad |
 | Drive | genomas, `.sra`, BAMs, resultados | almacenamiento **y estado** |
 | Colab | descarga, verificación, QC liviano | worker **efímero** |
-| Máquina local | alineamiento, YASMA | cómputo largo |
+| Máquina local | los proyectos grandes, YASMA | cómputo largo |
 
 El estado del trabajo **es la existencia de los archivos en Drive**, no un archivo de
 progreso aparte. Mismo criterio que ya usa el pipeline (03 saltea las corridas cuyo

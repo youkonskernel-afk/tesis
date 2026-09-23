@@ -33,8 +33,10 @@ BANCOS=(
   tests/test_cepas.sh
   tests/test_verificar.sh
   tests/test_clon.py
+  tests/test_colab_git.py
   tests/test_celda1.py
   tests/test_celda4.py
+  tests/test_celda_alinear.py
 )
 
 malos=0 total_ok=0 total_mal=0
