@@ -226,34 +226,38 @@ S3=$(MANIFEST="$MAN" bash "$R" perfil --proyectos --tsv -n 2000 2>&1)
 tiene "tiene el bloque"        "PARA data/adaptadores.tsv"   "$S3"
 # 8 columnas, las de adaptadores.tsv
 _fila=$(sed -n "/PARA data/,\$p" <<<"$S3" | grep -P "^aa\tPRJ_A\t")
-[[ $(awk -F'\t' '{print NF}' <<<"$_fila") -eq 9 ]] \
-  && ok "9 columnas" || mal "9 columnas (tiene $(awk -F'\t' '{print NF}' <<<"$_fila"))"
-[[ $(cut -f3 <<<"$_fila") == "RA3" ]] && ok "columna familia" \
-  || mal "columna familia (dio '$(cut -f3 <<<"$_fila")')"
+# 10 y no 9: la columna `run` entro en tercer lugar. "-" = vale para todo el
+# proyecto, que es lo que --proyectos puede afirmar habiendo medido una corrida.
+[[ $(awk -F'\t' '{print NF}' <<<"$_fila") -eq 10 ]] \
+  && ok "10 columnas" || mal "10 columnas (tiene $(awk -F'\t' '{print NF}' <<<"$_fila"))"
+[[ $(cut -f3 <<<"$_fila") == "-" ]] && ok "y la columna run va en '-'" \
+  || mal "y la columna run va en '-' (dio '$(cut -f3 <<<"$_fila")')"
+[[ $(cut -f4 <<<"$_fila") == "RA3" ]] && ok "columna familia" \
+  || mal "columna familia (dio '$(cut -f4 <<<"$_fila")')"
 # La secuencia COMPLETA, no el prefijo que se usa para detectar
-[[ $(cut -f4 <<<"$_fila") == "TGGAATTCTCGGGTGCCAAGG" ]] \
+[[ $(cut -f5 <<<"$_fila") == "TGGAATTCTCGGGTGCCAAGG" ]] \
   && ok "la secuencia completa, no el prefijo" \
-  || mal "la secuencia completa (dio '$(cut -f4 <<<"$_fila")')"
-[[ $(cut -f6 <<<"$_fila") == "22" ]] && ok "inserto sin la unidad" \
-  || mal "inserto sin la unidad (dio '$(cut -f6 <<<"$_fila")')"
+  || mal "la secuencia completa (dio '$(cut -f5 <<<"$_fila")')"
+[[ $(cut -f7 <<<"$_fila") == "22" ]] && ok "inserto sin la unidad" \
+  || mal "inserto sin la unidad (dio '$(cut -f7 <<<"$_fila")')"
 # Una ya recortada va PRE-TRIMMED: yasma la pasa de largo sin llamar a cutadapt
 _trim=$(sed -n "/PARA data/,\$p" <<<"$S3" | grep -P "^dd\tPRJ_D\t")
-[[ $(cut -f4 <<<"$_trim") == "PRE-TRIMMED" ]] \
+[[ $(cut -f5 <<<"$_trim") == "PRE-TRIMMED" ]] \
   && ok "la ya recortada va PRE-TRIMMED" \
-  || mal "la ya recortada va PRE-TRIMMED (dio '$(cut -f4 <<<"$_trim")')"
+  || mal "la ya recortada va PRE-TRIMMED (dio '$(cut -f5 <<<"$_trim")')"
 # Su familia y su inserto salen de los poquisimos reads que igual matchearon
 # (5 de 20 000 en cloro): no es una medicion, asi que van a '-'.
-[[ $(cut -f3 <<<"$_trim") == "-" ]] && ok "y sin familia inventada" \
-  || mal "y sin familia inventada (dio '$(cut -f3 <<<"$_trim")')"
-[[ $(cut -f6 <<<"$_trim") == "-" ]] && ok "ni inserto inventado" \
-  || mal "ni inserto inventado (dio '$(cut -f6 <<<"$_trim")')"
+[[ $(cut -f4 <<<"$_trim") == "-" ]] && ok "y sin familia inventada" \
+  || mal "y sin familia inventada (dio '$(cut -f4 <<<"$_trim")')"
+[[ $(cut -f7 <<<"$_trim") == "-" ]] && ok "ni inserto inventado" \
+  || mal "ni inserto inventado (dio '$(cut -f7 <<<"$_trim")')"
 tiene "avisa de las que no se pueden recortar" "NO se pueden recortar" "$S3"
 
 # La retencion es la INTERSECCION de los dos filtros de cutadapt —tener
 # adaptador Y caer en 15-50—, no el adapt_pct. galga PRJEB12164 tiene 95% de
 # adaptador y retiene 52%, porque el 20% de sus insertos mide 6-7 nt.
 _dim=$(sed -n "/PARA data/,\$p" <<<"$S3" | grep -P "^ee\tPRJ_E\t")
-_ap=$(cut -f5 <<<"$_dim"); _ret=$(cut -f7 <<<"$_dim")
+_ap=$(cut -f6 <<<"$_dim"); _ret=$(cut -f8 <<<"$_dim")
 [[ "$_ap" == "100" && "$_ret" -lt 70 ]] \
   && ok "retencion < adapt_pct cuando el inserto cae fuera ($_ap% vs $_ret%)" \
   || mal "retencion < adapt_pct (adapt=$_ap ret=$_ret)"
@@ -261,16 +265,51 @@ tiene "y la tabla trae la columna" "RETIENE" "$S3"
 # La PRE-TRIMMED retiene 100 porque NO se le aplica ningun filtro, ni el de
 # longitud. El 0% que salia era la fraccion en ventana, que sin adaptador es 0
 # por definicion y no dice nada.
-[[ $(cut -f7 <<<"$_trim") == "100" ]] \
+[[ $(cut -f8 <<<"$_trim") == "100" ]] \
   && ok "la PRE-TRIMMED retiene 100, no 0" \
-  || mal "la PRE-TRIMMED retiene 100 (dio $(cut -f7 <<<"$_trim"))"
+  || mal "la PRE-TRIMMED retiene 100 (dio $(cut -f8 <<<"$_trim"))"
 # La tabla y el TSV salen del MISMO comando: no pueden decir cosas distintas.
 _tab=$(sed -n "/RESUMEN/,/PARA data/p" <<<"$S3" | grep -E "^dd +PRJ_D")
 _tsv=$(sed -n "/PARA data/,\$p" <<<"$S3" | grep -P "^dd\tPRJ_D\t")
 grep -qE " -$" <<<"$_tab" && ok "la tabla tampoco inventa familia" \
   || mal "la tabla tampoco inventa familia (dijo '$_tab')"
-[[ $(cut -f3 <<<"$_tsv") == "-" ]] && ok "y el TSV dice lo mismo" \
-  || mal "y el TSV dice lo mismo (dio '$(cut -f3 <<<"$_tsv")')"
+[[ $(cut -f4 <<<"$_tsv") == "-" ]] && ok "y el TSV dice lo mismo" \
+  || mal "y el TSV dice lo mismo (dio '$(cut -f4 <<<"$_tsv")')"
+
+echo "== --corridas: TODAS las de un proyecto, una por una"
+# El caso gadmo PRJNA328800 reproducido: UN BioProject con dos kits. --proyectos
+# mide la primera corrida y extiende esa conclusion a las otras 11; el recorte
+# vacia las que no corresponden y cutadapt sale con 0.
+{ printf 'org\trun\tbioproject\trol\tset_modelo\tread_count\tbase_count\tavg_len\tstrategy\tlayout\tsource\n'
+  printf 'gg\tSRNA1\tPRJ_G\tduplicado\tapl\t100\t100\t150\tmiRNA-Seq\tSINGLE\tTRANSCRIPTOMIC\n'
+  printf 'gg\tVIEJO1\tPRJ_G\tduplicado\tapl\t100\t100\t150\tmiRNA-Seq\tSINGLE\tTRANSCRIPTOMIC\n'
+  printf 'gg\tSRNA2\tPRJ_G\tprimario\tapl\t100\t100\t150\tmiRNA-Seq\tSINGLE\tTRANSCRIPTOMIC\n'
+} > "$MAN"
+
+# Con una sola corrida muestreada, las dos familias no se pueden distinguir.
+S4=$(MANIFEST="$MAN" bash "$R" perfil --proyectos --tsv -n 2000 2>&1)
+[[ $(sed -n "/PARA data/,\$p" <<<"$S4" | grep -cP "^gg\tPRJ_G\t") -eq 1 ]] \
+  && ok "--proyectos emite UNA fila para el duplicado" \
+  || mal "--proyectos emite UNA fila (dio $(sed -n "/PARA data/,\$p" <<<"$S4" | grep -cP "^gg\tPRJ_G\t"))"
+
+S5=$(MANIFEST="$MAN" bash "$R" perfil --corridas gg/duplicado --tsv -n 2000 2>&1)
+tiene "dice cuantas va a medir"  "2 corrida(s) de gg/duplicado"  "$S5"
+tiene "la tabla es por CORRIDA"  "CORRIDA"                       "$S5"
+rex   "y nombra las dos"         "SRNA1"                         "$S5"
+rex   "las dos, de verdad"       "VIEJO1"                        "$S5"
+# Lo que importa: dos filas, con la columna run llena y kits DISTINTOS.
+_g1=$(sed -n "/PARA data/,\$p" <<<"$S5" | grep -P "^gg\tPRJ_G\tSRNA1\t")
+_g2=$(sed -n "/PARA data/,\$p" <<<"$S5" | grep -P "^gg\tPRJ_G\tVIEJO1\t")
+[[ -n "$_g1" && -n "$_g2" ]] && ok "una fila por corrida, con el RUN en la clave" \
+  || mal "una fila por corrida (g1='$_g1' g2='$_g2')"
+[[ $(cut -f5 <<<"$_g1") != $(cut -f5 <<<"$_g2") ]] \
+  && ok "y cada una con SU secuencia" \
+  || mal "y cada una con SU secuencia (las dos dieron '$(cut -f5 <<<"$_g1")')"
+# El rol filtra: el primario no entra.
+notiene "no cruza de rol"  "SRNA2"  "$S5"
+# Y sin manifiesto o sin barra, falla en vez de adivinar.
+tiene "sin <org>/<rol> no adivina" "uso:" \
+  "$(MANIFEST="$MAN" bash "$R" perfil --corridas gg -n 2000 2>&1 || true)"
 
 echo "== sin --tsv no imprime el bloque"
 notiene "no esta"  "PARA data/adaptadores.tsv"  "$S2"

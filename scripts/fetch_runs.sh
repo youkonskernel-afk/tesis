@@ -10,6 +10,7 @@
 #   ./scripts/fetch_runs.sh buscar 'Especie'     # proyectos de sRNA-seq de una especie
 #   ./scripts/fetch_runs.sh perfil RUN|PRJ [-n N]  # es sRNA-seq de verdad?
 #   ./scripts/fetch_runs.sh perfil --proyectos   # una corrida de cada proyecto
+#   ./scripts/fetch_runs.sh perfil --corridas <org>/<rol>  # TODAS las de un proyecto
 #
 # El destino de los .sra sale de SRA_DEST (por defecto SRA_CACHE). En Colab se
 # apunta al mount de Drive y SRA_STAGING al disco efimero de la VM: prefetch
@@ -642,9 +643,15 @@ cmd_perfil() {
 # tenia un solo read con adaptador—, y en el manifiesto hay 3 proyectos
 # primarios enteros etiquetados RNA-Seq, dos de ellos de organismos de
 # entrenamiento. Son minutos; alinear a ciegas son 30-40 h.
-cmd_perfil_proyectos() {
-  [[ -f "$MANIFEST" ]] || die "no existe $MANIFEST — corré: $0 manifest"
-  local n="${1:-20000}" tsv="${2:-0}"
+# Perfila la lista de corridas que le llega por stdin como
+# <org> <proy> <rol> <etiqueta> <run>, y saca la tabla para leer mas, si se
+# pide, las filas de data/adaptadores.tsv.
+#
+# `porcorrida` decide la columna `run` de esas filas: en --proyectos se midio
+# UNA corrida y la conclusion se extiende a todo el proyecto, asi que va "-";
+# en --corridas se midio cada una y cada fila vale por si misma.
+perfilar_lista() {
+  local n="$1" tsv="$2" porcorrida="$3"
   local tabla; tabla=$(mktemp)
   local org proy rol strat run
   while IFS=$'\t' read -r org proy rol strat run; do
@@ -652,14 +659,20 @@ cmd_perfil_proyectos() {
     printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$org" "$proy" "$rol" "$strat" "$run" \
       "${RESUMEN_PERFIL:-?\t?\t?\tSIN DATO\t?\t?}" >> "$tabla"
     echo
-  done < <(awk -F'\t' 'NR>1 && !(($1 FS $3) in v) {v[$1 FS $3]=1;
-             print $1"\t"$3"\t"$4"\t"$9"\t"$2}' "$MANIFEST" | sort)
+  done
 
   echo "==================== RESUMEN"
-  printf '%-7s %-14s %-10s %-11s %6s %8s %7s %8s  %-17s %s\n' \
-    ORG PROYECTO ROL ETIQUETA ADAPT INSERTO READ RETIENE VEREDICTO ADAPTADOR
-  awk -F'\t' '{printf "%-7s %-14s %-10s %-11s %5s%% %8s %7s %7s%%  %-17s %s\n", \
-    $1,$2,$3,$4,$6,$7,$8,$11,$9,$10}' "$tabla"
+  if [[ "$porcorrida" == "1" ]]; then
+    printf '%-7s %-14s %-12s %-11s %6s %8s %7s %8s  %-17s %s\n' \
+      ORG PROYECTO CORRIDA ETIQUETA ADAPT INSERTO READ RETIENE VEREDICTO ADAPTADOR
+    awk -F'\t' '{printf "%-7s %-14s %-12s %-11s %5s%% %8s %7s %7s%%  %-17s %s\n", \
+      $1,$2,$5,$4,$6,$7,$8,$11,$9,$10}' "$tabla"
+  else
+    printf '%-7s %-14s %-10s %-11s %6s %8s %7s %8s  %-17s %s\n' \
+      ORG PROYECTO ROL ETIQUETA ADAPT INSERTO READ RETIENE VEREDICTO ADAPTADOR
+    awk -F'\t' '{printf "%-7s %-14s %-10s %-11s %5s%% %8s %7s %7s%%  %-17s %s\n", \
+      $1,$2,$3,$4,$6,$7,$8,$11,$9,$10}' "$tabla"
+  fi
   echo
   # Filas listas para data/adaptadores.tsv. Existe para no pasar a mano lo que
   # la herramienta ya midio: copiar 19 filas de una tabla formateada es
@@ -667,7 +680,7 @@ cmd_perfil_proyectos() {
   if [[ "$tsv" == "1" ]]; then
     echo
     echo "==================== PARA data/adaptadores.tsv"
-    awk -F'\t' -v secs="$SECUENCIAS" -v hoy="$(date -u +%Y-%m-%d)" '
+    awk -F'\t' -v secs="$SECUENCIAS" -v hoy="$(date -u +%Y-%m-%d)" -v pc="$porcorrida" '
       BEGIN {
         ns = split(secs, S, " ")
         for (i = 1; i <= ns; i++) { j = index(S[i], ":");
@@ -693,8 +706,11 @@ cmd_perfil_proyectos() {
           sec = "PRE-TRIMMED"; ret = "100"
         }
         else if (fam in SEC)       sec = SEC[fam]
-        printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-               $1, $2, fam, sec, $6, ins, ret, ver, hoy
+        # La columna `run`: "-" vale para todo el proyecto, un RUN concreto
+        # solo para esa corrida. Sale de COMO se midio, no de una eleccion.
+        clave = (pc == "1") ? $5 : "-"
+        printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+               $1, $2, clave, fam, sec, $6, ins, ret, ver, hoy
       }' "$tabla"
     echo
     echo "Las filas con secuencia '-' NO se pueden recortar: o la familia es 5p"
@@ -702,8 +718,11 @@ cmd_perfil_proyectos() {
   fi
 
   local malos; malos=$(awk -F'\t' '$9!="PARECE sRNA-seq" && $9!="YA RECORTADA"' "$tabla" | wc -l)
+  local unidad plural
+  if [[ "$porcorrida" == "1" ]]; then unidad="corrida"; plural="Las %s corridas"
+  else unidad="proyecto"; plural="Los %s proyectos"; fi
   if [[ "$malos" -gt 0 ]]; then
-    echo "$malos proyecto(s) sin veredicto favorable. Revisar antes de alinear:"
+    echo "$malos ${unidad}(s) sin veredicto favorable. Revisar antes de alinear:"
     awk -F'\t' -v man="$MANIFEST" '
       BEGIN { while ((getline l < man) > 0) { split(l, f, "\t"); n[f[1] "\t" f[3]]++ } }
       $9 != "PARECE sRNA-seq" && $9 != "YA RECORTADA" {
@@ -711,10 +730,40 @@ cmd_perfil_proyectos() {
                $1, $2, $3, n[$1 "\t" $2], $4, $9
       }' "$tabla"
   else
-    echo "Los $(wc -l < "$tabla") proyectos son sRNA-seq (PARECE o YA RECORTADA)."
+    printf "$plural son sRNA-seq (PARECE o YA RECORTADA).\n" "$(wc -l < "$tabla")"
   fi
   rm -f "$tabla"
   [[ "$malos" -eq 0 ]]
+}
+
+# Una corrida representativa de cada proyecto. Barato —19 corridas— y suficiente
+# para decidir si un proyecto es sRNA-seq; NO suficiente para el adaptador, que
+# puede variar dentro del proyecto. Para eso esta --corridas.
+cmd_perfil_proyectos() {
+  [[ -f "$MANIFEST" ]] || die "no existe $MANIFEST — corré: $0 manifest"
+  perfilar_lista "${1:-20000}" "${2:-0}" 0 \
+    < <(awk -F'\t' 'NR>1 && !(($1 FS $3) in v) {v[$1 FS $3]=1;
+          print $1"\t"$3"\t"$4"\t"$9"\t"$2}' "$MANIFEST" | sort)
+}
+
+# TODAS las corridas de un proyecto, una por una.
+#
+# Existe porque --proyectos mide una sola y eso no alcanza para el adaptador.
+# Medido en gadmo/duplicado: con la fila del proyecto, 6 de 12 corridas
+# retuvieron 0.6-2.0% contra el 51% esperado y las otras 6 dieron 38-58%. La
+# corrida que --proyectos habia muestreado era una de las buenas, asi que las
+# otras 11 nunca se miraron y el recorte las vacio sin dar error.
+cmd_perfil_corridas() {
+  [[ -f "$MANIFEST" ]] || die "no existe $MANIFEST — corré: $0 manifest"
+  local filtro="${1:-}" n="${2:-20000}" tsv="${3:-0}"
+  [[ "$filtro" == */* ]] || die "uso: $0 perfil --corridas <org>/<rol> [-n N] [--tsv]"
+  local org="${filtro%%/*}" rol="${filtro##*/}"
+  local lista; lista=$(awk -F'\t' -v o="$org" -v r="$rol" \
+    'NR>1 && $1==o && $4==r {print $1"\t"$3"\t"$4"\t"$9"\t"$2}' "$MANIFEST")
+  [[ -n "$lista" ]] || die "sin corridas para $filtro en $MANIFEST"
+  echo "perfilando $(wc -l <<<"$lista") corrida(s) de $filtro, una por una"
+  echo
+  perfilar_lista "$n" "$tsv" 1 <<<"$lista"
 }
 
 # Busca proyectos de sRNA-seq de una especie en la ENA, con el MISMO filtro que
@@ -874,17 +923,19 @@ case "$1" in
   buscar)    shift; cmd_buscar "${1:-}" ;;
   perfil)
     shift
-    RUN_P=""; NP=""; TODOS=0; TSV=0
+    RUN_P=""; NP=""; TODOS=0; TSV=0; CORR=""
     while [[ $# -gt 0 ]]; do
       case "$1" in
         --proyectos) TODOS=1; shift ;;
+        --corridas) CORR="${2:-}"; shift 2 ;;
         --tsv) TSV=1; shift ;;
         -n) NP="${2:-}"; shift 2 ;;
         -n*) NP="${1#-n}"; shift ;;
         *) RUN_P="$1"; shift ;;
       esac
     done
-    if [[ $TODOS -eq 1 ]]; then cmd_perfil_proyectos "${NP:-20000}" "$TSV"
+    if   [[ -n "$CORR" ]];  then cmd_perfil_corridas "$CORR" "${NP:-20000}" "$TSV"
+    elif [[ $TODOS -eq 1 ]]; then cmd_perfil_proyectos "${NP:-20000}" "$TSV"
     else cmd_perfil "$RUN_P" "${NP:-20000}"; fi ;;
   ledger)
     shift

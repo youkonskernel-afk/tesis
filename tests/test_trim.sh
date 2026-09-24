@@ -48,11 +48,11 @@ MAN="$TMP/man.tsv"
 TABLA="$TMP/adaptadores.tsv"
 tabla_completa() {
   { printf '# comentario que se tiene que saltear\n'
-    printf 'org\tbioproject\tfamilia\tsecuencia\tadapt_pct\tinserto_modal\tretencion_est\tveredicto\tfecha_utc\n'
-    printf 'aa\tPRJ_A\tRA3\t%s\t98\t22\t95\tPARECE sRNA-seq\t2026-09-22\n'  "$RA3"
-    printf 'aa\tPRJ_A2\tIllumina_universal\t%s\t90\t22\t88\tPARECE sRNA-seq\t2026-09-22\n' "$UNIV"
-    printf 'aa\tPRJ_D\tRA3\t%s\t96\t22\t93\tPARECE sRNA-seq\t2026-09-22\n'  "$RA3"
-    printf 'bb\tPRJ_B\t-\tPRE-TRIMMED\t0\t-\t100\tYA RECORTADA\t2026-09-22\n'
+    printf 'org\tbioproject\trun\tfamilia\tsecuencia\tadapt_pct\tinserto_modal\tretencion_est\tveredicto\tfecha_utc\n'
+    printf 'aa\tPRJ_A\t-\tRA3\t%s\t98\t22\t95\tPARECE sRNA-seq\t2026-09-22\n'  "$RA3"
+    printf 'aa\tPRJ_A2\t-\tIllumina_universal\t%s\t90\t22\t88\tPARECE sRNA-seq\t2026-09-22\n' "$UNIV"
+    printf 'aa\tPRJ_D\t-\tRA3\t%s\t96\t22\t93\tPARECE sRNA-seq\t2026-09-22\n'  "$RA3"
+    printf 'bb\tPRJ_B\t-\t-\tPRE-TRIMMED\t0\t-\t100\tYA RECORTADA\t2026-09-22\n'
   } > "$TABLA"
 }
 
@@ -138,8 +138,8 @@ corre() {
 }
 
 echo "== 1. un proyecto sin fila en la tabla hace fallar, no adivina"
-{ printf 'org\tbioproject\tfamilia\tsecuencia\tadapt_pct\tinserto_modal\tretencion_est\tveredicto\tfecha_utc\n'
-  printf 'aa\tPRJ_A\tRA3\t%s\t98\t22\t95\tPARECE sRNA-seq\t2026-09-22\n' "$RA3"
+{ printf 'org\tbioproject\trun\tfamilia\tsecuencia\tadapt_pct\tinserto_modal\tretencion_est\tveredicto\tfecha_utc\n'
+  printf 'aa\tPRJ_A\t-\tRA3\t%s\t98\t22\t95\tPARECE sRNA-seq\t2026-09-22\n' "$RA3"
 } > "$TABLA"
 S=$(corre plan); RC=$?
 [[ $RC -ne 0 ]] && ok "exit != 0" || mal "exit != 0 (rc=$RC)"
@@ -149,16 +149,39 @@ notiene "no lista corridas"          "SRR_A1"                         "$S"
 
 echo "== 2. un adaptador 5p tampoco: no sirve como -a"
 tabla_completa
-sed -i "s/^bb\tPRJ_B\t-\tPRE-TRIMMED/bb\tPRJ_B\t5p:RA5\tGATCGTCGGACTGTAGAACTCTGAAC/" "$TABLA"
+sed -i "s/^bb\tPRJ_B\t-\t-\tPRE-TRIMMED/bb\tPRJ_B\t-\t5p:RA5\tGATCGTCGGACTGTAGAACTCTGAAC/" "$TABLA"
 S=$(corre plan); RC=$?
 [[ $RC -ne 0 ]] && ok "exit != 0" || mal "exit != 0 (rc=$RC)"
 tiene "explica por que"              "dimero o quimera"               "$S"
 
 echo "== 2b. y un sin_identificar igual"
-sed -i "s/^bb\tPRJ_B\t5p:RA5\t[A-Z]*/bb\tPRJ_B\t??:sin_identificar\tCGCCTTGGCCGT/" "$TABLA"
+sed -i "s/^bb\tPRJ_B\t-\t5p:RA5\t[A-Z]*/bb\tPRJ_B\t-\t??:sin_identificar\tCGCCTTGGCCGT/" "$TABLA"
 S=$(corre plan); RC=$?
 [[ $RC -ne 0 ]] && ok "exit != 0" || mal "exit != 0 (rc=$RC)"
 tiene "lo nombra"                    "sin_identificar"                "$S"
+
+echo "== 2c. una corrida puede tener su propia fila, y le gana a la del proyecto"
+# gadmo PRJNA328800: 6 de 12 corridas retuvieron 0.6-2.0% contra el 51%
+# esperado. Un BioProject PUEDE mezclar kits, y `perfil --proyectos` mide una
+# sola corrida, asi que las otras 11 nunca se miraron.
+tabla_completa
+printf 'aa\tPRJ_A\tSRR_A2\tIllumina_universal\t%s\t91\t22\t77\tPARECE sRNA-seq\t2026-09-24\n' \
+  "$UNIV" >> "$TABLA"
+S=$(corre plan); RC=$?
+[[ $RC -eq 0 ]] && ok "exit 0" || mal "exit 0 (rc=$RC)"
+tiene "SRR_A2 lleva la suya"    "SRR_A2       $UNIV"  "$S"
+tiene "y SRR_A1 sigue con RA3"  "SRR_A1       $RA3"   "$S"
+
+echo "== 2d. y si la fila de la corrida no sirve, se nombra la CORRIDA"
+# Con la dedup por proyecto que habia antes, esta fila no se miraba nunca:
+# la primera corrida del proyecto ya habia marcado PRJ_A como visto.
+tabla_completa
+printf 'aa\tPRJ_A\tSRR_A2\t5p:RA5\tGATCGTCGGACTGTAGAACTCTGAAC\t91\t22\t77\tPARECE sRNA-seq\t2026-09-24\n' \
+  >> "$TABLA"
+S=$(corre plan); RC=$?
+[[ $RC -ne 0 ]] && ok "exit != 0" || mal "exit != 0 (rc=$RC)"
+tiene "nombra la corrida"  "aa PRJ_A SRR_A2"  "$S"
+tiene "y por que"          "dimero o quimera" "$S"
 
 echo "== 3. plan: proyectos por organismo Y rol"
 tabla_completa
@@ -263,6 +286,19 @@ tiene "y la esperada de la tabla"   "95%"                           "$S"
 tiene "la PRE-TRIMMED no se compara" "pre-trimmed"                  "$S"
 notiene "y no dice PRE-TRIMMED%"    "PRE-TRIMMED%"                  "$S"
 
+echo "== 11b. verificar compara contra la retencion_est de la CORRIDA"
+# Sin esto, una corrida con su propia fila se juzga con la expectativa del
+# proyecto — justo al reves de para que existe la fila.
+printf 'aa\tPRJ_A\tSRR_A1\tIllumina_universal\t%s\t91\t22\t40\tPARECE sRNA-seq\t2026-09-24\n' \
+  "$UNIV" >> "$TABLA"
+S=$(corre verificar); RC=$?
+[[ $RC -ne 0 ]] && ok "exit != 0: 100 medido contra 40 esperado" || mal "exit != 0 (rc=$RC)"
+tiene "usa el 40 de la corrida"  "40%"      "$S"
+tiene "y nombra a SRR_A1"        "SRR_A1"   "$S"
+# Las otras del mismo proyecto siguen con el 95 del proyecto.
+tiene "SRR_A2 sigue en 95"       "95%"      "$S"
+tabla_completa
+
 echo "== 12. verificar atrapa el adaptador equivocado (el fallo que no hace ruido)"
 # cutadapt corre con --trimmed-only: una secuencia que no corresponde no da
 # error, deja un .t.fq.gz casi vacio y el pipeline sigue. Es el caso de maggi.
@@ -291,6 +327,55 @@ rm -rf "$TMP/trim" "$DEST/aa/SRR_A2.sra"
 S=$(corre plan)
 tiene "marca la que falta"          "FALTA el .sra"                "$S"
 tiene "y dice como traerla"         "drive_pull.sh sra"            "$S"
+
+echo "== 14b. rehacer saca del registro para que correr las vuelva a hacer"
+# El recorte es idempotente por diseno, y eso estorba justo cuando lo que hay
+# que rehacer es un recorte MALO: en gadmo/duplicado 6 de 12 salieron con la
+# secuencia equivocada y figuraban como hechas.
+rm -rf "$TMP/trim"; tabla_completa
+corre correr >/dev/null 2>&1
+P="$TMP/trim/aa_primario"
+[[ -f "$P/trim/SRR_A1.t.fq.gz" ]] && ok "arranca con SRR_A1 recortada" \
+  || mal "arranca con SRR_A1 recortada"
+
+S=$(corre rehacer aa/primario SRR_A1); RC=$?
+[[ $RC -eq 0 ]] && ok "exit 0" || mal "exit 0 (rc=$RC)"
+tiene "dice cuantas saco"  "sacadas del registro: 1"  "$S"
+[[ -f "$P/trim/SRR_A1.t.fq.gz" ]] && mal "borra su .t.fq.gz" || ok "borra su .t.fq.gz"
+# SRR_A3 es la otra del mismo proyecto que llego a recortarse: rehacer una no
+# puede tocarla.
+[[ -f "$P/trim/SRR_A3.t.fq.gz" ]] && ok "y no toca a su hermana SRR_A3" \
+  || mal "y no toca a su hermana SRR_A3"
+tiene "que sigue en el ledger" "SRR_A3" "$(cat "$P/recortadas.tsv")"
+notiene "sale del ledger"     "SRR_A1"  "$(cat "$P/recortadas.tsv")"
+# inputs.json tambien: es de donde leen los comandos de aguas abajo.
+notiene "y de inputs.json"    "SRR_A1"  "$(cat "$P/inputs.json")"
+# Y volver a correr la rehace.
+corre correr >/dev/null 2>&1
+[[ -f "$P/trim/SRR_A1.t.fq.gz" ]] && ok "y correr la vuelve a recortar" \
+  || mal "y correr la vuelve a recortar"
+
+echo "== 14c. rehacer no borra la salida de una PRE-TRIMMED"
+# Su `fichero` apunta a untrimmed/, o sea a su ENTRADA: borrarla seria tirar el
+# fastq original y dejar la corrida sin forma de rehacerse.
+B="$TMP/trim/bb_primario"
+_pre=$(awk -F'\t' 'NR>1 {print $3; exit}' "$B/recortadas.tsv" 2>/dev/null || true)
+corre rehacer bb/primario SRR_B1 >/dev/null 2>&1
+if [[ -n "${_pre:-}" ]]; then
+  _q="$_pre"; [[ "$_q" == /* ]] || _q="$B/$_q"
+  [[ -f "$_q" ]] && ok "el fastq original sigue en disco" \
+    || mal "el fastq original sigue en disco ($_q)"
+else
+  mal "el ledger de bb_primario no tiene filas"
+fi
+
+echo "== 14d. rehacer exige las corridas, no rehace un proyecto entero"
+S=$(corre rehacer aa/primario 2>&1 || true)
+tiene "pide los RUN"          "decime QUE corridas"  "$S"
+S=$(corre rehacer aa 2>&1 || true)
+tiene "y exige <org>/<rol>"   "uso:"                 "$S"
+S=$(corre rehacer aa/primario SRR_NOEXISTE 2>&1 || true)
+tiene "y avisa si no estaba"  "no estaban en el registro"  "$S"
 
 echo "== 15. errores"
 tiene "modo desconocido"            "modo desconocido"             "$(corre nosequé 2>&1 || true)"

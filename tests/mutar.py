@@ -80,6 +80,36 @@ MUTACIONES = [
        'previas, orden = {}, []\nif False:')]),
     # El duplicado es la validacion independiente: comparte directorio de
     # proyecto con el primario y deja de serlo.
+    # gadmo PRJNA328800: 6 de 12 corridas con otro kit. Una fila por proyecto
+    # no puede expresar eso y el fallo es el silencioso de --trimmed-only.
+    ("trim: la fila de la corrida deja de ganarle a la del proyecto",
+     "scripts/trim.sh",
+     [('$3 == r && r != "" { print $c; hecho = 1; exit }',
+       '$3 == r && 0        { print $c; hecho = 1; exit }')]),
+    ("trim: sin el flag, exit imprime tambien la fila del proyecto",
+     "scripts/trim.sh",
+     [('END { if (!hecho && gen != "") print gen }',
+       'END { if (gen != "") print gen }')]),
+    ("trim: validar vuelve a deduplicar por proyecto y no mira las corridas",
+     "scripts/trim.sh",
+     [('      [[ " $vistos " == *" $etiqueta|"* ]] && continue\n'
+       '      vistos="$vistos $etiqueta|"',
+       '      [[ " $vistos " == *" $org/$proy "* ]] && continue\n'
+       '      vistos="$vistos $org/$proy"')]),
+    ("trim: rehacer no saca la corrida del ledger", "scripts/trim.sh",
+     [("    led.write_text('\\n'.join([cab] + quedan) + '\\n')", "    pass")]),
+    ("trim: rehacer borra la salida de una PRE-TRIMMED", "scripts/trim.sh",
+     [("    if q.is_file() and q.parent.name == 'trim':", "    if q.is_file():")]),
+    ("trim: rehacer no limpia inputs.json", "scripts/trim.sh",
+     [("    datos['trimmed_libraries'] = [r for r in prev\n"
+       "                                  if not any(run in r for run in runs)]",
+       "    pass")]),
+    ("perfil: --corridas mide una sola, como --proyectos",
+     "scripts/fetch_runs.sh",
+     [("""    'NR>1 && $1==o && $4==r {print $1"\\t"$3"\\t"$4"\\t"$9"\\t"$2}' "$MANIFEST")""",
+       """    'NR>1 && $1==o && $4==r && !seen++ {print $1"\\t"$3"\\t"$4"\\t"$9"\\t"$2}' "$MANIFEST")""")]),
+    ("perfil: la columna run sale siempre en '-'", "scripts/fetch_runs.sh",
+     [('clave = (pc == "1") ? $5 : "-"', 'clave = "-"')]),
     ("trim: el primario y el duplicado vuelven a un solo directorio",
      "scripts/trim.sh",
      [('dir="$PROY_DIR/${org}_${rol}"', 'dir="$PROY_DIR/${org}"')] * 4),

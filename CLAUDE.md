@@ -362,6 +362,26 @@ probabilidad calibrada.
   `DESVIADA` más allá de 15 puntos. Es el único chequeo del recorte que atrapa
   el caso de `maggi`: dos BioProjects de 2011 y 2014 con kits distintos, donde
   una sola fila de adaptador habría vaciado el proyecto que no corresponde.
+- **Un BioProject puede mezclar kits, y `perfil --proyectos` no lo puede ver.**
+  `gadmo/duplicado` (`PRJNA328800`, 12 corridas) recortó con la fila del
+  proyecto y **6 de 12 retuvieron 0.6-2.0% contra el 51% esperado**; las otras 6
+  dieron 38-58%, o sea bien. `perfil --proyectos` mide **una** corrida por
+  proyecto —`!(($1 FS $3) in v)`, la primera— y le tocó una de las buenas, así
+  que las otras 11 nunca se midieron. El comentario de `secuencia_de` decía
+  *"se busca por proyecto porque el adaptador es del kit, no de la corrida"*: el
+  kit sí es del proyecto, lo que no es cierto es que un BioProject use un solo
+  kit.
+  Tres piezas, y las tres hacían falta:
+  `data/adaptadores.tsv` lleva **columna `run`** —`-` vale para todo el proyecto
+  y una fila con el RUN exacto le gana—, existe
+  **`perfil --corridas <org>/<rol>`** que mide todas una por una y emite esas
+  filas con la clave llena, y **`trim.sh rehacer <org>/<rol> RUN...`** saca esas
+  corridas del registro y borra su `.t.fq.gz`, porque el recorte es idempotente
+  y si no las saltea para siempre.
+  Lo que **sí** funcionó es el guardia: `trim.sh verificar` las marcó `VACIA`,
+  el `assert` de §3 cortó, y nada llegó al alineamiento. Es el mismo caso de
+  `maggi` un nivel más abajo — ahí eran dos BioProjects con kits distintos, acá
+  es uno solo.
 - **`maggi` primario son dos BioProjects de eras distintas, y eso es una fila
   de adaptador cada uno.** `vdb-dump --info` da la fecha de carga:
   `SRR317135` (`PRJNA154615`) es de **julio de 2011** y `SRR1066790`
@@ -849,7 +869,7 @@ Lo que necesita red va en otro lado:
 | empujar a git desde Colab | Colab | `scripts/colab_git.py` + un PAT en Secrets |
 | configurar rclone | máquina local | `docs/rclone.md` + `scripts/drive_check.sh` |
 | traer `.sra` para alinear | máquina local | `scripts/drive_pull.sh sra <org> --go` |
-| recorte | máquina local | `scripts/trim.sh plan/correr/verificar` |
+| recorte | máquina local | `scripts/trim.sh plan/correr/verificar/rehacer` |
 | alineamiento | máquina local | `scripts/align.sh genoma/plan/correr/verificar` |
 | BAMs a Drive | máquina local | `scripts/drive_push.sh` |
 
@@ -867,7 +887,7 @@ purga después. Ver `docs/colab.md` y
 Todo corre sin red y en segundos. Antes de cada push:
 
 ```bash
-./tests/run_all.sh              # 18 bancos, 535 chequeos, binarios falsos en el PATH
+./tests/run_all.sh              # 18 bancos, 568 chequeos, binarios falsos en el PATH
 ./tests/mutar.py                # rompe el codigo y exige que algun banco grite
 ./scripts/check_docs.py         # lo que afirman los docs contra data/
 ./scripts/validate_notebooks.py # los .ipynb parsean y no hay duplicados
@@ -878,7 +898,7 @@ y `check_docs.py` dos más.
 
 **Un banco que pasa no prueba nada.** Prueba algo el día que se rompe lo que
 cubre y el banco se queja, y la única forma de saberlo es romper el código a
-propósito: eso es `tests/mutar.py`, 76 mutaciones que tienen que dar todas
+propósito: eso es `tests/mutar.py`, 84 mutaciones que tienen que dar todas
 `[OK]`. Un `[HUECO]` es un chequeo que falta; un `[VIEJA]` es una mutación cuyo
 patrón ya no existe, que tampoco prueba nada. Así aparecieron los dos huecos que
 ninguna otra cosa mostró — el veredicto de `perfil` que iba a la tabla sin estar

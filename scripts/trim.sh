@@ -5,6 +5,7 @@
 #   ./scripts/trim.sh correr    [<org>[/<rol>]]   recorta, en tandas
 #   ./scripts/trim.sh estado    [<org>[/<rol>]]   que esta recortado y que falta
 #   ./scripts/trim.sh verificar [<org>[/<rol>]]   la retencion medida vs la esperada
+#   ./scripts/trim.sh rehacer <org>/<rol> RUN...  saca esas del registro y las re-recorta
 #
 # El filtro es un organismo (`galga`) o un organismo y un rol (`galga/primario`).
 #
@@ -105,25 +106,35 @@ sin_comentarios() {
   grep -vE '^[[:space:]]*#' "$1" | grep -vE '^[[:space:]]*$'
 }
 
-# org+bioproject -> secuencia. Se busca por proyecto porque el adaptador es del
-# kit, no de la corrida.
-secuencia_de() {
-  local org="$1" proy="$2"
+# org+bioproject[+run] -> una columna de la tabla.
+#
+# Se buscaba SOLO por proyecto, con el razonamiento de que "el adaptador es del
+# kit, no de la corrida". El kit si es del proyecto; lo que no es cierto es que
+# un BioProject use un solo kit. Medido en gadmo PRJNA328800: 6 de 12 corridas
+# retuvieron 0.6-2.0% contra el 51% esperado, y las otras 6 dieron 38-58%. Una
+# fila por proyecto no puede expresar eso, y el modo de falla es el silencioso
+# de siempre — cutadapt con --trimmed-only descarta lo que no matchea y sale
+# con 0.
+#
+# Por eso la tabla lleva columna `run`: una fila con el RUN exacto le gana a la
+# fila `-` del proyecto. El fallback a `-` es lo que mantiene las 19 filas
+# existentes valiendo sin tocarlas.
+columna_de() {
+  local col="$1" org="$2" proy="$3" run="${4:-}"
   sin_comentarios "$ADAPTADORES_TSV" | tail -n +2 \
-    | awk -F'\t' -v o="$org" -v p="$proy" '$1==o && $2==p {print $4; exit}'
+    | awk -F'\t' -v c="$col" -v o="$org" -v p="$proy" -v r="$run" '
+        $1 != o || $2 != p { next }
+        $3 == r && r != "" { print $c; hecho = 1; exit }  # la de esta corrida
+        $3 == "-"          { gen = $c }                   # la del proyecto, de reserva
+        # OJO: en awk `exit` TAMBIEN corre el END, asi que sin el flag la fila
+        # del proyecto se imprimiria pegada a la de la corrida y el llamador
+        # recibiria dos lineas donde espera una.
+        END { if (!hecho && gen != "") print gen }'
 }
 
-familia_de() {
-  local org="$1" proy="$2"
-  sin_comentarios "$ADAPTADORES_TSV" | tail -n +2 \
-    | awk -F'\t' -v o="$org" -v p="$proy" '$1==o && $2==p {print $3; exit}'
-}
-
-retencion_esperada_de() {
-  local org="$1" proy="$2"
-  sin_comentarios "$ADAPTADORES_TSV" | tail -n +2 \
-    | awk -F'\t' -v o="$org" -v p="$proy" '$1==o && $2==p {print $7; exit}'
-}
+secuencia_de()          { columna_de 5 "$@"; }
+familia_de()            { columna_de 4 "$@"; }
+retencion_esperada_de() { columna_de 8 "$@"; }
 
 # El .sra en el destino. Las tres disposiciones que deja prefetch, y -s para que
 # un fichero truncado no cuente como bajado.
@@ -214,19 +225,34 @@ validar() {
   local vistos=""
 
   while IFS=$'\t' read -r org rol; do
+    # Se recorria deduplicando por proyecto, que era correcto cuando la tabla
+    # tenia una sola fila por BioProject. Con filas por corrida eso deja de
+    # cubrir: una corrida con su propia fila mala no se miraria nunca. Ahora se
+    # miran TODAS las corridas y lo que se deduplica es el mensaje, asi que un
+    # proyecto entero sin fila sigue siendo una linea y una excepcion por
+    # corrida nombra la corrida.
+    local origen etiqueta
     while IFS=$'\t' read -r run proy _rc _bc; do
-      [[ " $vistos " == *" $org/$proy "* ]] && continue
-      vistos="$vistos $org/$proy"
-      sec=$(secuencia_de "$org" "$proy")
-      fam=$(familia_de "$org" "$proy")
+      sec=$(secuencia_de "$org" "$proy" "$run")
+      fam=$(familia_de "$org" "$proy" "$run")
+      # La columna `run` de la fila que aplico ES la clave: "-" si vino la del
+      # proyecto, el RUN si gano una excepcion.
+      origen=$(columna_de 3 "$org" "$proy" "$run")
+      if [[ "$origen" == "-" || -z "$origen" ]]; then
+        etiqueta="$org $proy"
+      else
+        etiqueta="$org $proy $run"
+      fi
+      [[ " $vistos " == *" $etiqueta|"* ]] && continue
+      vistos="$vistos $etiqueta|"
       if [[ -z "$sec" ]]; then
-        sin_fila+=("$org $proy")
+        sin_fila+=("$etiqueta")
         continue
       fi
       # Un 5p o un sin_identificar no puede ir como -a de cutadapt: recortariamos
       # con la secuencia equivocada y el resultado no falla ruidosamente.
       case "$fam" in
-        5p:*|'??:'*) no_recortable+=("$org $proy ($fam)") ;;
+        5p:*|'??:'*) no_recortable+=("$etiqueta ($fam)") ;;
       esac
     done < <(corridas "$org" "$rol")
   done < <(proyectos "$filtro")
@@ -267,7 +293,7 @@ cmd_plan() {
     dir="$PROY_DIR/${org}_${rol}"
     ya=" $(recortadas_de "$dir" | tr '\n' ' ')"
     while IFS=$'\t' read -r run proy rc bc; do
-      sec=$(secuencia_de "$org" "$proy")
+      sec=$(secuencia_de "$org" "$proy" "$run")
       if [[ "$ya" == *" $run "* ]]; then
         est="ya recortada"; listo=$((listo+1))
       elif ruta_sra "$org" "$run" >/dev/null; then
@@ -490,7 +516,7 @@ cmd_correr() {
     while IFS=$'\t' read -r run proy rc bc; do
       [[ "$ya" == *" $run "* ]] && continue          # idempotente
       ruta_sra "$org" "$run" >/dev/null || { echo "   FALTA el .sra: $run" >&2; continue; }
-      sec=$(secuencia_de "$org" "$proy")
+      sec=$(secuencia_de "$org" "$proy" "$run")
       # La PRE-TRIMMED es la unica que se guarda comprimida: ver volcar().
       if [[ "$sec" == "PRE-TRIMMED" ]]; then fq_nombre="$run.fastq.gz"; else fq_nombre="$run.fastq"; fi
       printf '%s\t%s\t%s\t%s\t%s\n' "$run" "$proy" "$sec" "$fq_nombre" \
@@ -581,7 +607,7 @@ cmd_verificar() {
     while IFS=$'\t' read -r run proy fich rin rout pct fecha; do
       [[ "$run" == "run" ]] && continue
       filas=$((filas+1))
-      esp=$(retencion_esperada_de "$org" "$proy")
+      esp=$(retencion_esperada_de "$org" "$proy" "$run")
       local ver
       if [[ "$pct" == "PRE-TRIMMED" ]]; then
         ver="pre-trimmed (sin recorte ni filtro de largo)"
@@ -619,12 +645,83 @@ cmd_verificar() {
   return 1
 }
 
+# Saca corridas del registro para que `correr` las vuelva a recortar.
+#
+# Hace falta porque el recorte es idempotente por diseno —lo que esta en
+# recortadas.tsv no se vuelve a tocar— y eso es exactamente lo que estorba
+# cuando lo que hay que rehacer es un recorte MALO. El caso: gadmo/duplicado
+# recorto 12 corridas, 6 con la secuencia equivocada; esas 6 figuran como
+# hechas, con su .t.fq.gz casi vacio en disco, y `correr` las saltea para
+# siempre.
+#
+# No toca los .sra ni el untrimmed/: solo el registro y las salidas que se van
+# a rehacer. Y pide las corridas explicitas — rehacer un proyecto entero por
+# error son horas.
+cmd_rehacer() {
+  local filtro="${1:-}"; shift || true
+  [[ "$filtro" == */* ]] || die "uso: $0 rehacer <org>/<rol> RUN [RUN...]"
+  [[ $# -ge 1 ]] || die "decime QUE corridas rehacer: $0 rehacer $filtro RUN [RUN...]"
+  local org="${filtro%%/*}" rol="${filtro##*/}"
+  local dir="$PROY_DIR/${org}_${rol}"
+  [[ -d "$dir" ]] || die "no existe $dir"
+
+  LEDGER="$LEDGER" python3 - "$dir" "$@" <<'PY'
+import json, os, pathlib, sys
+d = pathlib.Path(sys.argv[1])
+runs = set(sys.argv[2:])
+led = d / os.environ['LEDGER']
+
+fuera, quedan = [], []
+if led.is_file():
+    lineas = led.read_text().splitlines()
+    cab, filas = lineas[0], lineas[1:]
+    for ln in filas:
+        c = ln.split('\t')
+        (fuera if c and c[0] in runs else quedan).append(ln)
+    led.write_text('\n'.join([cab] + quedan) + '\n')
+
+# El .t.fq.gz se borra para que no quede un fichero casi vacio pareciendo
+# salida buena. La ruta sale del ledger, no se reconstruye: los nombres de
+# yasma trim no se pueden adivinar, y una PRE-TRIMMED apunta a su ENTRADA
+# —borrarla seria tirar el fastq original.
+borrados = 0
+for ln in fuera:
+    c = ln.split('\t')
+    if len(c) < 3 or c[5:6] == ['PRE-TRIMMED']:
+        continue
+    q = pathlib.Path(c[2])
+    if not q.is_absolute():
+        q = d / q
+    # Solo lo que esta en trim/, que es lo que YASMA produjo. Una PRE-TRIMMED
+    # apunta a untrimmed/, o sea a su propia ENTRADA: borrarla seria tirar el
+    # fastq original y dejar la corrida sin forma de rehacerse.
+    if q.is_file() and q.parent.name == 'trim':
+        q.unlink(); borrados += 1
+
+# Y inputs.json, que es de donde leen los comandos de aguas abajo.
+f = d / 'inputs.json'
+if f.is_file():
+    datos = json.loads(f.read_text())
+    prev = datos.get('trimmed_libraries') or []
+    datos['trimmed_libraries'] = [r for r in prev
+                                  if not any(run in r for run in runs)]
+    f.write_text(json.dumps(datos, indent=1) + '\n')
+
+faltaron = runs - {ln.split('\t')[0] for ln in fuera}
+if faltaron:
+    print(f"   no estaban en el registro: {' '.join(sorted(faltaron))}")
+print(f"   sacadas del registro: {len(fuera)}, .t.fq.gz borrados: {borrados}")
+print(f"   ahora `correr` las vuelve a recortar con lo que diga la tabla")
+PY
+}
+
 [[ $# -ge 1 ]] || { sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
 case "$1" in
   plan)      shift; cmd_plan      "${1:-}" ;;
   estado)    shift; cmd_estado    "${1:-}" ;;
   correr)    shift; cmd_correr    "${1:-}" ;;
   verificar) shift; cmd_verificar "${1:-}" ;;
+  rehacer)   shift; cmd_rehacer   "$@" ;;
   -h|--help) sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//' ;;
-  *) die "modo desconocido: $1 (plan|correr|estado|verificar)" ;;
+  *) die "modo desconocido: $1 (plan|correr|estado|verificar|rehacer)" ;;
 esac
