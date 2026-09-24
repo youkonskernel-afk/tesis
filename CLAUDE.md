@@ -297,7 +297,7 @@ probabilidad calibrada.
 - **`cloro` primario es `ncRNA-Seq`**, no miRNA-Seq. Igual que `phypa`, hay que
   declararlo en métodos. (Que venga ya recortado está anotado arriba.)
 - **Re-estimado con datos, no con reglas de tres.** Con 3.4× más reads, las
-  8-12 h de alineamiento pasan al orden de **85-95 h** (medidas: ~50 s por
+  8-12 h de alineamiento pasan al orden de **~100 h** (medidos: ~58 s por
   millón de reads recortados). Los BAMs **no** escalan igual: se habían
   declarado en ~340 GB escalando los ~100 GB del set anterior por 3.4, pero
   los ~100 de partida salían de estimar 45 B por alineamiento y lo medido es
@@ -620,15 +620,34 @@ probabilidad calibrada.
   único que se queda afuera). Nada de esto se declara de nuevo a ojo: §1 lo
   recalcula contra `shutil.disk_usage('/content').free` en cada sesión, porque
   el disco que toque varía.
-- **`yasma align` tarda ~50 s por millón de reads recortados.** Medido en
-  `sclsc_duplicado`: 32.1 M reads, **22:28 de bowtie más 3:35 de `pysam.sort`**
-  en una VM de Colab Free, contra un genoma de 39 Mb. Extrapolado a los 6068 M
-  reads que sobreviven al recorte en los 18 proyectos son **~85-95 h de reloj**,
-  que es del orden de las "30-40 h" declaradas más arriba multiplicado por lo
-  que se corrigió de aquella estimación. Es **una** medición y el genoma influye:
+- **Lo que persiste entre sesiones de Colab es Drive, no `/content`, y por eso
+  "qué falta" no se puede leer del disco local.** `align.sh estado` mira
+  `PROY_DIR`, que en una VM nueva está vacío: dice que falta **todo**, incluido
+  lo que se alineó la semana pasada. Costó 31 minutos re-alineando
+  `sclsc_duplicado` entero, con la salida idéntica byte por byte, porque
+  `PROYECTO` de §2 estaba cableado y nadie lo cambió. Ahora §1 mira
+  `10_bam/<org>/<rol>.bam` en Drive —donde solo llega lo que pasó `verificar`
+  en §5, así que un BAM ahí es trabajo terminado y verificado—, marca esos como
+  `YA EN DRIVE` y deja `SIGUIENTE` con el primer pendiente **que además entra en
+  el disco**; §2 hace `PROYECTO = SIGUIENTE`. Rehacer uno sigue siendo posible
+  poniéndolo a mano. Tiene banco (4 escenarios en `tests/test_celda_alinear.py`)
+  y dos mutaciones, una de ellas para que `SIGUIENTE` no pueda caer en un
+  proyecto que no entra — mandar a gastar horas en algo que se queda sin disco a
+  la mitad es peor que no proponer nada.
+- **`yasma align` tarda ~58 s por millón de reads recortados.** Medido dos
+  veces sobre `sclsc_duplicado` (32.1 M reads, genoma de 39 Mb, Colab Free):
+  26 min de bowtie más 4 de `pysam.sort`, o sea **31 min de reloj de punta a
+  punta**. Extrapolado a los 6068 M reads que sobreviven al recorte en los 18
+  proyectos son **~95-105 h**. Es un solo proyecto medido y el genoma influye:
   `galga` (1.1 Gb) y `maggi` (650 Mb) son más lentos por read que un hongo de
-  39 Mb. §4 se cronometra solo y §5 imprime los s/M read de cada proyecto para
-  ir corrigiendo `S_POR_M` en vez de arrastrar este número.
+  39 Mb, así que §1 usa 60 y no 58. §4 se cronometra solo y §5 imprime los s/M
+  read de cada proyecto para ir corrigiendo `S_POR_M` en vez de arrastrar este
+  número.
+  **El primer valor que se puso acá fueron 49 s y estaba mal por medir de menos:**
+  salió de la línea `time elapsed` de YASMA más la de `Sorting`, y entre las dos
+  hay una etapa —escribir la tabla de abundancia— que no aparece en ninguna. Por
+  eso §4 ahora cronometra la celda entera en vez de sumar lo que el programa
+  dice de sí mismo.
 - **Colab ya no solo lee de GitHub: `scripts/colab_git.py` empuja.** Reemplazó
   los bloques de "copiá esta salida al repo" de §4 de `10_descarga_runs` y §6 de
   `descarga_genomas`. Tres reglas que tienen banco
@@ -848,7 +867,7 @@ purga después. Ver `docs/colab.md` y
 Todo corre sin red y en segundos. Antes de cada push:
 
 ```bash
-./tests/run_all.sh              # 18 bancos, 527 chequeos, binarios falsos en el PATH
+./tests/run_all.sh              # 18 bancos, 535 chequeos, binarios falsos en el PATH
 ./tests/mutar.py                # rompe el codigo y exige que algun banco grite
 ./scripts/check_docs.py         # lo que afirman los docs contra data/
 ./scripts/validate_notebooks.py # los .ipynb parsean y no hay duplicados
@@ -859,7 +878,7 @@ y `check_docs.py` dos más.
 
 **Un banco que pasa no prueba nada.** Prueba algo el día que se rompe lo que
 cubre y el banco se queja, y la única forma de saberlo es romper el código a
-propósito: eso es `tests/mutar.py`, 74 mutaciones que tienen que dar todas
+propósito: eso es `tests/mutar.py`, 76 mutaciones que tienen que dar todas
 `[OK]`. Un `[HUECO]` es un chequeo que falta; un `[VIEJA]` es una mutación cuyo
 patrón ya no existe, que tampoco prueba nada. Así aparecieron los dos huecos que
 ninguna otra cosa mostró — el veredicto de `perfil` que iba a la tabla sin estar

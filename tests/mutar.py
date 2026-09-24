@@ -162,7 +162,7 @@ MUTACIONES = [
     # un segundo, no a las seis horas.
     ("alinear: un proyecto que no entra se da por bueno",
      "notebooks/20_alinear.ipynb",
-     [('    ok = pico + MARGEN < libre', '    ok = True')]),
+     [('    entra = pico + MARGEN < libre', '    entra = True')]),
     ("alinear: mide los reads crudos y no lo que sobrevive al recorte",
      "notebooks/20_alinear.ipynb",
      [("int(r['read_count']) * _ret.get((r['org'], r['bioproject']), 80) / 100",
@@ -170,6 +170,15 @@ MUTACIONES = [
     # B_BAM estuvo en 45 sin haberse medido nunca: el pico de BAM salia 3x. Un
     # numero inventado en una constante no falla ruidosamente, solo manda
     # proyectos que entran a la maquina local.
+    # Se perdieron 31 min re-alineando un proyecto que ya estaba en Drive: la
+    # VM es efimera, asi que "que falta" no se puede leer del disco local.
+    ("alinear: no mira si el proyecto ya esta en Drive",
+     "notebooks/20_alinear.ipynb",
+     [("hecho = (DRIVE / '10_bam' / org / f'{rol}.bam').exists()",
+       "hecho = False")]),
+    ("alinear: SIGUIENTE puede caer en uno que no entra",
+     "notebooks/20_alinear.ipynb",
+     [('    elif entra:', '    elif True:')]),
     ("alinear: B_BAM vuelve a la estimacion sin medir",
      "notebooks/20_alinear.ipynb",
      [('B_BAM    = 16', 'B_BAM    = 45')]),

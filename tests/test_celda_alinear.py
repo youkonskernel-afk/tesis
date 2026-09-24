@@ -40,8 +40,15 @@ def corrida(org, run, proy, rol, reads):
     return f"{org}\t{run}\t{proy}\t{rol}\tapl\t{reads}\t{reads*50}\t50\tmiRNA-Seq\tSINGLE\tTRANSCRIPTOMIC"
 
 
-def correr(tmp, corridas, libre_gb, retenciones):
+def correr(tmp, corridas, libre_gb, retenciones, en_drive=()):
     clon = tmp / "clon"
+    # Drive es lo unico que persiste entre sesiones de Colab: la VM arranca
+    # con /content vacio, asi que "que falta" no se puede leer del disco local.
+    drive = tmp / "drive"
+    for p in en_drive:
+        org, rol = p.split("/")
+        (drive / "10_bam" / org).mkdir(parents=True, exist_ok=True)
+        (drive / "10_bam" / org / f"{rol}.bam").write_bytes(b"BAM")
     (clon / "data").mkdir(parents=True, exist_ok=True)
     (clon / "data" / "srr_manifest.tsv").write_text("\n".join([HDR] + corridas) + "\n")
     (clon / "data" / "adaptadores.tsv").write_text(
@@ -60,7 +67,7 @@ def correr(tmp, corridas, libre_gb, retenciones):
     shutil.disk_usage = lambda _: _U()
     try:
         src = "".join(json.loads(NB.read_text())["cells"][CELDA]["source"])
-        ns = {"CLON": clon}
+        ns = {"CLON": clon, "DRIVE": drive}
         buf = io.StringIO()
         with redirect_stdout(buf):
             exec(src, ns)
@@ -129,6 +136,51 @@ with tempfile.TemporaryDirectory() as d:
         retenciones={("aa", "PRJ_A"): 100, ("aa", "PRJ_B"): 100})
     chk("los dos entran por separado",
         sorted(ns5["ENTRAN"]) == ["aa/duplicado", "aa/primario"], ns5["ENTRAN"])
+
+    print("== 6. un proyecto que ya tiene BAM en Drive no se rehace")
+    # La VM es efimera: align.sh estado ve /content vacio y diria que falta.
+    # Se perdieron 31 min re-alineando sclsc_duplicado por esto.
+    _, ns6 = correr(
+        tmp / "g",
+        [corrida("aa", "SRR1", "PRJ_A", "duplicado", 10_000_000),
+         corrida("aa", "SRR2", "PRJ_B", "primario", 20_000_000)],
+        libre_gb=100,
+        retenciones={("aa", "PRJ_A"): 100, ("aa", "PRJ_B"): 100},
+        en_drive=["aa/duplicado"])
+    chk("el hecho queda aparte", ns6["HECHOS"] == ["aa/duplicado"], ns6["HECHOS"])
+    chk("y no cuenta como pendiente", "aa/duplicado" not in ns6["ENTRAN"], ns6["ENTRAN"])
+    chk("SIGUIENTE saltea el hecho", ns6["SIGUIENTE"] == "aa/primario", ns6["SIGUIENTE"])
+
+    print("== 7. sin nada en Drive, SIGUIENTE es el mas chico")
+    # Es el mismo orden de la tabla: una sesion que se muere pierde un proyecto,
+    # asi que conviene que sea el chico.
+    _, ns7 = correr(
+        tmp / "h",
+        [corrida("aa", "SRR1", "PRJ_A", "duplicado", 10_000_000),
+         corrida("aa", "SRR2", "PRJ_B", "primario", 20_000_000)],
+        libre_gb=100,
+        retenciones={("aa", "PRJ_A"): 100, ("aa", "PRJ_B"): 100})
+    chk("el mas chico primero", ns7["SIGUIENTE"] == "aa/duplicado", ns7["SIGUIENTE"])
+
+    print("== 8. todo hecho: SIGUIENTE queda en None y §2 corta")
+    out8, ns8 = correr(
+        tmp / "i", [corrida("aa", "SRR1", "PRJ_A", "duplicado", 10_000_000)],
+        libre_gb=100, retenciones={("aa", "PRJ_A"): 100},
+        en_drive=["aa/duplicado"])
+    chk("SIGUIENTE es None", ns8["SIGUIENTE"] is None, ns8["SIGUIENTE"])
+    chk("y lo dice", "No queda ninguno pendiente" in out8, out8)
+
+    print("== 9. uno que no entra tampoco puede ser SIGUIENTE")
+    # Marcarlo como el que sigue mandaria a gastar horas en algo que se queda
+    # sin disco a la mitad.
+    _, ns9 = correr(
+        tmp / "j",
+        [corrida("aa", "SRR1", "PRJ_A", "duplicado", 2_000_000_000),
+         corrida("aa", "SRR2", "PRJ_B", "primario", 10_000_000)],
+        libre_gb=50,
+        retenciones={("aa", "PRJ_A"): 100, ("aa", "PRJ_B"): 100})
+    chk("el grande no es SIGUIENTE", ns9["SIGUIENTE"] == "aa/primario", ns9["SIGUIENTE"])
+    chk("y queda en NO_ENTRAN", ns9["NO_ENTRAN"] == ["aa/duplicado"], ns9["NO_ENTRAN"])
 
 print()
 if FALLAS:

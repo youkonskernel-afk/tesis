@@ -75,7 +75,7 @@ Con eso, los picos por proyecto quedan así:
 | galga_primario | 27 | 505 | 26 | ~8 |
 | phypa_primario | 30 | 444 | 23 | ~7 |
 | … los otros 12 | | ≤433 | ≤23 | ≤7 |
-| **total** | **417** | **6068** | | **~90** |
+| **total** | **417** | **6068** | | **~100** |
 
 Cuánto disco da una VM **varía**: la primera corrida real dio **220 GB libres**
 en Colab Free, no los ~78 que se daban por sentados. Con 220 entran los 18; con
@@ -84,11 +84,16 @@ declara acá: **§1 de `20_alinear.ipynb` lo mide contra el disco de esa VM ante
 de empezar** y ordena del más chico al más grande. Eso se sabe en un segundo o
 a las seis horas.
 
-Las horas salen de los **49 s por millón de reads** medidos en el mismo
-proyecto (22:28 de bowtie + 3:35 de `pysam.sort`, genoma de 39 Mb, Colab Free).
-§1 usa 55 de margen porque los genomas grandes —`galga` 1.1 Gb, `maggi`
+Las horas salen de los **~58 s por millón de reads** medidos en ese proyecto
+(26 min de bowtie + 4 de `pysam.sort` sobre 32 M reads, genoma de 39 Mb, Colab
+Free). §1 usa 60 de margen porque los genomas grandes —`galga` 1.1 Gb, `maggi`
 650 Mb— son más lentos por read que un hongo. §4 se cronometra solo y §5
 imprime los s/M read reales de cada proyecto.
+
+**§1 también dice qué falta**, mirando `10_bam/` en Drive en vez del disco de
+la VM: `/content` arranca vacío en cada sesión, así que `align.sh estado` diría
+que falta todo. Los que ya tienen BAM salen como `YA EN DRIVE` y §2 arranca del
+primer pendiente que entre en el disco.
 
 Los `.sra` **no se copian** a la VM: Drive está montado, así que `SRA_DEST`
 apunta al mount. La regla de abajo es no *escribir* archivos grandes al FUSE;
