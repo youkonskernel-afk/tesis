@@ -114,6 +114,15 @@ MUTACIONES = [
     ("align: verificar deja pasar una fraccion alineada muy baja",
      "scripts/align.sh",
      [('if (al < 10)       v = "MUY BAJA', 'if (0)             v = "MUY BAJA')]),
+    # 17.2% colocado con 67.1% sin alineamiento valido pasaba como "ok": el
+    # unico umbral miraba lo colocado, y 17.2 > 10. Medido en sclsc_duplicado.
+    ("align: verificar no mira lo que no alinea en ninguna parte",
+     "scripts/align.sh",
+     [('else if (sa > 50)', 'else if (0)      ')]),
+    # Y que los dos diagnosticos no se confundan: el de -m es un genoma
+    # repetitivo (los tRF de danre), el de SIN_AL son reads de otro genoma.
+    ("align: SIN_AL y >m se calculan del mismo conteo", "scripts/align.sh",
+     [('sa = 100*n/tot', 'sa = 100*h/tot')]),
     ("align: no reporta una corrida que no llego al BAM", "scripts/align.sh",
      [('    while read -r run; do', '    while false; do')]),
     ("align: alinea un proyecto a medio recortar", "scripts/align.sh",
@@ -158,6 +167,12 @@ MUTACIONES = [
      "notebooks/20_alinear.ipynb",
      [("int(r['read_count']) * _ret.get((r['org'], r['bioproject']), 80) / 100",
        "int(r['read_count'])")]),
+    # B_BAM estuvo en 45 sin haberse medido nunca: el pico de BAM salia 3x. Un
+    # numero inventado en una constante no falla ruidosamente, solo manda
+    # proyectos que entran a la maquina local.
+    ("alinear: B_BAM vuelve a la estimacion sin medir",
+     "notebooks/20_alinear.ipynb",
+     [('B_BAM    = 16', 'B_BAM    = 45')]),
     # §1 del notebook. Estuvo mal tres veces, asi que se muta igual que el
     # codigo de scripts/.
     ("celda1: vuelve a reusar la copia siempre",

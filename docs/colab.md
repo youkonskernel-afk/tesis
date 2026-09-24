@@ -56,13 +56,39 @@ qué locus va cada uno. La unidad reanudable es el proyecto entero: si la sesió
 se muere a la mitad de uno, ese se rehace; los que ya terminaron están en Drive.
 
 El pico de disco es `recortado + 2 × BAM` — `pysam.sort` escribe el BAM ordenado
-**antes** de borrar el sin ordenar, así que los dos conviven. Con ~78 GB libres
-en una VM de Colab Free entran 16 de los 18 proyectos. Los dos que no son
-`maldo_primario` (~76 GB de pico) y `galga_duplicado` (~174 GB); este último no
-entra ni en Pro.
+**antes** de borrar el sin ordenar, así que los dos conviven.
 
-**§1 de `20_alinear.ipynb` lo mide antes de empezar** y ordena del más chico al
-más grande. Eso se sabe en un segundo o a las seis horas.
+Los bytes por read están **medidos** en `sclsc_duplicado` (32.1 M reads): 21.8
+en `.t.fq.gz` y 14.1 en BAM. Las estimaciones que había antes acá decían 25 y
+**45**, o sea que todos los picos estaban inflados 3×. §1 usa 22 y 16 —el 16 en
+vez del 14 porque se midió en una librería con 67% de reads sin alinear, y un
+read sin alinear ocupa menos que uno colocado.
+
+Con eso, los picos por proyecto quedan así:
+
+| proyecto | runs | trim M | pico GB | horas |
+| :-- | --: | --: | --: | --: |
+| galga_duplicado | 95 | 1510 | **79** | ~23 |
+| maldo_primario | 36 | 661 | 34 | ~10 |
+| cloro_duplicado | 23 | 600 | 31 | ~9 |
+| cloro_primario | 34 | 530 | 28 | ~8 |
+| galga_primario | 27 | 505 | 26 | ~8 |
+| phypa_primario | 30 | 444 | 23 | ~7 |
+| … los otros 12 | | ≤433 | ≤23 | ≤7 |
+| **total** | **417** | **6068** | | **~90** |
+
+Cuánto disco da una VM **varía**: la primera corrida real dio **220 GB libres**
+en Colab Free, no los ~78 que se daban por sentados. Con 220 entran los 18; con
+78 entran 17 y se queda afuera `galga_duplicado`. Por eso el número no se
+declara acá: **§1 de `20_alinear.ipynb` lo mide contra el disco de esa VM antes
+de empezar** y ordena del más chico al más grande. Eso se sabe en un segundo o
+a las seis horas.
+
+Las horas salen de los **49 s por millón de reads** medidos en el mismo
+proyecto (22:28 de bowtie + 3:35 de `pysam.sort`, genoma de 39 Mb, Colab Free).
+§1 usa 55 de margen porque los genomas grandes —`galga` 1.1 Gb, `maggi`
+650 Mb— son más lentos por read que un hongo. §4 se cronometra solo y §5
+imprime los s/M read reales de cada proyecto.
 
 Los `.sra` **no se copian** a la VM: Drive está montado, así que `SRA_DEST`
 apunta al mount. La regla de abajo es no *escribir* archivos grandes al FUSE;

@@ -374,10 +374,19 @@ cmd_correr() {
 # Las columnas salen de align/library_stats.txt, que YASMA escribe con los
 # conteos por read group: umap(U) mmap_wg(P) mmap_nw(R) xmap_nw(Q) xmap_ma(H)
 # xmap_nv(N) xmap_fr(F).
+#
+# ALIN y SIN_AL no son complementarias y por eso van las dos. ALIN=(U+P+R) es lo
+# que quedo COLOCADO en un locus; SIN_AL=N es lo que no alineo en NINGUNA parte
+# del genoma. Lo del medio —Q por encima de max_random, H por encima de -m— si
+# alineo, solo que no se coloco. Son diagnosticos distintos: N alto significa
+# que los reads no son de este genoma (ensamblado equivocado, contaminacion, o
+# el huesped en un experimento de infeccion), mientras que H alto significa un
+# genoma repetitivo, que es el fenomeno de los tRF medido en danre. Con una sola
+# columna los dos casos se ven igual: "poco alineado".
 cmd_verificar() {
   local filtro="${1:-}" org rol dir stats fallas=0 filas=0
-  printf '%-18s %-12s %10s %7s %7s %7s  %s\n' \
-    PROYECTO CORRIDA READS ALIN ">m$MAX_MULTI" FILTR VEREDICTO
+  printf '%-18s %-12s %10s %7s %7s %7s %7s  %s\n' \
+    PROYECTO CORRIDA READS ALIN SIN_AL ">m$MAX_MULTI" FILTR VEREDICTO
   while IFS=$'\t' read -r org rol; do
     dir="$PROY_DIR/${org}_${rol}"
     stats="$dir/align/library_stats.txt"
@@ -389,7 +398,7 @@ cmd_verificar() {
     local run
     while read -r run; do
       grep -q -- "	$run	" "$stats" \
-        || { printf '%-18s %-12s %10s %7s %7s %7s  %s\n' "${org}_${rol}" "$run" - - - - \
+        || { printf '%-18s %-12s %10s %7s %7s %7s %7s  %s\n' "${org}_${rol}" "$run" - - - - - \
                "FALTA: no tiene @RG en el BAM"; fallas=$((fallas+1)); }
     done < <(corridas "$org" "$rol")
 
@@ -400,16 +409,17 @@ cmd_verificar() {
       linea=$(awk -v u="$u" -v p="$p" -v r="$r" -v q="$q" -v h="$h" -v n="$n" -v f="$f" \
                   -v m="$MAX_MULTI" 'BEGIN{
         tot = u+p+r+q+h+n+f
-        if (tot == 0) { print "0\t-\t-\t-\tVACIA — 0 reads en el BAM"; exit }
-        al = 100*(u+p+r)/tot; ov = 100*h/tot; fr = 100*f/tot
+        if (tot == 0) { print "0\t-\t-\t-\t-\tVACIA — 0 reads en el BAM"; exit }
+        al = 100*(u+p+r)/tot; sa = 100*n/tot; ov = 100*h/tot; fr = 100*f/tot
         if (al < 10)       v = "MUY BAJA — ¿el genoma correcto?"
+        else if (sa > 50)  v = "ok, pero " int(sa) "% no alinea en ninguna parte (¿reads de otro organismo?)"
         else if (ov > 50)  v = "ok, pero " int(ov) "% se pasa de -m " m " (mirar largos antes de tocarlo)"
         else               v = "ok"
-        printf "%d\t%.1f%%\t%.1f%%\t%.1f%%\t%s", tot, al, ov, fr, v }')
-      IFS=$'\t' read -r tot al ov fr ver <<<"$linea"
+        printf "%d\t%.1f%%\t%.1f%%\t%.1f%%\t%.1f%%\t%s", tot, al, sa, ov, fr, v }')
+      IFS=$'\t' read -r tot al sa ov fr ver <<<"$linea"
       [[ "$ver" == ok* ]] || fallas=$((fallas+1))
-      printf '%-18s %-12s %10s %7s %7s %7s  %s\n' \
-        "${org}_${rol}" "$run" "$tot" "$al" "$ov" "$fr" "$ver"
+      printf '%-18s %-12s %10s %7s %7s %7s %7s  %s\n' \
+        "${org}_${rol}" "$run" "$tot" "$al" "$sa" "$ov" "$fr" "$ver"
     done < "$stats"
   done < <(proyectos "$filtro")
   echo

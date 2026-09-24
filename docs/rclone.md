@@ -49,7 +49,7 @@ Esto es lo que más impacta y lo que casi todas las guías dejan como opcional.
 
 rclone trae un `client_id` compartido por **todos** sus usuarios. Google aplica
 la cuota por client_id, así que ese está permanentemente saturado. Con los
-~190 GB de `.sra` y ~340 GB de BAMs de este proyecto, la diferencia es entre
+~190 GB de `.sra` y ~100 GB de BAMs de este proyecto, la diferencia es entre
 horas y días, con errores `403 rateLimitExceeded` intermitentes en el medio.
 
 Toma unos 5 minutos:
@@ -267,7 +267,7 @@ No hace falta que los pongas: están en el código. Pero conviene saber qué hac
 
 ### Si te topás con límites
 
-Google corta a ~750 GB/día de subida por cuenta. Los ~340 GB de BAMs entran, pero
+Google corta a ~750 GB/día de subida por cuenta. Los ~100 GB de BAMs entran, pero
 si alguna vez chocás:
 
 ```bash

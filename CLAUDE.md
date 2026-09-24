@@ -266,6 +266,29 @@ probabilidad calibrada.
   efectivamente es la más débil del set y eso va en métodos; pero no tanto como
   se había declarado.
 
+  **Y es más débil todavía de lo que dicen esos 32.4 M spots: alineado contra
+  `GCF_000146945.2`, el 67.1% de los reads no alinea en ninguna parte.**
+  Primer proyecto alineado del set, y lo midió `align.sh verificar`: 4.1%
+  único, 12.9% multimapeado con peso, 15.6% por encima de `--max_random 3`,
+  0.1% por encima de `-m 50`, 67.1% sin ningún alineamiento válido. O sea que
+  **~33% de la librería es de este hongo** y la profundidad efectiva de la
+  validación de `sclsc` es de ~11 M reads, no 32.
+  No es el genoma: contra un ensamblado equivocado bowtie da ~0% alineado, no
+  33%, y el recorte tampoco —99% de retención, inserto modal 22 nt, cero reads
+  descartados por el filtro de longitud (`XY:Z:F` = 0). La hipótesis a
+  comprobar es que **`PRJNA1135930` sea un experimento *in planta***:
+  *S. sclerotiorum* es necrótrofo y su sRNA se estudia sobre todo por RNAi
+  entre reinos, así que una librería de tejido infectado sería mayoritariamente
+  del huésped. **La comprobación barata es alinear `sclsc_primario`**
+  (`PRJNA477286`, que debería ser cultivo puro) y comparar la fracción: si da
+  80-90%, el 67% es el experimento y no el pipeline. Hasta entonces no se
+  declara nada en métodos.
+  Lo otro que llama la atención y **sí es esperable**: el multimapeado (12.9%)
+  triplica al único (4.1%). Los sRNA de *Sclerotinia* que se describen como
+  efectores son derivados de retrotransposones, o sea multicopia por
+  definición. Es señal, no ruido — pero refuerza lo de `-m 50`: mirar la
+  distribución de longitudes antes de tocarlo.
+
   El otro candidato, `PRJNA379694` (6 corridas, 758 M spots, etiquetado
   `miRNA-Seq`), **se descartó**: `perfil` dio 1% de adaptador con reads de 100 nt
   e insertos de 71-87 nt. Es mRNA. Los 126 M spots por corrida ya lo hacían
@@ -273,9 +296,13 @@ probabilidad calibrada.
   servía por otro que tampoco.
 - **`cloro` primario es `ncRNA-Seq`**, no miRNA-Seq. Igual que `phypa`, hay que
   declararlo en métodos. (Que venga ya recortado está anotado arriba.)
-- **Re-estimar tiempo y espacio.** Con 3.4× más reads, las 8-12 h de
-  alineamiento pasan al orden de 30-40 h, y los ~100 GB de BAMs al orden de
-  340 GB. Entra sin problema en 1.6 TB, pero el cronograma cambia.
+- **Re-estimado con datos, no con reglas de tres.** Con 3.4× más reads, las
+  8-12 h de alineamiento pasan al orden de **85-95 h** (medidas: ~50 s por
+  millón de reads recortados). Los BAMs **no** escalan igual: se habían
+  declarado en ~340 GB escalando los ~100 GB del set anterior por 3.4, pero
+  los ~100 de partida salían de estimar 45 B por alineamiento y lo medido es
+  14.1, así que los 18 proyectos dan **~100 GB en total**. Entra sin problema en
+  1.6 TB; lo que cambia es el cronograma, no el espacio.
 
 ## Trampas conocidas — no re-introducir
 
@@ -311,7 +338,7 @@ probabilidad calibrada.
 - **Volcar los 417 `.sra` a fastq antes de recortar son ~1.1 TB.** Calculado
   desde `base_count` del manifiesto (`2*bases + 35*reads`): `galga` solo son
   376 GB —245 el duplicado y 131 el primario— y eso no entra en el disco junto
-  con los `.sra` y los ~340 GB de BAMs. `trim.sh` trabaja en **tandas acotadas
+  con los `.sra` y los ~100 GB de BAMs. `trim.sh` trabaja en **tandas acotadas
   por `PRESUPUESTO_GB`** (40 por defecto), borra el fastq sin recortar apenas la
   tanda termina, y vuelca la tanda siguiente mientras recorta la actual
   (`SOLAPAR=0` lo apaga). El pico es ~2× el presupuesto.
@@ -573,14 +600,35 @@ probabilidad calibrada.
   el BAM a Drive apenas termina.
 - **El alineamiento en Colab lo limita el disco, no el tiempo.** El pico es
   `recortado + 2 × BAM`, porque `pysam.sort` escribe el BAM ordenado **antes**
-  de borrar el sin ordenar. Con ~78 GB libres en una VM de Colab Free entran 16
-  de los 18 proyectos; los que no son `maldo_primario` (~76 GB) y
-  `galga_duplicado` (~174 GB), y este último no entra ni en Pro.
-  §1 del notebook lo mide antes de empezar y lo dice — se sabe en un segundo o a
-  las seis horas. Los bytes por read son **estimaciones** (~25 B en `.t.fq.gz`,
-  ~45 B en BAM): §5 imprime lo medido para corregirlas con el primer proyecto
-  real. Los `.sra` no se copian a la VM: Drive está montado y `SRA_DEST` apunta
-  al mount — la regla es no **escribir** grande al FUSE, leer está bien.
+  de borrar el sin ordenar. §1 del notebook lo mide contra el disco real de la
+  VM antes de empezar y lo dice — se sabe en un segundo o a las seis horas. Los
+  `.sra` no se copian a la VM: Drive está montado y `SRA_DEST` apunta al mount —
+  la regla es no **escribir** grande al FUSE, leer está bien.
+
+  **Los bytes por read eran una estimación y estaban 3× de más.** Decía ~45 B
+  por alineamiento en BAM; `sclsc_duplicado` midió **14.1** (32 M reads, BAM de
+  432 MB), y 21.8 en `.t.fq.gz` contra los 25 estimados. Todo lo que se derivaba
+  de ese 45 estaba inflado: `galga_duplicado` pasó de un pico de ~174 GB a
+  **~79**, `maldo_primario` de ~76 a ~34, y el total de BAMs del proyecto de los
+  ~340 GB que se declaraban a **~100**. §1 usa 16 B/read y no 14 a propósito: se
+  midió en una librería con **67% de reads sin alinear**, y un read sin alinear
+  ocupa menos que uno colocado.
+
+  **Y la VM de Colab Free no daba 78 GB sino 220**, así que la línea de "entran
+  16 de los 18" era falsa por los dos lados. Con lo medido entran los 18 en esa
+  VM, y 17 de 18 en una de 78 GB (`galga_duplicado`, con ~79 GB de pico, es el
+  único que se queda afuera). Nada de esto se declara de nuevo a ojo: §1 lo
+  recalcula contra `shutil.disk_usage('/content').free` en cada sesión, porque
+  el disco que toque varía.
+- **`yasma align` tarda ~50 s por millón de reads recortados.** Medido en
+  `sclsc_duplicado`: 32.1 M reads, **22:28 de bowtie más 3:35 de `pysam.sort`**
+  en una VM de Colab Free, contra un genoma de 39 Mb. Extrapolado a los 6068 M
+  reads que sobreviven al recorte en los 18 proyectos son **~85-95 h de reloj**,
+  que es del orden de las "30-40 h" declaradas más arriba multiplicado por lo
+  que se corrigió de aquella estimación. Es **una** medición y el genoma influye:
+  `galga` (1.1 Gb) y `maggi` (650 Mb) son más lentos por read que un hongo de
+  39 Mb. §4 se cronometra solo y §5 imprime los s/M read de cada proyecto para
+  ir corrigiendo `S_POR_M` en vez de arrastrar este número.
 - **Colab ya no solo lee de GitHub: `scripts/colab_git.py` empuja.** Reemplazó
   los bloques de "copiá esta salida al repo" de §4 de `10_descarga_runs` y §6 de
   `descarga_genomas`. Tres reglas que tienen banco
@@ -632,13 +680,26 @@ probabilidad calibrada.
   —sin fallar— cuando más del 50% se pasa de `-m 50`, que es el fenómeno de los
   tRF medido en `danre`: hay que mirar la distribución de longitudes antes de
   tocar `-m`, no al revés.
+- **La fracción alineada sola no distingue dos problemas opuestos, y por eso
+  hay dos columnas.** `sclsc_duplicado` salió con **17.2% colocado y 67.1% sin
+  ningún alineamiento válido**, y pasó como `ok` porque el único umbral miraba
+  lo colocado y 17.2 > 10. Son diagnósticos distintos: lo que **no alinea en
+  ninguna parte** (`XY:Z:N`) son reads que no son de este genoma —ensamblado
+  equivocado, contaminación, o el huésped si el experimento es de infección—,
+  mientras que lo que alinea **de más** (`XY:Z:H`, por encima de `-m 50`) es un
+  genoma repetitivo, que es lo de los tRF. Con una sola columna los dos casos se
+  leen igual: "poco alineado". `verificar` ahora emite `ALIN` y `SIN_AL` por
+  separado y avisa —sin fallar, porque el BAM está bien escrito— cuando `SIN_AL`
+  pasa del 50%. Lo que queda entre las dos (`XY:Z:Q`, por encima de
+  `--max_random 3`) alineó pero no se colocó, así que `ALIN + SIN_AL` no suma
+  100 y no tiene por qué.
 - **El BAM vive en dos lugares a propósito, y son hard links.** `yasma align` lo
   deja en `<proyecto>/align/alignment.bam` y anota esa ruta absoluta en
   `inputs.json`, que es de donde `tradeoff` la lee; moverlo rompe la anotación.
   Pero `drive_push.sh bam <org>` sube `bams/<org>/`. `align.sh` enlaza
   (`ln`, no `cp`) a `bams/<org>/<rol>.bam`: mismo inodo, cero disco de más, las
   dos rutas válidas. Si el hard link no se puede —otro filesystem— copia y
-  **avisa**, porque 340 GB duplicados son una decisión y no un detalle.
+  **avisa**, porque ~100 GB duplicados son una decisión y no un detalle.
 - **`proyectos/<org>_<rol>/`, no `trim/<org>_<rol>/`.** El directorio guarda el
   proyecto YASMA entero —`trim/`, `align/`, `annotations/`— así que llamarlo
   `trim` pasó a mentir en cuanto `yasma align` escribió adentro. La ruta sale de
@@ -775,9 +836,11 @@ Lo que necesita red va en otro lado:
 
 **Colab es el administrador de datos**: baja, valida y escribe a Drive sin pasar
 por el disco local. Y desde `20_alinear.ipynb` también recorta y alinea — pero
-solo los proyectos que entran en el disco de una VM, que son 16 de los 18.
-`maldo_primario` y `galga_duplicado` se quedan en la máquina local, que trae los `.sra` de a un
-organismo con `drive_pull.sh` y los purga después. Ver `docs/colab.md` y
+solo los proyectos que entran en el disco de esa VM, que §1 del notebook mide
+en cada sesión. Con los 220 GB que dio la primera corrida real entran los 18;
+con una VM de 78 GB se queda afuera `galga_duplicado` (~79 GB de pico) y va a la
+máquina local, que trae los `.sra` de a un organismo con `drive_pull.sh` y los
+purga después. Ver `docs/colab.md` y
 `docs/plan_datos_colab.md`.
 
 ## Chequeos
@@ -785,7 +848,7 @@ organismo con `drive_pull.sh` y los purga después. Ver `docs/colab.md` y
 Todo corre sin red y en segundos. Antes de cada push:
 
 ```bash
-./tests/run_all.sh              # 18 bancos, 519 chequeos, binarios falsos en el PATH
+./tests/run_all.sh              # 18 bancos, 527 chequeos, binarios falsos en el PATH
 ./tests/mutar.py                # rompe el codigo y exige que algun banco grite
 ./scripts/check_docs.py         # lo que afirman los docs contra data/
 ./scripts/validate_notebooks.py # los .ipynb parsean y no hay duplicados
@@ -796,11 +859,19 @@ y `check_docs.py` dos más.
 
 **Un banco que pasa no prueba nada.** Prueba algo el día que se rompe lo que
 cubre y el banco se queja, y la única forma de saberlo es romper el código a
-propósito: eso es `tests/mutar.py`, 71 mutaciones que tienen que dar todas
+propósito: eso es `tests/mutar.py`, 74 mutaciones que tienen que dar todas
 `[OK]`. Un `[HUECO]` es un chequeo que falta; un `[VIEJA]` es una mutación cuyo
 patrón ya no existe, que tampoco prueba nada. Así aparecieron los dos huecos que
 ninguna otra cosa mostró — el veredicto de `perfil` que iba a la tabla sin estar
 cubierto, y `estado` sin banco.
+
+**Y una medición vale más que un umbral.** `align.sh verificar` daba `ok` a un
+BAM con 67% de reads sin alinear, porque el único umbral miraba otra cosa. El
+banco no lo iba a encontrar —el umbral hacía exactamente lo que decía hacer— y
+la mutación tampoco. Lo encontró mirar el número al lado del veredicto, que es
+la misma lección que la trampa del chequeo que mira el mensaje y no el dato,
+un nivel más arriba: **el veredicto de una herramienta no reemplaza leer lo que
+midió**, sobre todo la primera vez que se corre sobre datos reales.
 
 `check_docs.py` pasa en verde: los 19 BioProjects de la spec están resueltos,
 el manifiesto y el ledger reconcilian en las dos direcciones, y cada fichero que

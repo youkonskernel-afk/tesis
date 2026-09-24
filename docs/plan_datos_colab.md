@@ -32,10 +32,12 @@ ingreso de datos.
 
 - **Alcance, con Colab Free**: Colab es el puente de descarga y el administrador de
   Drive. El alineamiento **también corre en Colab ahora** (`20_alinear.ipynb`),
-  pero solo para los proyectos que entran en el disco de la VM: 16 de los 18.
-  `maldo_primario` y `galga_duplicado` se quedan locales. No es por tiempo sino por disco — el pico
-  es `recortado + 2 × BAM`, y un proyecto no se puede partir sin cambiar el
-  resultado. Ver `docs/colab.md`.
+  pero solo para los proyectos que entran en el disco de la VM, que §1 del
+  notebook mide en cada sesión en vez de darlo por sentado. Con lo medido en la
+  primera corrida real —220 GB libres, 16 B/read en BAM— entran los 18; con una
+  VM de 78 GB entran 17 y se queda afuera `galga_duplicado`. No es por tiempo
+  sino por disco — el pico es `recortado + 2 × BAM`, y un proyecto no se puede
+  partir sin cambiar el resultado. Ver `docs/colab.md`.
 - **Los `.sra` se guardan en Drive** (~190 GB). Rompe a propósito la regla de no
   respaldar lo público. Es lo que hace funcionar el reparto: una sesión de Colab que
   se muere no pierde la descarga, y el alineamiento local se desacopla de ella.
@@ -64,8 +66,11 @@ Carpeta nueva bajo `tesis/` (`1E_Q6XLg4_RD01TFgfHbGUSQxx2ExtuVP`):
 80_sra/<org>/<RUN>.sra      ~190 GB — crudo descargado y validado
 ```
 
-Presupuesto: ~340 GB de BAMs + ~190 GB de `.sra` + ~5 GB de genomas ≈ **540 GB de
-1.6 TB (~34%)**. Hay que corregir `data/DRIVE.md`, que hoy lista los `.sra` como
+Presupuesto: ~100 GB de BAMs + ~190 GB de `.sra` + ~5 GB de genomas ≈ **295 GB de
+1.6 TB (~18%)**. Los BAMs se declaraban en ~340 GB, que salía de estimar 45 B
+por alineamiento; `sclsc_duplicado` midió **14.1** y los 6068 M reads que
+sobreviven al recorte dan ~100 GB. Es una medición sobre 1 de 18 proyectos: se
+corrige a medida que entren los demás. Hay que corregir `data/DRIVE.md`, que hoy lista los `.sra` como
 "no está acá".
 
 ## El repo público permite borrar código
@@ -108,8 +113,10 @@ Esto separa un notebook que funciona de uno que pierde datos:
    descargas truncadas de SRA son frecuentes y un `.sra` corto **no falla
    ruidosamente**, alinea de menos. El que no valida se descarta y se reintenta;
    nunca se sube.
-3. **Guardia de disco.** Free da ~78 GB efímeros. Chequear espacio antes de cada
-   descarga y borrar la copia local apenas se confirmó la de Drive.
+3. **Guardia de disco.** Cuánto da Free **varía** —se han visto 78 GB y se
+   midieron 220 en la primera corrida de `20_alinear`—, así que se pregunta en
+   vez de suponerse. Chequear espacio antes de cada descarga y borrar la copia
+   local apenas se confirmó la de Drive.
 4. **Morir es normal.** Cada notebook recorre la cola y sale limpio; re-ejecutar
    retoma. Ninguna celda asume que la anterior terminó.
 5. **Orden por organismo.** Completar organismos enteros antes de empezar otros: un

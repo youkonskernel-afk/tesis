@@ -232,6 +232,32 @@ S=$(corre verificar); RC=$?
 [[ $RC -eq 0 ]] && ok "exit 0: no es falla" || mal "exit 0: no es falla (rc=$RC)"
 tiene "pero lo dice"     "se pasa de -m 50"   "$S"
 
+echo "== 9c. mucho sin alineamiento posible avisa, pero no es una falla"
+# Medido en sclsc_duplicado contra el yasma real: 17.2% colocado y 67.1% sin
+# ningun alineamiento valido. Pasaba como "ok" porque el unico umbral miraba la
+# fraccion colocada, y 17.2 > 10. Son diagnosticos distintos: lo que no alinea
+# en ninguna parte no es un genoma repetitivo, son reads que no son de este
+# genoma. No es falla —el BAM esta bien escrito— pero hay que mirarlo.
+sembrar_trim
+FAKE_COUNTS=$(printf '41\t129\t2\t156\t1\t671\t0') corre correr >/dev/null 2>&1
+S=$(corre verificar); RC=$?
+[[ $RC -eq 0 ]] && ok "exit 0: no es falla" || mal "exit 0: no es falla (rc=$RC)"
+tiene "pero lo dice"        "no alinea en ninguna parte"  "$S"
+tiene "con la fracción"     "67%"                         "$S"
+tiene "y la columna SIN_AL" "SIN_AL"                      "$S"
+# Y no se confunde con el caso de los tRF, que es el otro umbral.
+notiene "no es el de -m"    "se pasa de -m"               "$S"
+
+echo "== 9d. colocado bajo pero todo alinea en alguna parte: es el caso de -m"
+# 30% colocado, 0% sin alineamiento, 60% por encima de -m. Que ALIN sea bajo no
+# alcanza para decir cual de los dos problemas es.
+sembrar_trim
+FAKE_COUNTS=$(printf '300\t0\t0\t100\t600\t0\t0') corre correr >/dev/null 2>&1
+S=$(corre verificar); RC=$?
+[[ $RC -eq 0 ]] && ok "exit 0: no es falla" || mal "exit 0: no es falla (rc=$RC)"
+tiene "es el de -m"      "se pasa de -m 50"            "$S"
+notiene "no el de SIN_AL" "no alinea en ninguna parte" "$S"
+
 echo "== 10. una corrida sin @RG en el BAM se reporta"
 # yasma tradeoff agrega por read group: una libreria que no llego al BAM
 # desaparece del analisis y nadie lo dice.

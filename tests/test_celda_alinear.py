@@ -105,11 +105,15 @@ with tempfile.TemporaryDirectory() as d:
     # galga PRJEB12164 tiene 95% de adaptador y retiene 52%: usar el crudo
     # sobreestimaria el disco casi al doble y marcaria como imposible algo que
     # entra.
+    # Los 1200 M estan elegidos para que la retencion decida con las constantes
+    # MEDIDAS (22 B/read en fq.gz, 16 en BAM = 54 B/read de pico). Eran 400 M
+    # cuando B_BAM era la estimacion de 45, y al corregirla a lo medido el
+    # escenario dejo de discriminar: los dos entraban.
     _, r100 = correr(
-        tmp / "d", [corrida("xx", "SRR1", "PRJ_X", "primario", 400_000_000)],
+        tmp / "d", [corrida("xx", "SRR1", "PRJ_X", "primario", 1_200_000_000)],
         libre_gb=50, retenciones={("xx", "PRJ_X"): 100})
     _, r50 = correr(
-        tmp / "e", [corrida("xx", "SRR1", "PRJ_X", "primario", 400_000_000)],
+        tmp / "e", [corrida("xx", "SRR1", "PRJ_X", "primario", 1_200_000_000)],
         libre_gb=50, retenciones={("xx", "PRJ_X"): 50})
     chk("con 100% de retención no entra", r100["NO_ENTRAN"] == ["xx/primario"])
     chk("con 50% sí", r50["ENTRAN"] == ["xx/primario"])
@@ -121,7 +125,7 @@ with tempfile.TemporaryDirectory() as d:
         tmp / "f",
         [corrida("aa", "SRR1", "PRJ_A", "primario", 200_000_000),
          corrida("aa", "SRR2", "PRJ_B", "duplicado", 200_000_000)],
-        libre_gb=40,
+        libre_gb=20,
         retenciones={("aa", "PRJ_A"): 100, ("aa", "PRJ_B"): 100})
     chk("los dos entran por separado",
         sorted(ns5["ENTRAN"]) == ["aa/duplicado", "aa/primario"], ns5["ENTRAN"])
