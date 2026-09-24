@@ -109,7 +109,7 @@ y los `.sra` bajados:
 ./scripts/align.sh ledger                # data/alineamientos.tsv, para commitear
 ```
 
-O en **Colab**, con `notebooks/20_alinear.ipynb`, para los 12 proyectos que
+O en **Colab**, con `notebooks/20_alinear.ipynb`, para los 16 proyectos que
 entran en el disco de una VM. §1 mide cuáles antes de empezar: el pico es
 `recortado + 2 × BAM` y un proyecto no se puede partir sin cambiar el resultado.
 Desde ahí Colab también **empuja a GitHub** (`scripts/colab_git.py`, con un PAT

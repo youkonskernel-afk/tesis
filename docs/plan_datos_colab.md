@@ -32,8 +32,8 @@ ingreso de datos.
 
 - **Alcance, con Colab Free**: Colab es el puente de descarga y el administrador de
   Drive. El alineamiento **también corre en Colab ahora** (`20_alinear.ipynb`),
-  pero solo para los proyectos que entran en el disco de la VM: 12 de los 18. Los
-  cuatro más grandes se quedan locales. No es por tiempo sino por disco — el pico
+  pero solo para los proyectos que entran en el disco de la VM: 16 de los 18.
+  `maldo_primario` y `galga_duplicado` se quedan locales. No es por tiempo sino por disco — el pico
   es `recortado + 2 × BAM`, y un proyecto no se puede partir sin cambiar el
   resultado. Ver `docs/colab.md`.
 - **Los `.sra` se guardan en Drive** (~190 GB). Rompe a propósito la regla de no

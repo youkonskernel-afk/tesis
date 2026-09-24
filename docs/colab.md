@@ -57,9 +57,9 @@ se muere a la mitad de uno, ese se rehace; los que ya terminaron están en Drive
 
 El pico de disco es `recortado + 2 × BAM` — `pysam.sort` escribe el BAM ordenado
 **antes** de borrar el sin ordenar, así que los dos conviven. Con ~78 GB libres
-en una VM de Colab Free entran 12 de los 18 proyectos. Los cuatro más grandes
-(`galga_duplicado`, `maldo_primario`, `cloro_duplicado`, `cloro_primario`) no, y
-`galga_duplicado` no entra ni en Pro.
+en una VM de Colab Free entran 16 de los 18 proyectos. Los dos que no son
+`maldo_primario` (~76 GB de pico) y `galga_duplicado` (~174 GB); este último no
+entra ni en Pro.
 
 **§1 de `20_alinear.ipynb` lo mide antes de empezar** y ordena del más chico al
 más grande. Eso se sabe en un segundo o a las seis horas.

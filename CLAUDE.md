@@ -573,8 +573,9 @@ probabilidad calibrada.
   el BAM a Drive apenas termina.
 - **El alineamiento en Colab lo limita el disco, no el tiempo.** El pico es
   `recortado + 2 × BAM`, porque `pysam.sort` escribe el BAM ordenado **antes**
-  de borrar el sin ordenar. Con ~78 GB libres en una VM de Colab Free entran 12
-  de los 18 proyectos; `galga_duplicado` (~173 GB estimados) no entra ni en Pro.
+  de borrar el sin ordenar. Con ~78 GB libres en una VM de Colab Free entran 16
+  de los 18 proyectos; los que no son `maldo_primario` (~76 GB) y
+  `galga_duplicado` (~174 GB), y este último no entra ni en Pro.
   §1 del notebook lo mide antes de empezar y lo dice — se sabe en un segundo o a
   las seis horas. Los bytes por read son **estimaciones** (~25 B en `.t.fq.gz`,
   ~45 B en BAM): §5 imprime lo medido para corregirlas con el primer proyecto
@@ -764,7 +765,7 @@ Lo que necesita red va en otro lado:
 | genomas | Colab | `notebooks/descarga_genomas.ipynb` |
 | manifiesto y `.sra` | Colab | `notebooks/10_descarga_runs.ipynb` |
 | ver qué falta | Colab | `notebooks/90_estado.ipynb` |
-| recorte y alineamiento (los 12 que entran) | Colab | `notebooks/20_alinear.ipynb` |
+| recorte y alineamiento (los 16 que entran) | Colab | `notebooks/20_alinear.ipynb` |
 | empujar a git desde Colab | Colab | `scripts/colab_git.py` + un PAT en Secrets |
 | configurar rclone | máquina local | `docs/rclone.md` + `scripts/drive_check.sh` |
 | traer `.sra` para alinear | máquina local | `scripts/drive_pull.sh sra <org> --go` |
@@ -774,8 +775,8 @@ Lo que necesita red va en otro lado:
 
 **Colab es el administrador de datos**: baja, valida y escribe a Drive sin pasar
 por el disco local. Y desde `20_alinear.ipynb` también recorta y alinea — pero
-solo los proyectos que entran en el disco de una VM, que son 12 de los 18. Los
-cuatro grandes se quedan en la máquina local, que trae los `.sra` de a un
+solo los proyectos que entran en el disco de una VM, que son 16 de los 18.
+`maldo_primario` y `galga_duplicado` se quedan en la máquina local, que trae los `.sra` de a un
 organismo con `drive_pull.sh` y los purga después. Ver `docs/colab.md` y
 `docs/plan_datos_colab.md`.
 
