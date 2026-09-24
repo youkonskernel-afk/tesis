@@ -382,6 +382,14 @@ probabilidad calibrada.
   el `assert` de §3 cortó, y nada llegó al alineamiento. Es el mismo caso de
   `maggi` un nivel más abajo — ahí eran dos BioProjects con kits distintos, acá
   es uno solo.
+  **Cortar no alcanzaba: el paso siguiente eran seis accessions transcritas a
+  mano** desde una tabla formateada, que es donde se cuela el error que después
+  no falla ruidosamente. Por eso §3b del notebook saca `MALAS` de la columna
+  `CORRIDA` de la propia tabla de `verificar` —con `correr(..., capturar=True)`—
+  y §3c pega las filas y llama a `rehacer` con esa lista. Tienen banco propio
+  (`tests/test_celda_trim.py`, 8 escenarios sobre la tabla real de `gadmo`) y
+  cinco mutaciones, entre ellas que **si la tabla cambia de forma la celda
+  revienta** en vez de terminar en un `rehacer` vacío que parece éxito.
 - **`maggi` primario son dos BioProjects de eras distintas, y eso es una fila
   de adaptador cada uno.** `vdb-dump --info` da la fecha de carga:
   `SRR317135` (`PRJNA154615`) es de **julio de 2011** y `SRR1066790`
@@ -887,7 +895,7 @@ purga después. Ver `docs/colab.md` y
 Todo corre sin red y en segundos. Antes de cada push:
 
 ```bash
-./tests/run_all.sh              # 18 bancos, 568 chequeos, binarios falsos en el PATH
+./tests/run_all.sh              # 19 bancos, 584 chequeos, binarios falsos en el PATH
 ./tests/mutar.py                # rompe el codigo y exige que algun banco grite
 ./scripts/check_docs.py         # lo que afirman los docs contra data/
 ./scripts/validate_notebooks.py # los .ipynb parsean y no hay duplicados
@@ -898,7 +906,7 @@ y `check_docs.py` dos más.
 
 **Un banco que pasa no prueba nada.** Prueba algo el día que se rompe lo que
 cubre y el banco se queja, y la única forma de saberlo es romper el código a
-propósito: eso es `tests/mutar.py`, 84 mutaciones que tienen que dar todas
+propósito: eso es `tests/mutar.py`, 89 mutaciones que tienen que dar todas
 `[OK]`. Un `[HUECO]` es un chequeo que falta; un `[VIEJA]` es una mutación cuyo
 patrón ya no existe, que tampoco prueba nada. Así aparecieron los dos huecos que
 ninguna otra cosa mostró — el veredicto de `perfil` que iba a la tabla sin estar
