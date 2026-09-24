@@ -40,7 +40,7 @@ negativo sesga el modelo justo contra lo que buscamos.
 El pipeline bioinformático es el **upstream** que produce los loci candidatos,
 no el aporte de la tesis:
 
-1. Descarga ~425 corridas sRNA-seq de 9 organismos (~7.4 G spots)
+1. Descarga 417 corridas sRNA-seq de 9 organismos (7.90 G spots)
 2. `yasma trim` (cutadapt, 15-50 nt) → `yasma align` (bowtie1 `-v 1 -m 50`,
    pesado estilo ShortStack3)
 3. Anotación de loci con YASMA v1.1.1
@@ -102,9 +102,17 @@ no entra al entrenamiento**, o la validación deja de ser independiente.
 | galga | *Gallus gallus* | Animalia (ave) | PRJEB12164 | PRJNA694114 |
 | maggi | *Magallana gigas* | Animalia (molusco) | PRJNA154615 + PRJNA232734 | PRJNA1254880 |
 
-Escala declarada: ~195 corridas / ~3.0 G spots en los primarios, ~230 / ~4.4 G
-en los duplicados. **~425 corridas y ~7.4 G spots en total, contra 169 y 2.18 G
-del set anterior** — del orden de 3.4× más. Ver "Consecuencias del cambio".
+Escala **medida sobre el manifiesto resuelto**, no la declarada por la spec:
+193 corridas / 3.92 G spots en los primarios, 224 / 3.98 G en los duplicados.
+**417 corridas y 7.90 G spots en total, contra 169 y 2.18 G del set anterior** —
+del orden de 3.6× más. Ver "Consecuencias del cambio".
+
+Hasta acá se venía declarando "~425 corridas y ~7.4 G spots", que salía de sumar
+la columna `spots_M` de `data/organismos.tsv`. Esa columna es de cuando se
+eligió cada proyecto y es **estimación**: el total real es medio G de spots más
+alto. Es la misma equivocación de altura que la columna `runs` —ver la trampa
+correspondiente— y por eso los números de escala salen ahora de
+`data/srr_manifest.tsv`, que es lo que la ENA devolvió.
 
 ### Entrenamiento vs aplicación
 
@@ -626,6 +634,47 @@ probabilidad calibrada.
   reanudable es el **proyecto entero**, no la corrida — que es lo que decide el
   diseño de `20_alinear.ipynb`: de a un proyecto, del más chico al más grande, y
   el BAM a Drive apenas termina.
+- **`yasma align` levanta un bowtie por librería que nadie lee, y eso es un
+  OOM.** `bowtie_generator` arma `bowtie_call` en tres ramas —`unique`, `multi`
+  y `over`— pero solo las dos primeras le agregan flags; después hace el `Popen`
+  **sin mirar `mmap`** (líneas 324-336). O sea que en `over` también arranca un
+  bowtie: sin `-v`, sin `-m`, sin `-S`, sobre la librería entera. Esa salida
+  **no se usa** —la rama `over` lee `<RG>.max50.fq` del disco y `p.stdout` no se
+  toca nunca— y como abajo dice `if mmap != 'over': p.wait()`, tampoco se
+  espera: el proceso queda vivo, bloqueado escribiendo a un pipe que nadie lee,
+  con el índice del genoma entero en RAM. **Uno por librería, todos a la vez.**
+  Medido: `gadmo_duplicado` (12 librerías, genoma de 670 Mb) murió con `Killed`
+  al **96.5%, en la etapa `over`**, que es justo cuando ya hay once huérfanos
+  vivos. `sclsc_duplicado` había pasado porque son 2 librerías y 39 Mb.
+  `galga_duplicado` son **95 librerías contra 1.05 Gb**: no hay máquina donde
+  entre.
+  Lo arregla `scripts/yasma_parche.py`, que saltea ese `Popen` y **nada más**:
+  el proceso que deja de levantarse es exactamente el que no se lee, así que la
+  salida no cambia. Es idempotente, deja respaldo, y **se niega si el fuente
+  cambió** —si el ancla no aparece una sola vez, o si desaparece el
+  `if mmap != 'over':` que es lo que vuelve seguro saltearlo— porque un parche
+  que aplica a ciegas sobre otra versión es peor que no tenerlo. `align.sh
+  correr` lo exige antes de alinear. Tiene banco (`tests/test_parche.py`, que
+  corre el fixture de verdad y mira **qué procesos arranca**, no qué dice el
+  código) y 5 mutaciones.
+- **Lo que decide si un proyecto entra no es solo el disco: es la RAM, y sale
+  del tamaño del genoma.** `nativealign.py` hace
+  `unique_d[ref] = [0] * int(length)` por cada secuencia del `.fai`, o sea **un
+  entero de Python por base del genoma**. Medido en CPython: **8 bytes por
+  elemento** (los punteros de la lista), y 32 más por posición que pase de 256,
+  que en sRNA son pocas. No depende de cuántos reads haya **ni de cuántas
+  librerías**: depende solo del ensamblado, y se arma entero antes de alinear el
+  primer read. Para `gadmo` son ~5.4 GB; para `galga`, ~8.4.
+  §1 del notebook predecía **disco** nada más, así que un proyecto salía
+  "entra" y moría por memoria a las seis horas — el mismo fallo que esa celda
+  existe para evitar. Ahora `align.sh` lo dice en `genoma`, en `plan` (columna
+  `RAM_GB`) y antes de cada proyecto en `correr`, con `10 B por base`: los 8
+  medidos más ~1.5 estimados del índice de bowtie a `--offrate 3`, que **es
+  estimación y va declarada como tal**.
+  Y cuando igual se queda sin memoria, `correr` distingue el **código 137**
+  (128+9, SIGKILL) y lo dice: sin eso, un problema de memoria se reportaba
+  igual que un genoma que falta. El proceso no llega a imprimir traceback, así
+  que el único rastro es la palabra `Killed` y el % donde se cortó.
 - **El alineamiento en Colab lo limita el disco, no el tiempo.** El pico es
   `recortado + 2 × BAM`, porque `pysam.sort` escribe el BAM ordenado **antes**
   de borrar el sin ordenar. §1 del notebook lo mide contra el disco real de la
@@ -895,7 +944,7 @@ purga después. Ver `docs/colab.md` y
 Todo corre sin red y en segundos. Antes de cada push:
 
 ```bash
-./tests/run_all.sh              # 19 bancos, 584 chequeos, binarios falsos en el PATH
+./tests/run_all.sh              # 20 bancos, 616 chequeos, binarios falsos en el PATH
 ./tests/mutar.py                # rompe el codigo y exige que algun banco grite
 ./scripts/check_docs.py         # lo que afirman los docs contra data/
 ./scripts/validate_notebooks.py # los .ipynb parsean y no hay duplicados
@@ -906,7 +955,7 @@ y `check_docs.py` dos más.
 
 **Un banco que pasa no prueba nada.** Prueba algo el día que se rompe lo que
 cubre y el banco se queja, y la única forma de saberlo es romper el código a
-propósito: eso es `tests/mutar.py`, 89 mutaciones que tienen que dar todas
+propósito: eso es `tests/mutar.py`, 96 mutaciones que tienen que dar todas
 `[OK]`. Un `[HUECO]` es un chequeo que falta; un `[VIEJA]` es una mutación cuyo
 patrón ya no existe, que tampoco prueba nada. Así aparecieron los dos huecos que
 ninguna otra cosa mostró — el veredicto de `perfil` que iba a la tabla sin estar

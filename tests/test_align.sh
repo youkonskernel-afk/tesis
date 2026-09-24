@@ -104,6 +104,21 @@ chmod +x "$TMP/bin"/*
 export PATH="$TMP/bin:$PATH" LOG_YA="$TMP/ya.log"
 : > "$LOG_YA"
 
+# Un paquete yasma de mentira, para que yasma_parche.py tenga que mirar. El
+# binario falso del PATH no alcanza: el parche es sobre el FUENTE instalado, y
+# `correr` se niega a alinear sin el. Ver el escenario 0.
+PYLIB="$TMP/pylib"; mkdir -p "$PYLIB/yasma"
+: > "$PYLIB/yasma/__init__.py"
+nativealign_sin_parche() {
+  { printf '\t\tprint(f"stage: {mmap}", file=errf)\n\n'
+    printf '\t\tif ".gz" in lib.suffixes:\n\t\t\tp = 1\n\n'
+    printf "\t\tif mmap != 'over':\n\t\t\tp.wait()\n"
+  } > "$PYLIB/yasma/nativealign.py"
+}
+nativealign_sin_parche
+export PYTHONPATH="$PYLIB"
+"$RAIZ/scripts/yasma_parche.py" >/dev/null 2>&1
+
 corre() {
   MANIFEST="$MAN" GENOMAS_LEDGER="$LED" GENOMES_DIR="$GEN" PROY_DIR="$PROY" \
   BAM_DIR="$TMP/bams" CORES=2 bash "$A" "$@" 2>&1
@@ -267,6 +282,32 @@ S=$(corre verificar); RC=$?
 [[ $RC -ne 0 ]] && ok "exit != 0" || mal "exit != 0 (rc=$RC)"
 tiene "nombra la corrida" "SRR_P2"                 "$S"
 tiene "y qué le pasa"     "no tiene @RG en el BAM" "$S"
+
+echo "== 10b. sin el parche de yasma no se alinea"
+# La etapa `over` de nativealign.py levanta un bowtie por libreria, no lee su
+# salida y no lo espera: quedan todos vivos con el indice en RAM. Eso mato a
+# gadmo_duplicado (12 librerias, 670 Mb) con un `Killed` al 96.5%, y el mensaje
+# de entonces decia solo "yasma align fallo". Sin el parche no se arranca.
+sembrar_trim; : > "$LOG_YA"
+nativealign_sin_parche
+S=$(corre correr); RC=$?
+[[ $RC -ne 0 ]] && ok "exit != 0" || mal "exit != 0 (rc=$RC)"
+tiene "dice que falta el parche"  "falta el parche de yasma"   "$S"
+tiene "y cómo aplicarlo"          "./scripts/yasma_parche.py"  "$S"
+notiene "sin llamar a yasma"      "CWD="                       "$(cat "$LOG_YA")"
+"$RAIZ/scripts/yasma_parche.py" >/dev/null 2>&1
+
+echo "== 10c. la RAM se dice ANTES de alinear, no después del Killed"
+# `unique_d` es un entero de Python por base del genoma (8 B medidos) y se arma
+# entero al principio: el numero se sabe en cuanto existe el FASTA, sin leer un
+# solo read. El fallo que esto evita no da un mensaje, da `Killed` a las horas.
+S=$(corre genoma)
+tiene "genoma reporta la RAM"     "RAM de yasma align"         "$S"
+sembrar_trim
+S=$(corre correr)
+tiene "correr también"            "RAM: pide"                  "$S"
+S=$(corre plan)
+tiene "y plan trae la columna"    "RAM_GB"                     "$S"
 
 echo "== 11. errores"
 tiene "modo desconocido"  "modo desconocido"  "$(corre nosequé 2>&1 || true)"

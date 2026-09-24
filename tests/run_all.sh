@@ -38,6 +38,7 @@ BANCOS=(
   tests/test_celda4.py
   tests/test_celda_alinear.py
   tests/test_celda_trim.py
+  tests/test_parche.py
 )
 
 malos=0 total_ok=0 total_mal=0

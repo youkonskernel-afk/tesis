@@ -2,6 +2,7 @@
 # Alineamiento con `yasma align` (bowtie1 nativo, pesado estilo ShortStack3).
 #
 #   ./scripts/align.sh genoma    [<org>]            verifica y descomprime el FASTA
+#   ./scripts/align.sh parche                       parcha yasma (ver yasma_parche.py)
 #   ./scripts/align.sh plan      [<org>[/<rol>]]    que se haria, sin hacerlo
 #   ./scripts/align.sh correr    [<org>[/<rol>]]    alinea
 #   ./scripts/align.sh estado    [<org>[/<rol>]]    que esta alineado y que falta
@@ -168,7 +169,50 @@ cmd_genoma() {
     else
       echo "           índice bowtie: falta — yasma lo construye con bowtie-build --offrate $OFFRATE"
     fi
+    # La RAM sale de las bases del genoma y de nada mas, asi que se puede decir
+    # aca — antes de recortar, antes de alinear, antes de gastar una hora.
+    printf '           RAM de yasma align: ~%s GB (%s bases x %s B)\n' \
+      "$(ram_gb_de "$(bases_de "$fna")")" "$(bases_de "$fna")" "$B_POR_BASE"
   done
+}
+
+# --- la memoria, que es lo que mata a los proyectos grandes -------------------
+
+# Bases del ensamblado. Del .fai si esta (exacto e instantaneo), si no contando
+# una vez y guardando el resultado al lado: es un fichero de 10 bytes y el
+# genoma no cambia sin cambiar de sha256.
+bases_de() {
+  local fna="$1" cache="$fna.bases"
+  if [[ -s "$fna.fai" ]]; then awk -F'\t' '{s+=$2} END{print s+0}' "$fna.fai"; return; fi
+  if [[ -s "$cache" ]]; then cat "$cache"; return; fi
+  awk '!/^>/ { s += length($0) } END { print s+0 }' "$fna" > "$cache"
+  cat "$cache"
+}
+
+# RAM que va a pedir `yasma align`, en GB, por proyecto.
+#
+# El termino que manda es `unique_d`: nativealign.py hace
+# `unique_d[ref] = [0] * int(length)` por cada secuencia del .fai, o sea UN
+# entero de Python por base del genoma. Medido en CPython: 8 bytes por
+# elemento, que son los punteros de la lista. No depende de cuantos reads haya
+# ni de cuantas librerias: depende SOLO del tamaño del ensamblado, y se arma
+# entero antes de alinear el primer read.
+#
+# Encima va el indice de bowtie residente, que a --offrate 3 se estima en ~1.5
+# bytes por base (2 bits del BWT mas la muestra del array de sufijos, mas denso
+# que el default 5). Ese termino SI es una estimacion y esta declarado como tal.
+#
+# 8 + 1.5 = 10 B por base, redondeando para arriba.
+B_POR_BASE=10
+ram_gb_de() {  # bases -> GB con un decimal
+  awk -v b="$1" -v k="$B_POR_BASE" 'BEGIN { printf "%.1f", b*k/1073741824 }'
+}
+
+# Lo que el kernel dice que hay disponible ahora mismo, en GB. Vacio si no se
+# puede saber (macOS, contenedor sin /proc): quien llama no chequea y lo dice.
+ram_libre_gb() {
+  [[ -r /proc/meminfo ]] || return 0
+  awk '/^MemAvailable:/ { printf "%.1f", $2/1048576; exit }' /proc/meminfo
 }
 
 # --- estado del recorte y del alineamiento ------------------------------------
@@ -245,7 +289,10 @@ cmd_plan() {
   echo "bowtie     : -v 1, -m $MAX_MULTI, max_random $MAX_RANDOM, locality $UNIQUE_LOCALITY, offrate $OFFRATE, $CORES cores"
   echo
   local org rol dir n_man n_rec acc _esp listos=0 sin_trim=0 hechos=0 total=0
-  printf '%-18s %-16s %10s %10s  %s\n' PROYECTO GENOMA CORRIDAS RECORTADAS ESTADO
+  local ram_hay; ram_hay=$(ram_libre_gb)
+  [[ -z "$ram_hay" ]] || echo "RAM libre  : $ram_hay GB"
+  echo
+  printf '%-18s %-16s %10s %10s %7s  %s\n' PROYECTO GENOMA CORRIDAS RECORTADAS RAM_GB ESTADO
   while IFS=$'\t' read -r org rol; do
     dir="$PROY_DIR/${org}_${rol}"
     n_man=$(corridas "$org" "$rol" | grep -c .)
@@ -261,7 +308,15 @@ cmd_plan() {
     else
       est="por alinear"; listos=$((listos+1))
     fi
-    printf '%-18s %-16s %10d %10d  %s\n' "${org}_${rol}" "${acc:-SIN GENOMA}" "$n_man" "$n_rec" "$est"
+    # La RAM solo se puede decir si el FASTA ya esta descomprimido; si no,
+    # va '?' en vez de un numero inventado. `align.sh genoma` lo llena.
+    local fna_p="$GENOMES_DIR/$org/${acc}.fna" ram_p="?"
+    [[ -s "$fna_p" ]] && ram_p=$(ram_gb_de "$(bases_de "$fna_p")")
+    if [[ "$ram_p" != "?" && -n "$ram_hay" ]] \
+       && awk -v p="$ram_p" -v h="$ram_hay" 'BEGIN{exit !(p > h)}'; then
+      est="$est / NO ENTRA EN RAM"
+    fi
+    printf '%-18s %-16s %10d %10d %7s  %s\n' "${org}_${rol}" "${acc:-SIN GENOMA}" "$n_man" "$n_rec" "$ram_p" "$est"
     total=$((total+1))
   done < <(proyectos "$filtro")
   [[ $total -gt 0 ]] || die "el filtro '${filtro:-(todo)}' no encontró ningún proyecto"
@@ -310,8 +365,15 @@ cmd_correr() {
   command -v yasma >/dev/null || die "no está yasma en el PATH (ver docs/yasma.md)"
   command -v bowtie >/dev/null || die "no está bowtie: yasma align lo llama directo"
   command -v bowtie-build >/dev/null || die "no está bowtie-build: hace falta para el índice"
+  # Sin el parche, la etapa `over` levanta un bowtie por libreria y no lo espera
+  # ni lee su salida: quedan todos vivos con el indice en RAM. gadmo_duplicado
+  # (12 librerias, 670 Mb) murio asi con `Killed` al 96.5%. Ver yasma_parche.py.
+  "$ROOT/scripts/yasma_parche.py" --verificar >/dev/null 2>&1 \
+    || die "falta el parche de yasma (etapa 'over' = un bowtie huérfano por librería).
+  Aplicalo con: ./scripts/yasma_parche.py
+  El detalle está en ese fichero y en docs/yasma.md."
 
-  local org rol dir n_man n_rec fna acc esp n_proy=0
+  local org rol dir n_man n_rec fna acc esp n_proy=0 n_bases ram_pide ram_hay rc
   while IFS=$'\t' read -r org rol; do
     n_proy=$((n_proy+1))
     dir="$PROY_DIR/${org}_${rol}"
@@ -336,6 +398,21 @@ cmd_correr() {
     IFS=$'\t' read -r acc esp < <(genoma_de "$org")
     fna=$(preparar_genoma "$org")
 
+    # La RAM, ANTES de arrancar. `unique_d` se arma entero al principio y sale
+    # de las bases del genoma, no de los reads: se sabe en un segundo o a las
+    # seis horas con un `Killed` que no dice nada. El aviso no corta —hay
+    # maquinas con swap, y el numero del indice es estimado— pero queda escrito
+    # arriba del log, que es donde se lo busca despues.
+    n_bases=$(bases_de "$fna"); ram_pide=$(ram_gb_de "$n_bases"); ram_hay=$(ram_libre_gb)
+    if [[ -z "$ram_hay" ]]; then
+      echo "   RAM: pide ~${ram_pide} GB (no pude leer /proc/meminfo para comparar)"
+    elif awk -v p="$ram_pide" -v h="$ram_hay" 'BEGIN{exit !(p > h)}'; then
+      echo "   RAM: pide ~${ram_pide} GB y hay ${ram_hay} GB libres — ESTO SE VA A QUEDAR SIN MEMORIA" >&2
+      echo "        son $B_POR_BASE B por base de $acc ($n_bases bases), casi todo unique_d" >&2
+    else
+      echo "   RAM: pide ~${ram_pide} GB, hay ${ram_hay} GB libres"
+    fi
+
     # EL GENOMA TIENE QUE ESTAR ADENTRO DEL -o. `ic.check()` hace
     # value.relative_to(output_directory) SIN protegerlo, asi que un genoma
     # compartido fuera del proyecto tira ValueError y no un mensaje. Es la misma
@@ -355,8 +432,21 @@ cmd_correr() {
     ( cd "$dir" && yasma align -o "$dir" -g "$dir/genome/$(basename "$fna")" \
         --cores "$CORES" --max_multi "$MAX_MULTI" --max_random "$MAX_RANDOM" \
         --unique_locality "$UNIQUE_LOCALITY" --offrate "$OFFRATE" \
-        --min_length 15 --max_length 50 --override </dev/null ) \
-      || die "yasma align falló en ${org}_${rol} (log: $dir/align/log.txt)"
+        --min_length 15 --max_length 50 --override </dev/null ) && rc=0 || rc=$?
+
+    # 137 = 128+9, o sea SIGKILL, que en la practica siempre es el OOM killer:
+    # el proceso no llega a imprimir un traceback, asi que el unico rastro en el
+    # log es la palabra `Killed` y el % donde se corto. Sin distinguirlo, un
+    # problema de MEMORIA se reporta igual que un genoma que falta, y se pierde
+    # la tarde buscando en el lado equivocado.
+    if [[ "$rc" -eq 137 ]]; then
+      echo "   se quedó sin memoria (SIGKILL del OOM killer), no es un fallo de yasma" >&2
+      echo "   pide ~${ram_pide} GB y había ${ram_hay:-?} GB libres" >&2
+      echo "   opciones, en orden: aplicar ./scripts/yasma_parche.py (si no está)," >&2
+      echo "   una VM con más RAM, o alinear este proyecto en la máquina local" >&2
+      die "yasma align sin memoria en ${org}_${rol}"
+    fi
+    [[ "$rc" -eq 0 ]] || die "yasma align falló en ${org}_${rol} (código $rc, log: $dir/align/log.txt)"
 
     [[ -s "$(bam_de "$dir")" ]] || die "yasma align terminó sin dejar $(bam_de "$dir")"
     registrar "$dir" "$org" "$rol" "$acc" "$esp"
@@ -463,14 +553,15 @@ cmd_ledger() {
   [[ $n -gt 0 ]] || echo "   (ninguno alineado todavía)" >&2
 }
 
-[[ $# -ge 1 ]] || { sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
+[[ $# -ge 1 ]] || { sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
 case "$1" in
   genoma)    shift; cmd_genoma    "${1:-}" ;;
+  parche)    shift; "$ROOT/scripts/yasma_parche.py" "$@" ;;
   plan)      shift; cmd_plan      "${1:-}" ;;
   estado)    shift; cmd_estado    "${1:-}" ;;
   correr)    shift; cmd_correr    "${1:-}" ;;
   verificar) shift; cmd_verificar "${1:-}" ;;
   ledger)    shift; cmd_ledger    "${1:-}" ;;
-  -h|--help) sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//' ;;
-  *) die "modo desconocido: $1 (genoma|plan|correr|estado|verificar|ledger)" ;;
+  -h|--help) sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//' ;;
+  *) die "modo desconocido: $1 (genoma|parche|plan|correr|estado|verificar|ledger)" ;;
 esac

@@ -124,10 +124,57 @@ alineador **bowtie1 nativo con el pesado estilo ShortStack3**. Los defaults:
    hay más de `max_random` sitios, el read queda sin mapear. Tags: `XY:Z:U/R/P/Q`
    y `XZ:f:<prob>`.
 3. **`over`** — los reads que pasaron `max_multi` **no se tiran**: entran al BAM
-   como no mapeados con `XY:Z:H`. Esta etapa no corre bowtie, lee el fichero de
-   `--max`.
+   como no mapeados con `XY:Z:H`. Esta etapa lee el fichero de `--max` del
+   disco y no usa bowtie para nada... **pero lo levanta igual**, y ahí está el
+   bug de memoria. Ver más abajo.
 
 El filtro de longitud y el de N se aplican acá (`XY:Z:F`), no antes.
+
+### El bug de memoria de la etapa `over`, y el parche
+
+`bowtie_generator(lib, mmap)` arma `bowtie_call` en tres ramas, pero solo
+`unique` y `multi` le agregan flags. Después, **sin mirar `mmap`**, hace el
+`Popen` (nativealign.py, líneas 324-336). En `over` eso arranca un bowtie sin
+`-v`, sin `-m` y sin `-S`, sobre la librería entera.
+
+Ese proceso es puro desperdicio y además es peligroso:
+
+- **su salida no se lee.** La rama `over` construye los `AlignedSegment` leyendo
+  `<RG>.max50.fq` del disco; `p.stdout` no se toca nunca.
+- **no se espera.** Abajo dice `if mmap != 'over': p.wait()`.
+
+Resultado: el proceso queda vivo, bloqueado escribiendo a un pipe que nadie
+vacía, con el índice del genoma entero residente. **Uno por librería, todos a
+la vez.**
+
+Medido: `gadmo_duplicado` (12 librerías, genoma de 670 Mb) murió con `Killed`
+al **96.5%, en la etapa `over`**, que es cuando ya hay once huérfanos vivos.
+`sclsc_duplicado` había pasado sin problema porque son 2 librerías y 39 Mb.
+`galga_duplicado` son 95 librerías contra 1.05 Gb: no hay máquina donde entre.
+
+`scripts/yasma_parche.py` saltea ese `Popen` y nada más. **La salida no
+cambia**: el proceso que deja de levantarse es exactamente el que no se lee. Es
+idempotente, deja respaldo, y se niega a aplicar si el fuente cambió —si el
+ancla no aparece una sola vez, o si desaparece el `if mmap != 'over':` que es lo
+que vuelve seguro saltearlo—. `align.sh correr` lo exige antes de alinear.
+
+### La RAM sale del genoma, no de los reads
+
+`nativealign.py` hace `unique_d[ref] = [0] * int(length)` por cada secuencia del
+`.fai`: **un entero de Python por base del genoma**, armado entero antes de
+alinear el primer read. Medido en CPython, **8 bytes por elemento** (los
+punteros de la lista) más 32 por posición que pase de 256, que en sRNA son
+pocas.
+
+No depende de cuántos reads haya ni de cuántas librerías. `align.sh` estima con
+**10 B por base** —los 8 medidos más ~1.5 estimados del índice de bowtie a
+`--offrate 3`— y lo reporta en `genoma`, en `plan` (columna `RAM_GB`) y antes de
+cada proyecto en `correr`.
+
+Cuando igual se queda sin memoria, `correr` distingue el **código 137** (128+9,
+SIGKILL) y lo dice. El proceso no llega a imprimir traceback: el único rastro es
+la palabra `Killed` y el porcentaje donde se cortó, así que sin esa distinción
+un problema de memoria se reporta igual que un genoma que falta.
 
 ### Lo que esto resuelve
 

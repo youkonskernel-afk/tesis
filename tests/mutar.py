@@ -163,6 +163,27 @@ MUTACIONES = [
      [('    enlazar_bam "$org" "$rol" "$dir"', '    :')]),
     ("align: no queda registrado contra que genoma se alineo", "scripts/align.sh",
      [('    registrar "$dir" "$org" "$rol" "$acc" "$esp"', '    :')]),
+    # El parche de yasma: sin el, la etapa `over` levanta un bowtie por
+    # libreria que nadie lee ni espera y el proyecto muere por OOM a las horas.
+    ("align: alinea aunque falte el parche de yasma", "scripts/align.sh",
+     [('"$ROOT/scripts/yasma_parche.py" --verificar >/dev/null 2>&1 \\\n    ||',
+       'true \\\n    ||')]),
+    ("align: la RAM no se dice antes de alinear", "scripts/align.sh",
+     [('    n_bases=$(bases_de "$fna"); ram_pide=$(ram_gb_de "$n_bases"); ram_hay=$(ram_libre_gb)',
+       '    n_bases=0; ram_pide=0; ram_hay=""; if false; then')]),
+    ("align: plan pierde la columna de RAM", "scripts/align.sh",
+     [("%10d %10d %7s  %s\\n' \"${org}_${rol}\"", "%10d %10d %.0s  %s\\n' \"${org}_${rol}\"")]),
+    # --- yasma_parche.py ---
+    # Un parche que aplica a ciegas sobre una version que cambio es peor que no
+    # tenerlo: no falla ruidosamente, deja el fuente en cualquier estado.
+    ("parche: aplica aunque el ancla no este una sola vez", "scripts/yasma_parche.py",
+     [('    if n != 1:', '    if False:')]),
+    ("parche: no comprueba que en 'over' no se espere al proceso", "scripts/yasma_parche.py",
+     [('    if GUARDIA not in texto:', '    if False:')]),
+    ("parche: saltea el Popen en todas las etapas", "scripts/yasma_parche.py",
+     [("\"\\t\\tif mmap == 'over':\\n\"", "\"\\t\\tif True:\\n\"")]),
+    ("parche: --verificar sale 0 sin estar aplicado", "scripts/yasma_parche.py",
+     [('    if args.verificar:', '    if False:')]),
     # --- colab_git.py: empujar a GitHub desde Colab ---
     # Una VM de Colab tiene Drive montado al lado con ~190 GB de .sra. Un
     # `add -A` desde ahi es exactamente donde se cuela lo que no va al repo.
