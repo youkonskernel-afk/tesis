@@ -184,6 +184,54 @@ MUTACIONES = [
      [("\"\\t\\tif mmap == 'over':\\n\"", "\"\\t\\tif True:\\n\"")]),
     ("parche: --verificar sale 0 sin estar aplicado", "scripts/yasma_parche.py",
      [('    if args.verificar:', '    if False:')]),
+    # --- reparto.py: trabajo en paralelo entre maquinas ---
+    # Los dos galga son el 33% de los reads del set y no entran en Colab Free
+    # por RAM. Repartirlos igual es un `Killed` a las horas, no un error.
+    ("reparto: asigna un proyecto que no entra en ninguna maquina", "scripts/reparto.py",
+     [('        if not aptas:', '        if False:')]),
+    ("reparto: la RAM deja de restringir", "scripts/reparto.py",
+     [('if (ram == 0 or ram + MARGEN_RAM <= m[1])', 'if True or (ram == 0 or ram + MARGEN_RAM <= m[1])')]),
+    ("reparto: el disco deja de restringir", "scripts/reparto.py",
+     [('                 and pico + MARGEN_DISCO <= m[2]]', '                 ]')]),
+    # Un genoma que no se pudo medir mandado a la maquina grande cuesta tanto
+    # como uno que no entra dado por bueno.
+    ("reparto: sin genoma medible lo declara imposible", "scripts/reparto.py",
+     [('if (ram == 0 or ram + MARGEN_RAM <= m[1])', 'if (ram + MARGEN_RAM <= m[1])')]),
+    # LPT: del mas chico al mas grande, todas terminan los baratos y una queda
+    # sola con galga_duplicado 25 h al final.
+    ("reparto: deja de ser LPT y empieza por los chicos", "scripts/reparto.py",
+     [('    for nom, h, ram, pico in sorted(trabajos, key=lambda t: -t[1]):',
+       '    for nom, h, ram, pico in sorted(trabajos, key=lambda t: t[1]):')]),
+    ("reparto: no elige la maquina menos cargada", "scripts/reparto.py",
+     [('        elegida = min(aptas, key=lambda m: (carga[m[0]], m[0]))[0]',
+       '        elegida = aptas[0][0]')]),
+    # El speedup del resumen es el numero con el que se decide cuantas
+    # maquinas conseguir: decia 4.5x sin contar las 34 h de galga.
+    ("reparto: el speedup vuelve a contar lo que no repartio", "scripts/reparto.py",
+     [('    h_asig = tot - h_sin', '    h_asig = tot')]),
+    ("reparto: no avisa de lo que quedo sin maquina", "scripts/reparto.py",
+     [('    if sin_lugar:\n        print(', '    if False:\n        print(')]),
+    # Los claims: dos maquinas sobre el mismo proyecto son horas perdidas, y
+    # una VM muerta que no suelta bloquea el proyecto para siempre.
+    ("reparto: un claim ajeno y vigente se pisa igual", "scripts/reparto.py",
+     [('        elif edad is not None and edad < ttl_h:\n            return False',
+       '        elif False:\n            return False')]),
+    ("reparto: el claim no vence nunca", "scripts/reparto.py",
+     [('        if edad is not None and edad < ttl_h:', '        if edad is not None:')]),
+    ("reparto: cualquiera puede soltar el claim de otro", "scripts/reparto.py",
+     [("if f.exists() and f.read_text().strip().split('\\t')[0] == quien:",
+       'if f.exists():')]),
+    # Un punto no sostiene una recta: el s/M plano sale de un genoma de 39 Mb
+    # y galga es 1.05 Gb.
+    ("reparto: ajusta la recta con un solo genoma", "scripts/reparto.py",
+     [('    if len({g for g, _ in pts}) < 2:', '    if False:')]),
+    # §1c del notebook: la tanda repartida.
+    ("alinear1c: rehace lo que ya esta en Drive", "notebooks/20_alinear.ipynb",
+     [('        if _hecho(_p):', '        if False:')]),
+    ("alinear1c: pisa lo que otra maquina tiene tomado", "notebooks/20_alinear.ipynb",
+     [('        elif _p in _tom and _tom[_p][0] != YO:', '        elif False:')]),
+    ("alinear: arranca sin tomar el claim", "notebooks/20_alinear.ipynb",
+     [('if TANDA and not reparto.tomar(CLAIMS, PROYECTO, YO):', 'if False:')]),
     # --- colab_git.py: empujar a GitHub desde Colab ---
     # Una VM de Colab tiene Drive montado al lado con ~190 GB de .sra. Un
     # `add -A` desde ahi es exactamente donde se cuela lo que no va al repo.

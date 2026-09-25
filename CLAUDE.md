@@ -711,6 +711,40 @@ probabilidad calibrada.
   y dos mutaciones, una de ellas para que `SIGUIENTE` no pueda caer en un
   proyecto que no entra — mandar a gastar horas en algo que se queda sin disco a
   la mitad es peor que no proponer nada.
+- **Paralelizar dentro de una máquina no sirve, y el techo entre máquinas es
+  4×.** `yasma align` ya corre `bowtie -p <cores>`: en una VM de Colab Free con
+  2 vCPU un proyecto solo ya las satura, así que lanzar dos no divide el tiempo,
+  lo reparte — y encima **suma las dos `unique_d`**, que son 8 B por base del
+  genoma **cada una**. Dos proyectos de `gadmo` juntos piden ~12.4 GB de los
+  ~11.4 que hay: mueren los dos, y más tarde que uno solo. Y un proyecto tampoco
+  se puede partir, por lo de `unique_d` acumulada. O sea que **la unidad
+  paralelizable es el proyecto entero en otra máquina**.
+  Entre máquinas son ~101 h de trabajo total, pero `galga_duplicado` solo son
+  ~25 h: 1 máquina 101 h, 2 → 51, 3 → 34, 4 → 25, y **de ahí no baja con
+  ninguna cantidad**. La quinta no hace nada. Eso se dice antes y no se descubre
+  habiendo conseguido cinco.
+  `scripts/reparto.py` hace el reparto con **LPT** —del más caro al más barato,
+  cada uno a la máquina menos cargada que pueda hospedarlo— porque al revés
+  todas terminan los baratos y una queda sola con `galga_duplicado` al final.
+  **Dentro** de cada máquina el orden vuelve a ser de chico a grande: no cambia
+  el makespan y deja algo terminado si la sesión se muere.
+  Dos cosas del resumen que hacían falta y no estaban:
+  el speedup se calcula **solo sobre lo repartido** —decía 4.5× mientras las
+  34 h de `galga` no estaban asignadas a ninguna máquina, que es justo el número
+  con el que se decide cuántas conseguir—, y lo que ninguna máquina puede correr
+  sale nombrado con sus horas en vez de repartirse igual. La RAM que se le
+  declara a una máquina es la **disponible** (`MemAvailable`), no la nominal:
+  `galga` cae justo en esa diferencia —con 12 GB entra y con 11.4 no— y ese es
+  el caso que decide si va a Colab o a la máquina local.
+  La coordinación entre máquinas son claims en `Drive/90_claims/`, con TTL de
+  12 h para que una sesión que se murió no bloquee el proyecto para siempre.
+  **No es exclusión mutua de verdad** —el FUSE de Drive no da atomicidad—: relee
+  lo que escribió y comprueba que siga siendo suyo, lo que atrapa el caso común
+  y no el de dos escrituras simultáneas. El costo de una colisión son horas
+  perdidas, no datos corruptos: el BAM se escribe local y se copia a Drive al
+  final. El claim se suelta **cuando el BAM ya está en Drive**, no al terminar
+  `align`, porque si no queda una ventana en la que nadie lo tiene y nadie lo
+  hizo.
 - **El cronograma salía de UN punto, y el genoma influye.** Los ~98 h se
   extrapolaban de `sclsc_duplicado`: 32 M reads contra un genoma de **39 Mb**.
   `galga` es **1.05 Gb**, 27× más grande. Y no es un detalle de borde: los
@@ -949,21 +983,28 @@ Lo que necesita red va en otro lado:
 | genomas | Colab | `notebooks/descarga_genomas.ipynb` |
 | manifiesto y `.sra` | Colab | `notebooks/10_descarga_runs.ipynb` |
 | ver qué falta | Colab | `notebooks/90_estado.ipynb` |
-| recorte y alineamiento (los 16 que entran) | Colab | `notebooks/20_alinear.ipynb` |
+| recorte y alineamiento (los que entran) | Colab | `notebooks/20_alinear.ipynb` |
 | empujar a git desde Colab | Colab | `scripts/colab_git.py` + un PAT en Secrets |
 | configurar rclone | máquina local | `docs/rclone.md` + `scripts/drive_check.sh` |
 | traer `.sra` para alinear | máquina local | `scripts/drive_pull.sh sra <org> --go` |
 | recorte | máquina local | `scripts/trim.sh plan/correr/verificar/rehacer` |
 | alineamiento | máquina local | `scripts/align.sh genoma/plan/correr/verificar` |
+| repartir entre máquinas | cualquiera | `scripts/reparto.py --maquinas ...` |
 | BAMs a Drive | máquina local | `scripts/drive_push.sh` |
 
 **Colab es el administrador de datos**: baja, valida y escribe a Drive sin pasar
 por el disco local. Y desde `20_alinear.ipynb` también recorta y alinea — pero
-solo los proyectos que entran en el disco de esa VM, que §1 del notebook mide
-en cada sesión. Con los 220 GB que dio la primera corrida real entran los 18;
-con una VM de 78 GB se queda afuera `galga_duplicado` (~79 GB de pico) y va a la
-máquina local, que trae los `.sra` de a un organismo con `drive_pull.sh` y los
-purga después. Ver `docs/colab.md` y
+solo los proyectos que entran en **disco y RAM** de esa VM, que §1 del notebook
+mide en cada sesión. Con los 220 GB que dio la primera corrida real el disco
+alcanza para los 18; lo que deja afuera a los dos `galga` es la **memoria**,
+que pide ~9.8 GB de los ~11.4 disponibles. Esos van a la máquina local —que
+trae los `.sra` de a un organismo con `drive_pull.sh` y los purga después— o a
+Colab Pro high-RAM.
+
+**Y se puede trabajar en varias máquinas a la vez.** `scripts/reparto.py` da la
+tanda de cada una y §1c del notebook la toma; los claims en `Drive/90_claims/`
+evitan que dos hagan el mismo proyecto. El techo es 4× y lo marca
+`galga_duplicado`, que sola son ~25 h. Ver `docs/colab.md` y
 `docs/plan_datos_colab.md`.
 
 ## Chequeos
@@ -971,7 +1012,7 @@ purga después. Ver `docs/colab.md` y
 Todo corre sin red y en segundos. Antes de cada push:
 
 ```bash
-./tests/run_all.sh              # 20 bancos, 638 chequeos, binarios falsos en el PATH
+./tests/run_all.sh              # 21 bancos, 682 chequeos, binarios falsos en el PATH
 ./tests/mutar.py                # rompe el codigo y exige que algun banco grite
 ./scripts/check_docs.py         # lo que afirman los docs contra data/
 ./scripts/validate_notebooks.py # los .ipynb parsean y no hay duplicados
@@ -982,7 +1023,7 @@ y `check_docs.py` dos más.
 
 **Un banco que pasa no prueba nada.** Prueba algo el día que se rompe lo que
 cubre y el banco se queja, y la única forma de saberlo es romper el código a
-propósito: eso es `tests/mutar.py`, 101 mutaciones que tienen que dar todas
+propósito: eso es `tests/mutar.py`, 117 mutaciones que tienen que dar todas
 `[OK]`. Un `[HUECO]` es un chequeo que falta; un `[VIEJA]` es una mutación cuyo
 patrón ya no existe, que tampoco prueba nada. Así aparecieron los dos huecos que
 ninguna otra cosa mostró — el veredicto de `perfil` que iba a la tabla sin estar
