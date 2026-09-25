@@ -711,6 +711,33 @@ probabilidad calibrada.
   y dos mutaciones, una de ellas para que `SIGUIENTE` no pueda caer en un
   proyecto que no entra — mandar a gastar horas en algo que se queda sin disco a
   la mitad es peor que no proponer nada.
+- **El cronograma salía de UN punto, y el genoma influye.** Los ~98 h se
+  extrapolaban de `sclsc_duplicado`: 32 M reads contra un genoma de **39 Mb**.
+  `galga` es **1.05 Gb**, 27× más grande. Y no es un detalle de borde: los
+  cuatro proyectos más caros son **el 54% de los reads del set** y tres de ellos
+  tienen genomas de 650 Mb o más, así que si el `s/M read` escala con el genoma
+  el número se va — y conviene saberlo antes de empezar, no a mitad de camino.
+  Por eso existe `data/calibracion.tsv`: §5 del notebook escribe una fila por
+  proyecto alineado (reads, genoma, segundos de **reloj**) y §1 la lee. Con un
+  punto usa un `s/M` plano; con dos o más sobre genomas distintos ajusta
+  `s/M = a + b · genoma_Mb` y lo aplica **por proyecto**. Nadie vuelve a copiar
+  un número a mano — que es exactamente cómo `B_BAM` llegó a estar en 45 sin
+  haberse medido nunca cuando lo real son 14.1.
+  Dos puntos no son un modelo, y la celda no finge que sí: imprime el estimado
+  plano y el ajustado **lado a lado** y avisa si difieren más de un 25%, que es
+  la señal de que hace falta un tercer punto y no de que el segundo sea verdad.
+  **Cuál medir tampoco se elige a ojo**: §1b rankea los pendientes por
+  *(Mb de genoma nuevo) ÷ (horas que cuesta)* y solo entre los que entran en
+  esa VM. Con el estado de hoy propone `gadmo/duplicado` —37 M reads contra
+  670 Mb, ~37 min— que además es el que ya había que rehacer por el kit mixto.
+- **`galga` no entra en la RAM de Colab Free, y eso no lo decía nada.** Con
+  1.05 Gb de ensamblado, `unique_d` pide ~9.8 GB de los ~11.4 disponibles: los
+  dos proyectos de `galga` quedan fuera por **memoria**, no por disco —
+  `galga_primario` entra holgado en disco (27 GB de pico contra 220 libres) y
+  antes salía como "entra". Es marginal y depende del término estimado del
+  índice de bowtie, así que `align.sh genoma` da el número exacto de `unique_d`
+  antes de gastar la hora; pero el default es no mandar a alinear algo que va a
+  morir con `Killed` a las horas.
 - **`yasma align` tarda ~58 s por millón de reads recortados.** Medido dos
   veces sobre `sclsc_duplicado` (32.1 M reads, genoma de 39 Mb, Colab Free):
   26 min de bowtie más 4 de `pysam.sort`, o sea **31 min de reloj de punta a
@@ -944,7 +971,7 @@ purga después. Ver `docs/colab.md` y
 Todo corre sin red y en segundos. Antes de cada push:
 
 ```bash
-./tests/run_all.sh              # 20 bancos, 616 chequeos, binarios falsos en el PATH
+./tests/run_all.sh              # 20 bancos, 638 chequeos, binarios falsos en el PATH
 ./tests/mutar.py                # rompe el codigo y exige que algun banco grite
 ./scripts/check_docs.py         # lo que afirman los docs contra data/
 ./scripts/validate_notebooks.py # los .ipynb parsean y no hay duplicados
@@ -955,7 +982,7 @@ y `check_docs.py` dos más.
 
 **Un banco que pasa no prueba nada.** Prueba algo el día que se rompe lo que
 cubre y el banco se queja, y la única forma de saberlo es romper el código a
-propósito: eso es `tests/mutar.py`, 96 mutaciones que tienen que dar todas
+propósito: eso es `tests/mutar.py`, 101 mutaciones que tienen que dar todas
 `[OK]`. Un `[HUECO]` es un chequeo que falta; un `[VIEJA]` es una mutación cuyo
 patrón ya no existe, que tampoco prueba nada. Así aparecieron los dos huecos que
 ninguna otra cosa mostró — el veredicto de `perfil` que iba a la tabla sin estar

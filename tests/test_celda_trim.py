@@ -18,8 +18,17 @@ from contextlib import redirect_stdout
 
 RAIZ = pathlib.Path(__file__).resolve().parent.parent
 NB = RAIZ / "notebooks" / "20_alinear.ipynb"
-CELDA_3B = 15
-CELDA_3C = 17
+def celda(marca):
+    """La celda por lo que dice, no por su indice: agregar una celda arriba no
+    tiene por que romper el banco de otra — y ya paso al insertar §1b."""
+    hall = [i for i, c in enumerate(json.loads(NB.read_text())["cells"])
+            if c["cell_type"] == "code" and marca in "".join(c["source"])]
+    assert len(hall) == 1, f"{marca!r} aparece {len(hall)} veces en {NB.name}"
+    return hall[0]
+
+
+CELDA_3B = celda("MALAS.append")
+CELDA_3C = celda('FILAS = ' + chr(39) * 3)
 
 FALLAS = 0
 

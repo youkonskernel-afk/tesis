@@ -211,9 +211,38 @@ MUTACIONES = [
      [('    if len(vistas) > 1:', '    if False:')]),
     # §1 de 20_alinear: un proyecto que no entra en disco tiene que saberse en
     # un segundo, no a las seis horas.
-    ("alinear: un proyecto que no entra se da por bueno",
+    ("alinear: un proyecto que no entra en disco se da por bueno",
      "notebooks/20_alinear.ipynb",
-     [('    entra = pico + MARGEN < libre', '    entra = True')]),
+     [('    cabe_disco = pico + MARGEN_DISCO < libre', '    cabe_disco = True')]),
+    # unique_d son 8 B por base del genoma y se arma antes del primer read: un
+    # proyecto chico contra un genoma grande entra en disco y muere por memoria
+    # a las horas. Asi murio gadmo_duplicado, con `Killed` y sin traceback.
+    ("alinear: la RAM deja de decidir", "notebooks/20_alinear.ipynb",
+     [('    cabe_ram = True if (ram is None or nb_ == 0) else (pide + MARGEN_RAM < ram)',
+       '    cabe_ram = True')]),
+    # Un genoma que no se pudo medir mandado a la maquina local cuesta tanto
+    # como uno que no entra dado por bueno.
+    ("alinear: sin genoma medible declara que no entra",
+     "notebooks/20_alinear.ipynb",
+     [('True if (ram is None or nb_ == 0) else', 'False if (ram is None or nb_ == 0) else')]),
+    # El cronograma salia de UN punto contra un genoma de 39 Mb, y galga es
+    # 1.05 Gb. Si el s/M escala con el genoma, ~98 h es un numero equivocado.
+    ("alinear: el ajuste medido se ignora y vuelve la constante",
+     "notebooks/20_alinear.ipynb",
+     [('    if AJUSTE is None:', '    if True:')]),
+    ("alinear: no avisa cuando el ajustado se va del plano",
+     "notebooks/20_alinear.ipynb",
+     [('    if abs(horas_tot - horas_plano) > 0.25 * horas_plano:',
+       '    if False:')]),
+    # §1b: la prueba barata es el punto que mas reduce la incertidumbre POR
+    # HORA, no el mas barato ni el mas grande.
+    ("alinear1b: propone el mas barato en vez del mas informativo",
+     "notebooks/20_alinear.ipynb",
+     [('    _cand.append((salto / horas, clave, n, kept / 1e6, mb, horas, salto))',
+       '    _cand.append((1 / horas, clave, n, kept / 1e6, mb, horas, salto))')]),
+    ("alinear1b: propone uno que no entra en esta VM",
+     "notebooks/20_alinear.ipynb",
+     [('for clave in ENTRAN:', 'for clave in ENTRAN + NO_ENTRAN:')]),
     ("alinear: mide los reads crudos y no lo que sobrevive al recorte",
      "notebooks/20_alinear.ipynb",
      [("int(r['read_count']) * _ret.get((r['org'], r['bioproject']), 80) / 100",
@@ -229,7 +258,7 @@ MUTACIONES = [
        "hecho = False")]),
     ("alinear: SIGUIENTE puede caer en uno que no entra",
      "notebooks/20_alinear.ipynb",
-     [('    elif entra:', '    elif True:')]),
+     [('    elif cabe_disco and cabe_ram:', '    elif True:')]),
     # §3b/§3c: el paso siguiente a que el recorte corte. Transcribir seis
     # accessions a mano desde una tabla formateada es donde se cuela el error.
     ("celda3b: MALAS deja de salir de la tabla", "notebooks/20_alinear.ipynb",
@@ -248,7 +277,7 @@ MUTACIONES = [
      [("if FILAS:", "if True:")]),
     ("alinear: B_BAM vuelve a la estimacion sin medir",
      "notebooks/20_alinear.ipynb",
-     [('B_BAM    = 16', 'B_BAM    = 45')]),
+     [('B_BAM  = 16', 'B_BAM    = 45')]),
     # §1 del notebook. Estuvo mal tres veces, asi que se muta igual que el
     # codigo de scripts/.
     ("celda1: vuelve a reusar la copia siempre",

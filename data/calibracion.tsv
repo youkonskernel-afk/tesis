@@ -1,0 +1,16 @@
+# Lo MEDIDO en cada proyecto alineado, que es de donde §1 de 20_alinear.ipynb
+# saca el cronograma. Lo escribe §5 del notebook; una fila por proyecto.
+#
+# Existe porque el estimado de ~98 h salia de UN punto —sclsc_duplicado, 32 M
+# reads contra 39 Mb— y el genoma influye: galga es 1.05 Gb, 27x mas grande, y
+# los cuatro proyectos mas caros son el 54% de los reads del set. Con dos o mas
+# genomas de distinto tamaño, §1 ajusta s/M = a + b*genoma_Mb en vez de
+# arrastrar una constante escrita a mano. Ese fue el modo de fallo de B_BAM,
+# que estuvo en 45 sin haberse medido nunca cuando lo real son 14.1.
+#
+# seg_reloj es el reloj de punta a punta de la celda, NO la suma de lo que YASMA
+# dice de si mismo: entre `time elapsed` y `Sorting` hay una etapa —escribir la
+# tabla de abundancia— que no aparece en ninguna de las dos, y por eso el primer
+# valor que se anoto fueron 49 s/M en vez de 58.
+proyecto	org	rol	accession	genoma_mb	librerias	reads_trim	seg_reloj	s_por_m	b_bam	b_fqgz	fecha_utc
+sclsc_duplicado	sclsc	duplicado	GCF_000146945.2	39	2	32146090	1860	57.9	14.1	21.8	2026-09-22T00:00:00Z
