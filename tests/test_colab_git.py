@@ -138,6 +138,33 @@ with tempfile.TemporaryDirectory() as td:
     chk("y NO perdió lo del otro",
         en_remoto(bare, "data/otro.tsv") == "de la otra sesión\n")
 
+    print("== 6b. y rebasa aunque el clon tenga cambios sin commitear")
+    # §3c escribe data/adaptadores.tsv en el working tree y §6 no siempre lo
+    # incluye. Un rebase sobre un arbol sucio se niega: sin --autostash el
+    # reintento fallaba en silencio y el push se daba por rechazado dos veces,
+    # con el commit vivo solo en una VM efimera.
+    bare, clon = escenario(tmp / "d6b")
+    otro = tmp / "d6b" / "otro"
+    subprocess.run(["git", "clone", "-q", str(bare), str(otro)], check=True)
+    for k, v in (("user.name", "o"), ("user.email", "o@o")):
+        git(otro, "config", k, v)
+    (otro / "data" / "otro.tsv").write_text("movió la rama\n")
+    git(otro, "add", "data/otro.tsv"); git(otro, "commit", "-qm", "otra")
+    git(otro, "push", "-q", "origin", "main")
+
+    (clon / "scripts" / "x.sh").write_text("#!/bin/sh\n# sucio, sin commitear\n")
+    (clon / "data" / "sra_md5.tsv").write_text("org\trun\nee\tSRR5\n")
+    try:
+        s = colab_git.empujar(clon, ["data/sra_md5.tsv"], "con el arbol sucio", revisar=False)
+        chk("empuja igual", "rebasado" in s, s)
+    except RuntimeError as e:
+        chk("empuja igual", False, str(e)[:200])
+    chk("el remoto tiene lo mío",
+        en_remoto(bare, "data/sra_md5.tsv") == "org\trun\nee\tSRR5\n")
+    chk("lo sucio sigue en el clon y NO se empujó",
+        "sucio" in (clon / "scripts" / "x.sh").read_text()
+        and "sucio" not in (en_remoto(bare, "scripts/x.sh") or ""))
+
     print("== 7. un push que no se puede resolver revienta")
     bare2 = tmp / "c" / "no_existe.git"
     (clon / "data" / "sra_md5.tsv").write_text("org\trun\ndd\tSRR4\n")

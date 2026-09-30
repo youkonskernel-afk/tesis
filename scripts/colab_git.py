@@ -193,7 +193,17 @@ def empujar(clon, rutas, mensaje, rama=None, revisar=True, autor=None):
     # UNA vez rebasando encima, y si vuelve a fallar revienta (regla 3).
     _deshallow(clon, tok)
     if _git(clon, "fetch", destino, rama, tok=tok).returncode == 0:
-        _git(clon, "rebase", "FETCH_HEAD", tok=tok)
+        # --autostash: el clon casi nunca esta limpio —§3c escribe
+        # adaptadores.tsv en el working tree y §6 no siempre lo commitea— y un
+        # rebase sobre un arbol sucio se niega. Sin esto el reintento fallaba
+        # en silencio y el push se daba por rechazado dos veces.
+        rb = _git(clon, "rebase", "--autostash", "FETCH_HEAD", tok=tok)
+        if rb.returncode != 0:
+            _git(clon, "rebase", "--abort", tok=tok)
+            raise RuntimeError(
+                "el rebase sobre la rama remota fallo (conflicto). El commit esta "
+                "HECHO en el clon, que es efimero: si cerras la sesion se pierde.\n"
+                + rb.stderr + rb.stdout)
         r2 = _git(clon, "push", destino, f"HEAD:{rama}", tok=tok)
         if r2.returncode == 0:
             return f"empujado a {rama} (rebasado sobre lo que habia):\n{diff}"

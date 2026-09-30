@@ -240,6 +240,11 @@ MUTACIONES = [
     # --- colab_git.py: empujar a GitHub desde Colab ---
     # Una VM de Colab tiene Drive montado al lado con ~190 GB de .sra. Un
     # `add -A` desde ahi es exactamente donde se cuela lo que no va al repo.
+    # §3c deja adaptadores.tsv modificado en el clon: un rebase sin
+    # --autostash se niega y el push se da por perdido.
+    ("colab_git: el rebase del reintento vuelve a exigir el arbol limpio", "scripts/colab_git.py",
+     [('rb = _git(clon, "rebase", "--autostash", "FETCH_HEAD", tok=tok)',
+       'rb = _git(clon, "rebase", "FETCH_HEAD", tok=tok)')]),
     ("colab_git: vuelve a `git add -A`", "scripts/colab_git.py",
      [('"add", "--", *limpias', '"add", "-A"')]),
     ("colab_git: deja pasar rutas fuera de data/", "scripts/colab_git.py",
