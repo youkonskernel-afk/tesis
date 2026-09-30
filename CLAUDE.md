@@ -850,6 +850,20 @@ probabilidad calibrada.
   pasa del 50%. Lo que queda entre las dos (`XY:Z:Q`, por encima de
   `--max_random 3`) alineó pero no se colocó, así que `ALIN + SIN_AL` no suma
   100 y no tiene por qué.
+- **`align.sh ledger` reescribía `data/alineamientos.tsv` solo con lo que había
+  en disco, y en Colab eso es UN proyecto.** El §6 de cada sesión habría
+  borrado el registro de todas las anteriores —y con varias máquinas en
+  paralelo, cada push el de las otras—, en el único fichero que dice contra qué
+  ensamblado se alineó cada BAM. No tenía banco, así que nada lo delataba; se
+  encontró revisando el notebook antes de la primera corrida en serio. Ahora
+  conserva las filas de otras sesiones y solo reemplaza la del proyecto que se
+  re-alineó ahí (banco en `test_align.sh` 10d/10e, y una mutación).
+  Del mismo palo: el `alineado.tsv` de cada proyecto vive en `/content` y muere
+  con la VM, y el de `sclsc_duplicado` **se perdió** porque §6 no se corrió con
+  push. Su fila se reconstruyó desde git —accession y sha256 de
+  `genomas.sha256`, parámetros explícitos de `align.sh`— y está marcada como
+  reconstruida. §5 ahora deja una copia en Drive al lado del BAM, para que no
+  dependa de acordarse del push.
 - **El BAM vive en dos lugares a propósito, y son hard links.** `yasma align` lo
   deja en `<proyecto>/align/alignment.bam` y anota esa ruta absoluta en
   `inputs.json`, que es de donde `tradeoff` la lee; moverlo rompe la anotación.
@@ -1012,7 +1026,7 @@ evitan que dos hagan el mismo proyecto. El techo es 4× y lo marca
 Todo corre sin red y en segundos. Antes de cada push:
 
 ```bash
-./tests/run_all.sh              # 21 bancos, 682 chequeos, binarios falsos en el PATH
+./tests/run_all.sh              # 21 bancos, 691 chequeos, binarios falsos en el PATH
 ./tests/mutar.py                # rompe el codigo y exige que algun banco grite
 ./scripts/check_docs.py         # lo que afirman los docs contra data/
 ./scripts/validate_notebooks.py # los .ipynb parsean y no hay duplicados
@@ -1023,7 +1037,7 @@ y `check_docs.py` dos más.
 
 **Un banco que pasa no prueba nada.** Prueba algo el día que se rompe lo que
 cubre y el banco se queja, y la única forma de saberlo es romper el código a
-propósito: eso es `tests/mutar.py`, 117 mutaciones que tienen que dar todas
+propósito: eso es `tests/mutar.py`, 118 mutaciones que tienen que dar todas
 `[OK]`. Un `[HUECO]` es un chequeo que falta; un `[VIEJA]` es una mutación cuyo
 patrón ya no existe, que tampoco prueba nada. Así aparecieron los dos huecos que
 ninguna otra cosa mostró — el veredicto de `perfil` que iba a la tabla sin estar

@@ -532,7 +532,7 @@ cmd_verificar() {
 # y con que parametros se alineo cada proyecto. Mismo criterio que
 # data/genomas.sha256 y data/sra_md5.tsv.
 cmd_ledger() {
-  local salida="${1:-$ROOT/data/alineamientos.tsv}" org rol dir f n=0
+  local salida="${1:-$ROOT/data/alineamientos.tsv}" org rol dir f n=0 viejos=0
   local tmp; tmp=$(mktemp); trap 'rm -f "$tmp"' RETURN
   while IFS=$'\t' read -r org rol; do
     f="$PROY_DIR/${org}_${rol}/$LEDGER_ALIN"
@@ -542,6 +542,22 @@ cmd_ledger() {
     tail -n +2 "$f" | tail -1 >> "$tmp"
     n=$((n+1))
   done < <(proyectos "")
+
+  # LAS FILAS QUE YA ESTABAN SE CONSERVAN. En Colab la VM es efimera y cada
+  # sesion tiene UN proyecto en PROY_DIR: si el ledger se reescribiera solo con
+  # lo que hay en disco, el §6 de cada sesion borraria el registro de todas las
+  # anteriores — y con varias maquinas en paralelo, cada push el de las otras.
+  # Una fila vieja se reemplaza solo si ese proyecto se re-alineo aca.
+  if [[ -f "$salida" ]]; then
+    local ahora; ahora=$(cut -f1 "$tmp")
+    while IFS= read -r fila; do
+      [[ -z "$fila" || "$fila" == \#* || "$fila" == proyecto$'\t'* ]] && continue
+      if ! grep -qxF -- "${fila%%$'\t'*}" <<<"$ahora"; then
+        printf '%s\n' "$fila" >> "$tmp"; viejos=$((viejos+1))
+      fi
+    done < "$salida"
+  fi
+
   # El bloque de comentarios de arriba del fichero se conserva: documenta las
   # columnas y por que existe, y regenerar el ledger no tiene por que borrarlo.
   {
@@ -549,8 +565,8 @@ cmd_ledger() {
     printf 'proyecto\torg\trol\taccession\tsha256_gz\tmax_multi\tmax_random\tunique_locality\toffrate\tcorridas\tfecha_utc\n'
     sort "$tmp"
   } > "$salida.nuevo" && mv "$salida.nuevo" "$salida"
-  echo "$n proyecto(s) -> $salida"
-  [[ $n -gt 0 ]] || echo "   (ninguno alineado todavía)" >&2
+  echo "$n proyecto(s) de este disco + $viejos que ya estaban -> $salida"
+  [[ $((n + viejos)) -gt 0 ]] || echo "   (ninguno alineado todavía)" >&2
 }
 
 [[ $# -ge 1 ]] || { sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }

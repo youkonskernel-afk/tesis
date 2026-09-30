@@ -20,4 +20,13 @@
 #   corridas        cuantas librerias entraron al BAM
 #
 # Vacio salvo la cabecera = todavia no se alineo nada.
+#
+# RECONSTRUIDA: sclsc_duplicado. Se alineo el 2026-09-22 en Colab y su BAM esta
+# en Drive (10_bam/sclsc/duplicado.bam, verificado), pero §6 no se corrio con
+# push y el alineado.tsv del proyecto murio con la VM. La fila se rehizo desde
+# lo que esta en git: accession y sha256 de data/genomas.sha256 —align.sh no
+# alinea si el .gz no coincide con ese ledger—, los parametros son los que
+# align.sh pasa explicitos y no cambiaron desde entonces, y las 2 corridas son
+# las del manifiesto. La hora exacta no se conoce; va la fecha del dia.
 proyecto	org	rol	accession	sha256_gz	max_multi	max_random	unique_locality	offrate	corridas	fecha_utc
+sclsc_duplicado	sclsc	duplicado	GCF_000146945.2	540c965242beb66c3c16b28f6e385d0214c1715eab133a96d5d9ffbc5c2c71b3	50	3	50	3	2	2026-09-22T00:00:00Z

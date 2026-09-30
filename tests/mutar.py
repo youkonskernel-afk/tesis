@@ -163,6 +163,11 @@ MUTACIONES = [
      [('    enlazar_bam "$org" "$rol" "$dir"', '    :')]),
     ("align: no queda registrado contra que genoma se alineo", "scripts/align.sh",
      [('    registrar "$dir" "$org" "$rol" "$acc" "$esp"', '    :')]),
+    # En Colab cada sesion tiene UN proyecto en disco: un ledger que se
+    # reescribe solo con eso borra el registro de todas las sesiones anteriores.
+    ("align: ledger vuelve a pisar las filas de otras sesiones", "scripts/align.sh",
+     [("""        printf '%s\\n' "$fila" >> "$tmp"; viejos=$((viejos+1))""",
+       '        :')]),
     # El parche de yasma: sin el, la etapa `over` levanta un bowtie por
     # libreria que nadie lee ni espera y el proyecto muere por OOM a las horas.
     ("align: alinea aunque falte el parche de yasma", "scripts/align.sh",

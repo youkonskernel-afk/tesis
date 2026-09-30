@@ -309,6 +309,36 @@ tiene "correr también"            "RAM: pide"                  "$S"
 S=$(corre plan)
 tiene "y plan trae la columna"    "RAM_GB"                     "$S"
 
+echo "== 10d. ledger: una sesión nueva NO borra lo que alinearon las anteriores"
+# En Colab la VM es efimera: cada sesion tiene UN proyecto en PROY_DIR. Si el
+# ledger se reescribiera solo con lo que hay en disco, el §6 de cada sesion
+# borraria el registro de las anteriores — y con varias maquinas en paralelo,
+# cada push el de las otras. Es el unico registro de contra que se alineo.
+LEDG="$TMP/alineamientos.tsv"
+printf '# comentario que documenta el fichero\n' > "$LEDG"
+printf 'proyecto\torg\trol\taccession\tsha256_gz\tmax_multi\tmax_random\tunique_locality\toffrate\tcorridas\tfecha_utc\n' >> "$LEDG"
+printf 'zz_primario\tzz\tprimario\tGCF_OTRA.1\tabc\t50\t3\t50\t3\t7\t2026-09-20T00:00:00Z\n' >> "$LEDG"
+printf 'aa_primario\taa\tprimario\tGCF_VIEJA.1\tviejo\t50\t3\t50\t3\t1\t2026-09-20T00:00:00Z\n' >> "$LEDG"
+sembrar_trim; corre correr >/dev/null 2>&1
+S=$(corre ledger "$LEDG"); RC=$?
+[[ $RC -eq 0 ]] && ok "exit 0" || mal "exit 0 (rc=$RC)"
+L=$(cat "$LEDG")
+tiene "conserva el de otra sesión"   "zz_primario"$'\t'"zz"      "$L"
+tiene "agrega los de este disco"      "aa_duplicado"               "$L"
+tiene "el re-alineado se actualiza"   "GCF_TEST.1"                 "$(grep '^aa_primario' "$LEDG")"
+notiene "y no queda la fila vieja"    "GCF_VIEJA.1"                "$L"
+[[ $(grep -c '^aa_primario' "$LEDG") -eq 1 ]] && ok "una sola fila por proyecto" \
+  || mal "una sola fila por proyecto ($(grep -c '^aa_primario' "$LEDG"))"
+tiene "conserva los comentarios"      "# comentario que documenta" "$L"
+tiene "y lo dice"                     "1 que ya estaban"           "$S"
+
+echo "== 10e. ledger: una VM vacía no borra nada"
+rm -rf "$PROY"; mkdir -p "$PROY"
+S=$(corre ledger "$LEDG")
+[[ $(grep -vc '^#\|^proyecto' "$LEDG") -eq 3 ]] && ok "siguen las 3 filas" \
+  || mal "siguen las 3 filas ($(grep -vc '^#\|^proyecto' "$LEDG"))"
+sembrar_trim
+
 echo "== 11. errores"
 tiene "modo desconocido"  "modo desconocido"  "$(corre nosequé 2>&1 || true)"
 S=$(corre plan noexiste 2>&1 || true)
