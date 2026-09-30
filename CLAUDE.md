@@ -386,6 +386,19 @@ probabilidad calibrada.
   filas con la clave llena, y **`trim.sh rehacer <org>/<rol> RUN...`** saca esas
   corridas del registro y borra su `.t.fq.gz`, porque el recorte es idempotente
   y si no las saltea para siempre.
+  **Y no eran otro kit: venían ya recortadas.** `perfil --corridas` midió las
+  12 y las 6 malas dan **reads de 22 nt con 0% de adaptador** —el read *es* el
+  inserto—, contra 51 nt y 84-90% de RA3 en las otras seis. Es el caso de
+  `cloro PRJEB43636`, pero en 6 corridas sueltas de un proyecto que por lo demás
+  es RA3: con `--trimmed-only`, cutadapt tiraba casi todo lo que no tenía
+  adaptador. Llevan fila `PRE-TRIMMED` por corrida en `data/adaptadores.tsv`, y
+  `test_trim.sh` 14e cubre justo ese caso mixto —la fila de la corrida le gana a
+  la del proyecto, su fastq no se borra, y `verificar` no la marca `VACIA`—.
+  Dos consecuencias: el proyecto retiene bastante más de lo que decía el 51%
+  (esas 6 entran enteras, ~39 M reads más), y esas 6 **no pasan por la ventana
+  15-50 en el recorte**; la aplica `yasma align` (`XY:Z:F`), igual que en `cloro`.
+  Y §6 del notebook ahora empuja también `adaptadores.tsv`: §3c escribía las
+  filas en el clon de la VM y se habrían perdido con ella.
   Lo que **sí** funcionó es el guardia: `trim.sh verificar` las marcó `VACIA`,
   el `assert` de §3 cortó, y nada llegó al alineamiento. Es el mismo caso de
   `maggi` un nivel más abajo — ahí eran dos BioProjects con kits distintos, acá
@@ -1026,7 +1039,7 @@ evitan que dos hagan el mismo proyecto. El techo es 4× y lo marca
 Todo corre sin red y en segundos. Antes de cada push:
 
 ```bash
-./tests/run_all.sh              # 21 bancos, 691 chequeos, binarios falsos en el PATH
+./tests/run_all.sh              # 21 bancos, 698 chequeos, binarios falsos en el PATH
 ./tests/mutar.py                # rompe el codigo y exige que algun banco grite
 ./scripts/check_docs.py         # lo que afirman los docs contra data/
 ./scripts/validate_notebooks.py # los .ipynb parsean y no hay duplicados

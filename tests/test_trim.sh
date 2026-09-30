@@ -377,6 +377,32 @@ tiene "y exige <org>/<rol>"   "uso:"                 "$S"
 S=$(corre rehacer aa/primario SRR_NOEXISTE 2>&1 || true)
 tiene "y avisa si no estaba"  "no estaban en el registro"  "$S"
 
+echo "== 14e. un proyecto con kit RA3 y ALGUNAS corridas ya recortadas"
+# Es gadmo PRJNA328800 medido: 6 de 12 corridas traen reads de 22 nt sin
+# adaptador —vienen ya recortadas— y con la fila RA3 del proyecto cutadapt
+# (--trimmed-only) las tiraba casi enteras. La fila PRE-TRIMMED de la corrida
+# tiene que ganarle a la del proyecto, su fastq tiene que quedar (ES su
+# salida), y verificar no la puede marcar VACIA.
+tabla_completa
+printf 'aa\tPRJ_A\tSRR_A2\t-\tPRE-TRIMMED\t0\t-\t100\tYA RECORTADA\t2026-09-30\n' >> "$TABLA"
+# El escenario 14 borra SRR_A2.sra a proposito: sin reponerlo, esta corrida
+# ni entra y el escenario pasaria por no probar nada.
+head -c 2048 /dev/zero > "$DEST/aa/SRR_A2.sra"
+rm -rf "$TMP/trim/aa_primario"; : > "$LOG_YA"
+S=$(corre correr aa/primario); RC=$?
+[[ $RC -eq 0 ]] && ok "exit 0" || mal "exit 0 (rc=$RC)"
+LY=$(cat "$LOG_YA")
+tiene "la ya recortada va PRE-TRIMMED"   '"SRR_A2.fastq.gz": "PRE-TRIMMED"'   "$LY"
+tiene "y la otra sigue con RA3"          "\"SRR_A1.fastq\": \"$RA3\""         "$LY"
+[[ -s "$TMP/trim/aa_primario/untrimmed/SRR_A2.fastq.gz" ]] \
+  && ok "su fastq queda, comprimido" || mal "su fastq queda, comprimido"
+[[ ! -e "$TMP/trim/aa_primario/untrimmed/SRR_A1.fastq" ]] \
+  && ok "el de la RA3 se borra" || mal "el de la RA3 se borra"
+S=$(corre verificar aa/primario)
+L2=$(grep 'SRR_A2' <<<"$S")
+tiene "verificar la reconoce"            "pre-trimmed"   "$L2"
+notiene "y no la marca VACIA"            "VACIA"         "$L2"
+
 echo "== 15. errores"
 tiene "modo desconocido"            "modo desconocido"             "$(corre nosequé 2>&1 || true)"
 S=$(MANIFEST="$TMP/noexiste.tsv" ADAPTADORES_TSV="$TABLA" SRA_DEST="$DEST" \
