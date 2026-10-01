@@ -394,6 +394,10 @@ probabilidad calibrada.
   adaptador. Llevan fila `PRE-TRIMMED` por corrida en `data/adaptadores.tsv`, y
   `test_trim.sh` 14e cubre justo ese caso mixto —la fila de la corrida le gana a
   la del proyecto, su fastq no se borra, y `verificar` no la marca `VACIA`—.
+  Y con filas por corrida, **la retención esperada se busca por corrida**: §1 y
+  `reparto.py` la buscaban por `(org, bioproject)` y la última fila pisaba a las
+  demás, así que `gadmo_duplicado` se estimaba con el 100% de una
+  `PRE-TRIMMED` para las 12 —73 M reads en vez de ~53—.
   Dos consecuencias: el proyecto retiene bastante más de lo que decía el 51%
   (esas 6 entran enteras, ~39 M reads más), y esas 6 **no pasan por la ventana
   15-50 en el recorte**; la aplica `yasma align` (`XY:Z:F`), igual que en `cloro`.
@@ -790,6 +794,9 @@ probabilidad calibrada.
   de calibración lleva `indice_en_reloj`, y §1 y `reparto.py` saltean para la
   recta las que dicen `si`. La de `gadmo_primario` queda marcada así; el
   segundo punto limpio a 670 Mb lo va a dar `gadmo_duplicado`.
+  **Medido después, ya afuera del reloj: el índice de `phypa` (472 Mb) tardó
+  26 min con 2 hilos.** O sea que en `gadmo` (670 Mb, un hilo) el índice
+  puede explicar fácil una hora de aquellas 2.4 h.
   Lo que sí vale de esa corrida son los bytes: **20.2 B/read de BAM y 33.1 en
   `.t.fq.gz`**, contra 14.1 y 21.8 de `sclsc`. Era lo esperado —se había dejado
   escrito que un read colocado ocupa más que uno sin alinear, y `gadmo` alinea
@@ -1057,7 +1064,7 @@ evitan que dos hagan el mismo proyecto. El techo es 4× y lo marca
 Todo corre sin red y en segundos. Antes de cada push:
 
 ```bash
-./tests/run_all.sh              # 21 bancos, 716 chequeos, binarios falsos en el PATH
+./tests/run_all.sh              # 21 bancos, 718 chequeos, binarios falsos en el PATH
 ./tests/mutar.py                # rompe el codigo y exige que algun banco grite
 ./scripts/check_docs.py         # lo que afirman los docs contra data/
 ./scripts/validate_notebooks.py # los .ipynb parsean y no hay duplicados
@@ -1068,7 +1075,7 @@ y `check_docs.py` dos más.
 
 **Un banco que pasa no prueba nada.** Prueba algo el día que se rompe lo que
 cubre y el banco se queja, y la única forma de saberlo es romper el código a
-propósito: eso es `tests/mutar.py`, 123 mutaciones que tienen que dar todas
+propósito: eso es `tests/mutar.py`, 125 mutaciones que tienen que dar todas
 `[OK]`. Un `[HUECO]` es un chequeo que falta; un `[VIEJA]` es una mutación cuyo
 patrón ya no existe, que tampoco prueba nada. Así aparecieron los dos huecos que
 ninguna otra cosa mostró — el veredicto de `perfil` que iba a la tabla sin estar

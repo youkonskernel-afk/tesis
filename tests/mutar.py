@@ -249,6 +249,11 @@ MUTACIONES = [
        "                if False:\n                    continue")]),
     ("alinear: los bytes por read ignoran lo medido", "notebooks/20_alinear.ipynb",
      [("if _mb_bam: B_BAM = max(B_BAM, max(_mb_bam))", "pass")]),
+    # Con una sola clave (org, bioproject) la ultima fila por corrida pisaba a
+    # las demas: gadmo_duplicado se estimaba en 73 M reads en vez de ~53.
+    ("reparto: la retencion vuelve a ser por proyecto", "scripts/reparto.py",
+     [("            rr = ret.get((r['org'], r['bioproject'], r['run']),",
+       "            rr = ret.get((r['org'], r['bioproject'], '-'),")]),
     # --- colab_git.py: empujar a GitHub desde Colab ---
     # Una VM de Colab tiene Drive montado al lado con ~190 GB de .sra. Un
     # `add -A` desde ahi es exactamente donde se cuela lo que no va al repo.
@@ -315,8 +320,11 @@ MUTACIONES = [
      [('for clave in ENTRAN:', 'for clave in ENTRAN + NO_ENTRAN:')]),
     ("alinear: mide los reads crudos y no lo que sobrevive al recorte",
      "notebooks/20_alinear.ipynb",
-     [("int(r['read_count']) * _ret.get((r['org'], r['bioproject']), 80) / 100",
-       "int(r['read_count'])")]),
+     [("proy[k][1] += int(r['read_count']) * _r / 100",
+       "proy[k][1] += int(r['read_count'])")]),
+    ("alinear: la retencion vuelve a ser por proyecto", "notebooks/20_alinear.ipynb",
+     [("_r = _ret.get((r['org'], r['bioproject'], r['run']),",
+       "_r = _ret.get((r['org'], r['bioproject'], '-'),")]),
     # B_BAM estuvo en 45 sin haberse medido nunca: el pico de BAM salia 3x. Un
     # numero inventado en una constante no falla ruidosamente, solo manda
     # proyectos que entran a la maquina local.

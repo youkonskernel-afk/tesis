@@ -160,6 +160,24 @@ with tempfile.TemporaryDirectory() as d:
     chk("saltea la marcada", (670.0, 156.0) not in pts, pts)
     chk("y deja las otras (vacía cuenta como limpia)", len(pts) == 2, pts)
 
+print("== 11c. la retención es por corrida si hay fila de esa corrida")
+# Con una sola clave (org, bioproject) la ULTIMA fila por corrida pisaba a las
+# demas: gadmo_duplicado tomaba el 100% de una PRE-TRIMMED para las 12 y se
+# estimaba en 73 M reads en vez de ~53.
+with tempfile.TemporaryDirectory() as d:
+    dd = pathlib.Path(d) / "data"; dd.mkdir()
+    (dd / "adaptadores.tsv").write_text(
+        "org\tbioproject\trun\tfamilia\tsecuencia\tadapt_pct\tinserto_modal\tretencion_est\tveredicto\tfecha_utc\n"
+        "aa\tP\t-\tRA3\tX\t90\t22\t50\tok\tf\n"
+        "aa\tP\tR2\t-\tPRE-TRIMMED\t0\t-\t100\tok\tf\n")
+    (dd / "srr_manifest.tsv").write_text(
+        "org\trun\tbioproject\trol\tread_count\n"
+        "aa\tR1\tP\tprimario\t1000000\naa\tR2\tP\tprimario\t1000000\n"
+        "aa\tR3\tP\tprimario\t1000000\n")
+    c, _ = R.costos(d, {"aa": 10}, calib=[])
+    t = c[("aa", "primario")]["trim"]
+    chk("R2 al 100% y las otras al 50%", abs(t - 2_000_000) < 1, t)
+
 print("== 12. el resumen NO cuenta en el speedup lo que no repartió")
 # Decia 4.5x mientras las 34 h de galga no estaban en ninguna maquina. Es el
 # numero que la persona lee para decidir cuantas maquinas conseguir.

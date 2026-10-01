@@ -71,9 +71,11 @@ def correr(tmp, corridas, libre_gb, retenciones, en_drive=(),
     (clon / "data" / "srr_manifest.tsv").write_text("\n".join([HDR] + corridas) + "\n")
     (clon / "data" / "adaptadores.tsv").write_text(
         "# tabla\n"
-        "org\tbioproject\tfamilia\tsecuencia\tadapt_pct\tinserto_modal\tretencion_est\tveredicto\tfecha\n"
-        + "".join(f"{o}\t{p}\tRA3\tACGT\t100\t22\t{r}\tPARECE sRNA-seq\t2026-09-23\n"
-                 for (o, p), r in retenciones.items()))
+        "org\tbioproject\trun\tfamilia\tsecuencia\tadapt_pct\tinserto_modal\tretencion_est\tveredicto\tfecha\n"
+        # Clave (org, bioproject) = fila del proyecto; (org, bioproject, run) =
+        # fila de esa corrida, que le gana.
+        + "".join(f"{k[0]}\t{k[1]}\t{k[2] if len(k) > 2 else '-'}\tRA3\tACGT\t100\t22\t{r}\tPARECE sRNA-seq\t2026-09-23\n"
+                 for k, r in retenciones.items()))
 
     orgs = sorted({c.split("\t")[0] for c in corridas})
     (clon / "data" / "genomas.sha256").write_text(
@@ -337,6 +339,18 @@ with tempfile.TemporaryDirectory() as d:
     _, ns17b = correr(tmp / "v", corr12, libre_gb=200, retenciones=ret12,
                       genomas={"galga": 1000}, calib=[(39, 58, "no", 10)])
     chk("y no baja del piso", ns17b["B_BAM"] == 16, ns17b["B_BAM"])
+
+    print("== 18. la retención es por corrida si la corrida tiene su fila")
+    # gadmo_duplicado: 6 corridas RA3 y 6 PRE-TRIMMED. Con una sola clave por
+    # proyecto la ultima fila pisaba a las demas y se estimaba con 100% para
+    # las 12: 73 M reads en vez de ~53.
+    _, ns18 = correr(
+        tmp / "w", [corrida("aa", "R1", "P", "primario", 10_000_000),
+                    corrida("aa", "R2", "P", "primario", 10_000_000)],
+        libre_gb=200, retenciones={("aa", "P"): 50, ("aa", "P", "R2"): 100})
+    chk("R1 al 50% y R2 al 100%",
+        abs(ns18["proy"][("aa", "primario")][1] - 15_000_000) < 1,
+        ns18["proy"][("aa", "primario")][1])
 
 print()
 if FALLAS:

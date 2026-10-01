@@ -128,14 +128,19 @@ def costos(clon, genomas_mb, calib=None):
     ret = {}
     with open(clon / 'data' / 'adaptadores.tsv') as f:
         for r in csv.DictReader((l for l in f if not l.startswith('#')), delimiter='\t'):
-            ret[(r['org'], r['bioproject'])] = float(r['retencion_est'])
+            # Por corrida si hay fila de esa corrida: con una sola clave la
+            # ultima fila por corrida pisaba a las demas del proyecto.
+            run = (r.get('run') or '-').strip()
+            ret[(r['org'], r['bioproject'], run)] = float(r['retencion_est'])
 
     proy = collections.defaultdict(lambda: [0, 0.0])
     with open(clon / 'data' / 'srr_manifest.tsv') as f:
         for r in csv.DictReader(f, delimiter='\t'):
             k = (r['org'], r['rol'])
             proy[k][0] += 1
-            proy[k][1] += int(r['read_count']) * ret.get((r['org'], r['bioproject']), 80) / 100
+            rr = ret.get((r['org'], r['bioproject'], r['run']),
+                         ret.get((r['org'], r['bioproject'], '-'), 80))
+            proy[k][1] += int(r['read_count']) * rr / 100
 
     out = {}
     for (org, rol), (n, kept) in proy.items():
