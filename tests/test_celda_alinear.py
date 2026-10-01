@@ -86,9 +86,11 @@ def correr(tmp, corridas, libre_gb, retenciones, en_drive=(),
     if calib is not None:
         (clon / "data" / "calibracion.tsv").write_text(
             "proyecto\torg\trol\taccession\tgenoma_mb\tlibrerias\treads_trim\t"
-            "seg_reloj\ts_por_m\tb_bam\tb_fqgz\tfecha_utc\n"
-            + "".join(f"p{i}\to\tr\tA\t{mb}\t2\t1000\t100\t{spm}\t14\t22\t2026-09-23T00:00:00Z\n"
-                      for i, (mb, spm) in enumerate(calib)))
+            "seg_reloj\ts_por_m\tb_bam\tb_fqgz\tfecha_utc\tindice_en_reloj\n"
+            + "".join(f"p{i}\to\tr\tA\t{c[0]}\t2\t1000\t100\t{c[1]}\t"
+                      f"{c[3] if len(c) > 3 else 14}\t22\t2026-09-23T00:00:00Z\t"
+                      f"{c[2] if len(c) > 2 else 'no'}\n"
+                      for i, c in enumerate(calib)))
 
     # Se parchea shutil.disk_usage de verdad en vez de inyectar un falso en el
     # namespace: la celda hace `import shutil`, asi que un falso inyectado lo
@@ -310,6 +312,31 @@ with tempfile.TemporaryDirectory() as d:
     chk("gadmo queda afuera por RAM", "gadmo/primario" in ns15["NO_ENTRAN"], ns15["NO_ENTRAN"])
     chk("y no es la PRUEBA", ns15["PRUEBA"] != "gadmo/primario", ns15["PRUEBA"])
     chk("pero propone alguno", ns15["PRUEBA"] in ns15["ENTRAN"], ns15["PRUEBA"])
+
+    print("== 16. una fila con el índice adentro del reloj no entra en la recta")
+    # gadmo_primario: yasma construyo el indice de 670 Mb DENTRO de §4, con un
+    # hilo, y dio 156 s/M contra 58. Con ese punto la recta extrapola galga a
+    # ~215 s/M y el cronograma se va a cientos de horas por un artefacto.
+    out16, ns16 = correr(tmp / "s", corr12, libre_gb=200, retenciones=ret12,
+                         genomas={"galga": 1000},
+                         calib=[(39, 58, "no"), (670, 156, "si")])
+    chk("sin ajuste: queda un solo punto usable", ns16["AJUSTE"] is None, ns16["AJUSTE"])
+    chk("y lo dice", "gadmo" in out16 or "p1" in out16, out16[:300])
+    _, ns16b = correr(tmp / "t", corr12, libre_gb=200, retenciones=ret12,
+                      genomas={"galga": 1000},
+                      calib=[(39, 58, "no"), (670, 80, "no")])
+    chk("la misma fila limpia sí entra", ns16b["AJUSTE"] is not None, ns16b["AJUSTE"])
+
+    print("== 17. los bytes por read suben con lo medido, no bajan")
+    # sclsc dio 14.1 B/read de BAM con 67% sin alinear; gadmo_primario 20.2
+    # con ~80% alineado. La constante es piso, no techo.
+    _, ns17 = correr(tmp / "u", corr12, libre_gb=200, retenciones=ret12,
+                     genomas={"galga": 1000},
+                     calib=[(39, 58, "no", 14.1), (670, 156, "si", 20.2)])
+    chk("B_BAM toma el mayor medido", abs(ns17["B_BAM"] - 20.2) < 0.01, ns17["B_BAM"])
+    _, ns17b = correr(tmp / "v", corr12, libre_gb=200, retenciones=ret12,
+                      genomas={"galga": 1000}, calib=[(39, 58, "no", 10)])
+    chk("y no baja del piso", ns17b["B_BAM"] == 16, ns17b["B_BAM"])
 
 print()
 if FALLAS:

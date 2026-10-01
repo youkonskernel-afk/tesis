@@ -70,7 +70,14 @@ cat > "$TMP/bin/bowtie" <<'BW'
 #!/usr/bin/env bash
 echo "bowtie version 1.3.1"
 BW
-cp "$TMP/bin/bowtie" "$TMP/bin/bowtie-build"
+# bowtie-build falso: escribe el indice donde lo buscaria yasma (el ULTIMO
+# argumento es el prefijo) y deja anotado como lo llamaron.
+cat > "$TMP/bin/bowtie-build" <<'BB'
+#!/usr/bin/env bash
+echo "BUILD $*" >> "${LOG_BB:-/dev/null}"
+pre="${@: -1}"
+: > "$pre.1.ebwt"; : > "$pre.rev.1.ebwt"
+BB
 cat > "$TMP/bin/yasma" <<'YA'
 #!/usr/bin/env bash
 # Imita a `yasma align` de nativealign.py v1.1.1 en lo que importa:
@@ -101,7 +108,7 @@ printf 'BAIFALSO' > "$OUT/align/alignment.bam.bai"
 } > "$OUT/align/library_stats.txt"
 YA
 chmod +x "$TMP/bin"/*
-export PATH="$TMP/bin:$PATH" LOG_YA="$TMP/ya.log"
+export PATH="$TMP/bin:$PATH" LOG_YA="$TMP/ya.log" LOG_BB="$TMP/bb.log"
 : > "$LOG_YA"
 
 # Un paquete yasma de mentira, para que yasma_parche.py tenga que mirar. El
@@ -131,6 +138,23 @@ tiene "dice que coincide"       "sha256 ok"          "$S"
 tiene "y lo descomprime"        "descomprimiendo"    "$S"
 [[ -s "$GEN/aa/GCF_TEST.1.fna" ]] && ok "deja el .fna (pysam no lee gzip plano)" \
   || mal "deja el .fna"
+
+echo "== 1c. genoma construye el índice, afuera del reloj de align"
+# yasma lo construia ADENTRO de §4, con un hilo: el s/M de gadmo_primario
+# salio 156 contra 58 de sclsc mezclando un costo fijo por organismo con uno
+# por read. Mismo prefijo y --offrate que usaria yasma, asi despues lo encuentra.
+B=$(cat "$LOG_BB" 2>/dev/null)
+tiene "llamó a bowtie-build"          "BUILD"                         "$B"
+tiene "con hilos"                     "--threads 2"                   "$B"
+tiene "con el mismo --offrate"        "--offrate 3"                   "$B"
+tiene "y el prefijo de yasma"         "$GEN/aa/GCF_TEST.1"            "$B"
+[[ -f "$GEN/aa/GCF_TEST.1.rev.1.ebwt" ]] && ok "deja el índice donde yasma lo busca" \
+  || mal "deja el índice donde yasma lo busca"
+[[ -s "$GEN/aa/GCF_TEST.1.indice_s" ]] && ok "y anota cuánto tardó" \
+  || mal "y anota cuánto tardó"
+: > "$LOG_BB"; S=$(corre genoma)
+tiene "la segunda vez dice que ya está" "índice bowtie: ya está"      "$S"
+[[ ! -s "$LOG_BB" ]] && ok "y no lo reconstruye" || mal "y no lo reconstruye"
 
 echo "== 1b. un sha256 que no coincide no se alinea"
 printf 'org\taccession\tassembly\tsha256\tfecha_utc\naa\tGCF_TEST.1\tTestAsm\tdeadbeef\t2026-09-23\n' > "$LED"

@@ -150,6 +150,16 @@ chk("pasa por los dos puntos",
     (R.s_por_m(39, aj), R.s_por_m(639, aj)))
 chk("y nunca devuelve <= 0", R.s_por_m(0, (-100, 0.001)) > 0)
 
+print("== 11b. leer_calibracion saltea las filas con el índice en el reloj")
+with tempfile.TemporaryDirectory() as d:
+    (pathlib.Path(d) / "data").mkdir()
+    (pathlib.Path(d) / "data" / "calibracion.tsv").write_text(
+        "# x\nproyecto\tgenoma_mb\ts_por_m\tindice_en_reloj\n"
+        "a\t39\t57.9\tno\nb\t670\t156\tsi\nc\t200\t70\t\n")
+    pts = R.leer_calibracion(d)
+    chk("saltea la marcada", (670.0, 156.0) not in pts, pts)
+    chk("y deja las otras (vacía cuenta como limpia)", len(pts) == 2, pts)
+
 print("== 12. el resumen NO cuenta en el speedup lo que no repartió")
 # Decia 4.5x mientras las 34 h de galga no estaban en ninguna maquina. Es el
 # numero que la persona lee para decidir cuantas maquinas conseguir.

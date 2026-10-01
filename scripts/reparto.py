@@ -105,6 +105,10 @@ def leer_calibracion(clon):
     if f.is_file():
         with open(f) as fh:
             for r in csv.DictReader((l for l in fh if not l.startswith('#')), delimiter='\t'):
+                # Un reloj que incluye bowtie-build no mide s/M (gadmo_primario
+                # dio 156 contra 58): con ese punto la recta inventa horas.
+                if (r.get('indice_en_reloj') or '').strip() == 'si':
+                    continue
                 try:
                     pts.append((float(r['genoma_mb']), float(r['s_por_m'])))
                 except (KeyError, ValueError, TypeError):

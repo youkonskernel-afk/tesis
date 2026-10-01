@@ -153,6 +153,36 @@ preparar_genoma() {
   echo "$fna"
 }
 
+# El indice de bowtie se construye ACA y no dentro de yasma align. Dos motivos,
+# los dos medidos en gadmo_primario:
+#  - yasma lo construye con UN hilo (nativealign.py:156 no pasa --threads), y
+#    contra 670 Mb eso es una parte grande de la corrida.
+#  - quedaba ADENTRO del reloj de §4: el s/M de gadmo_primario salio 156 contra
+#    58 de sclsc, mezclando un costo fijo por organismo con uno por read. Con
+#    dos puntos asi la recta extrapola galga a ~215 s/M y el cronograma se va a
+#    cientos de horas por un artefacto de medicion.
+# Mismo prefijo y mismo --offrate que usaria yasma (genome_file.with_suffix('')),
+# asi que despues dice "index found" y no lo rehace. El tiempo queda en
+# <acc>.indice_s, para que el reloj de §4 se pueda leer limpio.
+construir_indice() {
+  local fna="$1" pre="${1%.fna}" t0 t1
+  if [[ -f "$pre.rev.1.ebwt" ]]; then
+    echo "           índice bowtie: ya está"
+    return 0
+  fi
+  echo "           índice bowtie: construyendo (--offrate $OFFRATE, $CORES hilos)..."
+  t0=$(date +%s)
+  if ! bowtie-build --threads "$CORES" --offrate "$OFFRATE" "$fna" "$pre" >"$pre.build.log" 2>&1; then
+    # bowtie viejo sin --threads: un hilo, pero igual afuera del reloj de §4.
+    bowtie-build --offrate "$OFFRATE" "$fna" "$pre" >"$pre.build.log" 2>&1 \
+      || die "bowtie-build falló sobre $fna (log: $pre.build.log)"
+  fi
+  t1=$(date +%s)
+  [[ -f "$pre.rev.1.ebwt" ]] || die "bowtie-build terminó sin dejar $pre.rev.1.ebwt"
+  echo $((t1 - t0)) > "$pre.indice_s"
+  echo "           índice bowtie: listo en $(( (t1 - t0) / 60 )) min $(( (t1 - t0) % 60 )) s"
+}
+
 cmd_genoma() {
   local filtro="${1:-}" org fna
   echo "genomas    : $GENOMES_DIR"
@@ -164,11 +194,7 @@ cmd_genoma() {
       "$(du -h "$fna" 2>/dev/null | cut -f1)"
     # El indice se construye solo dentro de yasma align, pero decirlo aca evita
     # la sorpresa de una primera corrida que tarda media hora "sin hacer nada".
-    if [[ -f "${fna%.fna}.rev.1.ebwt" ]]; then
-      echo "           índice bowtie: ya está"
-    else
-      echo "           índice bowtie: falta — yasma lo construye con bowtie-build --offrate $OFFRATE"
-    fi
+    construir_indice "$fna"
     # La RAM sale de las bases del genoma y de nada mas, asi que se puede decir
     # aca — antes de recortar, antes de alinear, antes de gastar una hora.
     printf '           RAM de yasma align: ~%s GB (%s bases x %s B)\n' \

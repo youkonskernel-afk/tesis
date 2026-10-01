@@ -237,6 +237,18 @@ MUTACIONES = [
      [('        elif _p in _tom and _tom[_p][0] != YO:', '        elif False:')]),
     ("alinear: arranca sin tomar el claim", "notebooks/20_alinear.ipynb",
      [('if TANDA and not reparto.tomar(CLAIMS, PROYECTO, YO):', 'if False:')]),
+    # gadmo_primario: yasma construyo el indice de 670 Mb dentro del reloj de
+    # §4, con un hilo, y el s/M salio 156 contra 58. Ese punto en la recta
+    # inventa cientos de horas.
+    ("align: genoma deja de construir el indice", "scripts/align.sh",
+     [('    construir_indice "$fna"', '    :')]),
+    ("alinear: la recta usa filas con el indice en el reloj", "notebooks/20_alinear.ipynb",
+     [("if (r.get('indice_en_reloj') or '').strip() == 'si':", "if False:")]),
+    ("reparto: la recta usa filas con el indice en el reloj", "scripts/reparto.py",
+     [("                if (r.get('indice_en_reloj') or '').strip() == 'si':\n                    continue",
+       "                if False:\n                    continue")]),
+    ("alinear: los bytes por read ignoran lo medido", "notebooks/20_alinear.ipynb",
+     [("if _mb_bam: B_BAM = max(B_BAM, max(_mb_bam))", "pass")]),
     # --- colab_git.py: empujar a GitHub desde Colab ---
     # Una VM de Colab tiene Drive montado al lado con ~190 GB de .sra. Un
     # `add -A` desde ahi es exactamente donde se cuela lo que no va al repo.

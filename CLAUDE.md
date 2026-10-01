@@ -777,6 +777,24 @@ probabilidad calibrada.
   *(Mb de genoma nuevo) ÷ (horas que cuesta)* y solo entre los que entran en
   esa VM. Con el estado de hoy propone `gadmo/duplicado` —37 M reads contra
   670 Mb, ~37 min— que además es el que ya había que rehacer por el kit mixto.
+- **El reloj de `yasma align` incluía construir el índice de bowtie, y eso
+  infló el segundo punto de calibración.** `gadmo_primario` (55 M reads,
+  670 Mb) dio **156 s/M contra 58** de `sclsc`. Pero era la primera vez que esa
+  VM alineaba contra `gadmo`, y `nativealign.py` construye el índice **adentro**
+  del alineamiento (línea 155) y **con un hilo** —no le pasa `--threads` a
+  `bowtie-build`—. O sea que el número mezcla un costo fijo por organismo con
+  uno por read. Con ese punto en la recta, `galga` se extrapolaba a ~215 s/M y
+  el cronograma a cientos de horas: un artefacto de medición, no un dato.
+  Ahora `align.sh genoma` (§2) construye el índice con todos los núcleos,
+  **afuera** del reloj de §4, y anota cuánto tardó en `<acc>.indice_s`. La fila
+  de calibración lleva `indice_en_reloj`, y §1 y `reparto.py` saltean para la
+  recta las que dicen `si`. La de `gadmo_primario` queda marcada así; el
+  segundo punto limpio a 670 Mb lo va a dar `gadmo_duplicado`.
+  Lo que sí vale de esa corrida son los bytes: **20.2 B/read de BAM y 33.1 en
+  `.t.fq.gz`**, contra 14.1 y 21.8 de `sclsc`. Era lo esperado —se había dejado
+  escrito que un read colocado ocupa más que uno sin alinear, y `gadmo` alinea
+  ~80% contra el 17% de `sclsc`—, pero los picos de disco estaban subestimados
+  ~35%. §1 ahora toma el mayor medido, con las constantes como piso.
 - **`galga` no entra en la RAM de Colab Free, y eso no lo decía nada.** Con
   1.05 Gb de ensamblado, `unique_d` pide ~9.8 GB de los ~11.4 disponibles: los
   dos proyectos de `galga` quedan fuera por **memoria**, no por disco —
@@ -1039,7 +1057,7 @@ evitan que dos hagan el mismo proyecto. El techo es 4× y lo marca
 Todo corre sin red y en segundos. Antes de cada push:
 
 ```bash
-./tests/run_all.sh              # 21 bancos, 701 chequeos, binarios falsos en el PATH
+./tests/run_all.sh              # 21 bancos, 716 chequeos, binarios falsos en el PATH
 ./tests/mutar.py                # rompe el codigo y exige que algun banco grite
 ./scripts/check_docs.py         # lo que afirman los docs contra data/
 ./scripts/validate_notebooks.py # los .ipynb parsean y no hay duplicados
@@ -1050,7 +1068,7 @@ y `check_docs.py` dos más.
 
 **Un banco que pasa no prueba nada.** Prueba algo el día que se rompe lo que
 cubre y el banco se queja, y la única forma de saberlo es romper el código a
-propósito: eso es `tests/mutar.py`, 119 mutaciones que tienen que dar todas
+propósito: eso es `tests/mutar.py`, 123 mutaciones que tienen que dar todas
 `[OK]`. Un `[HUECO]` es un chequeo que falta; un `[VIEJA]` es una mutación cuyo
 patrón ya no existe, que tampoco prueba nada. Así aparecieron los dos huecos que
 ninguna otra cosa mostró — el veredicto de `perfil` que iba a la tabla sin estar
