@@ -363,6 +363,23 @@ S=$(corre ledger "$LEDG")
   || mal "siguen las 3 filas ($(grep -vc '^#\|^proyecto' "$LEDG"))"
 sembrar_trim
 
+echo "== 10f. no se alinea un proyecto con librerías recortadas vacías"
+# gadmo_duplicado: 6 de 12 corridas al 0.6-2.0%, §4 se corrió saltando el
+# guardia de §3 y el conteo dio 12 de 12. El BAM salió con 16 M reads en vez de
+# ~53, pasó verificar y llegó a Drive como bueno.
+sembrar_trim; : > "$LOG_YA"
+sed -i 's/^SRR_P2\tPRJ\t\(.*\)\t1000\t1000\t100.0\t/SRR_P2\tPRJ\t\1\t1000\t6\t0.6\t/' "$PROY/aa_primario/recortadas.tsv"
+S=$(corre correr aa/primario); RC=$?
+[[ $RC -ne 0 ]] && ok "exit != 0" || mal "exit != 0 (rc=$RC)"
+tiene "nombra la corrida vacía"   "SRR_P2(0.6%)"              "$S"
+tiene "y manda a verificar"       "trim.sh verificar aa/primario" "$S"
+notiene "sin llamar a yasma"      "CWD="                      "$(cat "$LOG_YA")"
+sembrar_trim; : > "$LOG_YA"
+printf 'SRR_PT\tPRJ\tuntrimmed/SRR_PT.fastq.gz\t-\t-\tPRE-TRIMMED\t2026-10-01T00:00:00Z\n' >> "$PROY/aa_primario/recortadas.tsv"
+S=$(corre correr aa/primario)
+notiene "una PRE-TRIMMED no cuenta como vacía" "vacías"        "$S"
+sembrar_trim; : > "$LOG_YA"
+
 echo "== 11. errores"
 tiene "modo desconocido"  "modo desconocido"  "$(corre nosequé 2>&1 || true)"
 S=$(corre plan noexiste 2>&1 || true)

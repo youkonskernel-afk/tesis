@@ -403,6 +403,16 @@ probabilidad calibrada.
   15-50 en el recorte**; la aplica `yasma align` (`XY:Z:F`), igual que en `cloro`.
   Y §6 del notebook ahora empuja también `adaptadores.tsv`: §3c escribía las
   filas en el clon de la VM y se habrían perdido con ella.
+  **Y el guardia de §3 no alcanzó: `gadmo_duplicado` se alineó igual con las 6
+  vacías.** §4 se puede correr aunque §3 haya cortado, y `align.sh correr` solo
+  chequeaba que el *número* de corridas recortadas coincidiera con el
+  manifiesto: 12 de 12. El BAM salió con **16 M reads en vez de ~53**, pasó
+  `verificar` —una librería de 50 mil reads alinea perfecto— y llegó a Drive
+  como bueno. Se descubrió porque §6 contó tres proyectos en una VM que debía
+  tener dos. Ahora `align.sh correr` lee la retención medida de cada corrida en
+  `recortadas.tsv` y **se niega si alguna está por debajo del 5%** (el umbral
+  de `VACIA`), nombrándolas; las `PRE-TRIMMED` no cuentan. Banco en
+  `test_align.sh` 10f y una mutación. El BAM malo hay que borrarlo de Drive.
   Lo que **sí** funcionó es el guardia: `trim.sh verificar` las marcó `VACIA`,
   el `assert` de §3 cortó, y nada llegó al alineamiento. Es el mismo caso de
   `maggi` un nivel más abajo — ahí eran dos BioProjects con kits distintos, acá
@@ -1064,7 +1074,7 @@ evitan que dos hagan el mismo proyecto. El techo es 4× y lo marca
 Todo corre sin red y en segundos. Antes de cada push:
 
 ```bash
-./tests/run_all.sh              # 21 bancos, 718 chequeos, binarios falsos en el PATH
+./tests/run_all.sh              # 21 bancos, 723 chequeos, binarios falsos en el PATH
 ./tests/mutar.py                # rompe el codigo y exige que algun banco grite
 ./scripts/check_docs.py         # lo que afirman los docs contra data/
 ./scripts/validate_notebooks.py # los .ipynb parsean y no hay duplicados
@@ -1075,7 +1085,7 @@ y `check_docs.py` dos más.
 
 **Un banco que pasa no prueba nada.** Prueba algo el día que se rompe lo que
 cubre y el banco se queja, y la única forma de saberlo es romper el código a
-propósito: eso es `tests/mutar.py`, 125 mutaciones que tienen que dar todas
+propósito: eso es `tests/mutar.py`, 126 mutaciones que tienen que dar todas
 `[OK]`. Un `[HUECO]` es un chequeo que falta; un `[VIEJA]` es una mutación cuyo
 patrón ya no existe, que tampoco prueba nada. Así aparecieron los dos huecos que
 ninguna otra cosa mostró — el veredicto de `perfil` que iba a la tabla sin estar

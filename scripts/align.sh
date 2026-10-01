@@ -421,6 +421,24 @@ cmd_correr() {
       die "no alineo un proyecto a medio recortar"
     fi
 
+    # Recortado VACIO no es recortado. Pasó con gadmo_duplicado: 6 de 12 corridas
+    # recortadas con la secuencia equivocada (0.6-2.0% de retención), el guardia
+    # de §3 cortó, pero §4 se corrió igual y el conteo de arriba dio 12 de 12. El
+    # BAM salió con 16 M reads en vez de ~53, pasó `verificar` —una librería de
+    # 50 mil reads alinea perfecto— y llegó a Drive como bueno. El ledger del
+    # recorte tiene la retención medida por corrida (columna 6); por debajo del
+    # 5% es el mismo umbral de VACIA de `trim.sh verificar`.
+    vacias=$(awk -F'\t' 'NR>1 && $6 ~ /^[0-9.]+$/ && $6+0 < 5 {printf "%s(%s%%) ", $1, $6}' \
+             "$dir/recortadas.tsv" 2>/dev/null || true)
+    if [[ -n "$vacias" ]]; then
+      echo "   corridas recortadas casi vacías: $vacias" >&2
+      echo "   Casi seguro la secuencia equivocada. Corré:" >&2
+      echo "     ./scripts/trim.sh verificar $org/$rol" >&2
+      echo "   y si son algunas y no todas: perfil --corridas $org/$rol, la fila de" >&2
+      echo "   cada corrida en data/adaptadores.tsv, y trim.sh rehacer $org/$rol <RUNs>" >&2
+      die "no alineo un proyecto con librerías vacías: el BAM saldría incompleto y pasaría verificar"
+    fi
+
     IFS=$'\t' read -r acc esp < <(genoma_de "$org")
     fna=$(preparar_genoma "$org")
 

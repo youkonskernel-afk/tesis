@@ -254,6 +254,9 @@ MUTACIONES = [
     ("reparto: la retencion vuelve a ser por proyecto", "scripts/reparto.py",
      [("            rr = ret.get((r['org'], r['bioproject'], r['run']),",
        "            rr = ret.get((r['org'], r['bioproject'], '-'),")]),
+    # gadmo_duplicado se alineo con 6 librerias vacias y llego a Drive como bueno.
+    ("align: alinea un proyecto con librerias vacias", "scripts/align.sh",
+     [('    if [[ -n "$vacias" ]]; then', '    if false; then')]),
     # --- colab_git.py: empujar a GitHub desde Colab ---
     # Una VM de Colab tiene Drive montado al lado con ~190 GB de .sra. Un
     # `add -A` desde ahi es exactamente donde se cuela lo que no va al repo.
