@@ -277,6 +277,10 @@ MUTACIONES = [
     ("colab_git: un push rechazado no revienta", "scripts/colab_git.py",
      [('    raise RuntimeError(\n        "el push fue rechazado dos veces.',
        '    return (\n        "el push fue rechazado dos veces.')]),
+    # Sin el Secret cargado, §6 decia "rechazado dos veces" y dejaba un commit
+    # huerfano en el clon.
+    ("colab_git: sin token commitea igual", "scripts/colab_git.py",
+     [('    if not tok and "github.com" in url:', '    if False:')]),
     ("colab_git: revisar=True empuja igual", "scripts/colab_git.py",
      [('    if revisar:', '    if False:')]),
     # Con la URL cableada, cualquier clon empujaria al repo de verdad apenas

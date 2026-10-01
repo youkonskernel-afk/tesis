@@ -846,6 +846,14 @@ probabilidad calibrada.
   en git. El destino sale del `origin` del clon y no de una URL cableada: con la
   URL cableada, cualquier clon empujaba al repo de verdad apenas hubiera un
   `GITHUB_TOKEN` en el entorno. Las celdas arrancan con `REVISAR_PRIMERO = True`.
+  **Y ningún §6 de `20_alinear` empujó nunca, porque no había `GITHUB_TOKEN`
+  en los Secrets.** `REVISAR_PRIMERO = True` no necesita token, así que el
+  hueco no se vio hasta el primer `False`: cuatro proyectos alineados y en
+  Drive, y git con la fila de uno solo. El error, encima, decía *"rechazado dos
+  veces"*, que se lee como un conflicto. Ahora `empujar` corta **antes de
+  commitear** si el origin es GitHub y no hay token. Las filas perdidas se
+  recuperaron exactas de los `<rol>.alineado.tsv` que §5 deja en Drive —ese
+  respaldo existe justo para esto— y las de calibración, de lo que §5 imprimió.
 - **El clon NO está en `colab_git.py`, y es a propósito.** Ese módulo vive
   adentro del repo, así que no se puede importar antes de clonarlo: el clon es
   el bootstrap y tiene que estar en la celda. Duplicarlo en el módulo dejaría
@@ -1074,7 +1082,7 @@ evitan que dos hagan el mismo proyecto. El techo es 4× y lo marca
 Todo corre sin red y en segundos. Antes de cada push:
 
 ```bash
-./tests/run_all.sh              # 21 bancos, 723 chequeos, binarios falsos en el PATH
+./tests/run_all.sh              # 21 bancos, 730 chequeos, binarios falsos en el PATH
 ./tests/mutar.py                # rompe el codigo y exige que algun banco grite
 ./scripts/check_docs.py         # lo que afirman los docs contra data/
 ./scripts/validate_notebooks.py # los .ipynb parsean y no hay duplicados
@@ -1085,7 +1093,7 @@ y `check_docs.py` dos más.
 
 **Un banco que pasa no prueba nada.** Prueba algo el día que se rompe lo que
 cubre y el banco se queja, y la única forma de saberlo es romper el código a
-propósito: eso es `tests/mutar.py`, 126 mutaciones que tienen que dar todas
+propósito: eso es `tests/mutar.py`, 127 mutaciones que tienen que dar todas
 `[OK]`. Un `[HUECO]` es un chequeo que falta; un `[VIEJA]` es una mutación cuyo
 patrón ya no existe, que tampoco prueba nada. Así aparecieron los dos huecos que
 ninguna otra cosa mostró — el veredicto de `perfil` que iba a la tabla sin estar

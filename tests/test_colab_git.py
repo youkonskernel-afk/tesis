@@ -201,6 +201,28 @@ with tempfile.TemporaryDirectory() as td:
     chk("_destino elige origin, no github", colab_git._destino(clon8, TOK) == "origin")
     os.environ.pop("GITHUB_TOKEN", None)
 
+    print("== 9. sin token contra GitHub: corta ANTES de commitear")
+    # Paso de verdad: §6 sin el Secret cargado decia "rechazado dos veces" y
+    # dejaba un commit en el clon. revisar=True sigue andando sin token.
+    bare, clon9 = escenario(tmp / "e")
+    git(clon9, "remote", "set-url", "origin", "https://github.com/x/y.git")
+    (clon9 / "data" / "sra_md5.tsv").write_text("org\trun\nff\tSRR6\n")
+    antes = git(clon9, "rev-parse", "HEAD").stdout
+    s = colab_git.empujar(clon9, ["data/sra_md5.tsv"], "x", revisar=True)
+    chk("revisar=True anda sin token", "no empuje nada" in s, s)
+    try:
+        colab_git.empujar(clon9, ["data/sra_md5.tsv"], "sin token", revisar=False)
+        chk("lanza", False, "no lanzó")
+    except RuntimeError as e:
+        chk("lanza", True)
+        chk("dice que falta el token", "No hay GITHUB_TOKEN" in str(e), str(e))
+        chk("y no habla de rechazo", "rechazado" not in str(e), str(e))
+    chk("no commiteó", git(clon9, "rev-parse", "HEAD").stdout == antes)
+    chk("y dejó el índice como estaba",
+        git(clon9, "diff", "--cached", "--name-only").stdout.strip() == "")
+    chk("el cambio sigue en el working tree",
+        (clon9 / "data" / "sra_md5.tsv").read_text() == "org\trun\nff\tSRR6\n")
+
 print()
 if FALLAS:
     print(f"{FALLAS} fallas")

@@ -177,6 +177,16 @@ def empujar(clon, rutas, mensaje, rama=None, revisar=True, autor=None):
                 f"Esto es lo que iria a la rama {rama}:\n{diff}\n"
                 "Si esta bien, pone REVISAR_PRIMERO = False y corre de nuevo.")
 
+    # Sin token contra GitHub el push no puede andar: cortar ANTES de commitear.
+    # Si no, git intenta dos veces, el error dice "rechazado dos veces" —que se
+    # lee como un conflicto— y deja en el clon un commit que §6 de la proxima
+    # corrida arrastra. Paso en la primera sesion con push: nadie habia cargado
+    # el Secret y ningun §6 anterior habia llegado a git.
+    url = _git(clon, "remote", "get-url", "origin", tok=tok).stdout
+    if not tok and "github.com" in url:
+        _git(clon, "reset", tok=tok)
+        raise RuntimeError("no empuje ni commitee nada.\n" + "\n".join(AYUDA_TOKEN))
+
     if autor:
         _git(clon, "config", "user.name", autor[0], tok=tok)
         _git(clon, "config", "user.email", autor[1], tok=tok)

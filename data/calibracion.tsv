@@ -12,5 +12,21 @@
 # dice de si mismo: entre `time elapsed` y `Sorting` hay una etapa —escribir la
 # tabla de abundancia— que no aparece en ninguna de las dos, y por eso el primer
 # valor que se anoto fueron 49 s/M en vez de 58.
-proyecto	org	rol	accession	genoma_mb	librerias	reads_trim	seg_reloj	s_por_m	b_bam	b_fqgz	fecha_utc
-sclsc_duplicado	sclsc	duplicado	GCF_000146945.2	39	2	32146090	1860	57.9	14.1	21.8	2026-09-22T00:00:00Z
+#
+# indice_en_reloj = si: el reloj incluyo bowtie-build (yasma lo construia adentro
+# del alineamiento, con un hilo). Esa fila vale por los bytes, no por el s/M, y
+# §1 y reparto.py la saltean para la recta. sclsc_duplicado es anterior a la
+# columna: su genoma de 39 Mb indexa en segundos, asi que va `no`.
+#
+# CARGADAS A MANO el 2026-10-01: gadmo_primario, phypa_duplicado, prupe_primario.
+# Ningun §6 habia empujado nunca —no habia GITHUB_TOKEN en los Secrets de Colab—
+# asi que las filas que §5 escribio murieron con cada VM. Salen de lo que §5
+# imprimio. phypa es exacta (9887 s). prupe y gadmo se reconstruyeron de lo
+# redondeado: prupe de los 147 min de §4 (s/M 108, coincide), gadmo de 156 s/M
+# por 54.97 M reads. La fecha es la de su alineado.tsv en Drive.
+# gadmo_duplicado NO esta: se alineo con 6 librerias vacias y hay que rehacerlo.
+proyecto	org	rol	accession	genoma_mb	librerias	reads_trim	seg_reloj	s_por_m	b_bam	b_fqgz	fecha_utc	indice_en_reloj
+gadmo_primario	gadmo	primario	GCF_902167405.1	670	7	54970025	8575	156.0	20.2	33.1	2026-10-01T03:01:34Z	si
+phypa_duplicado	phypa	duplicado	GCF_000002425.5	472	10	85265445	9887	116.0	19.5	30.6	2026-10-01T15:26:01Z	no
+prupe_primario	prupe	primario	GCF_000346465.2	228	8	81683944	8820	108.0	13.2	18.6	2026-10-01T18:56:27Z	no
+sclsc_duplicado	sclsc	duplicado	GCF_000146945.2	39	2	32146090	1860	57.9	14.1	21.8	2026-09-22T00:00:00Z	no
