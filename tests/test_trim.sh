@@ -256,6 +256,15 @@ tiene "el ledger tiene cabecera"   "retencion_pct"  "$L"
 echo "== 7b. el bioproject del ledger es por corrida, no el primero de la tanda"
 tiene "SRR_A1 -> PRJ_A"   "$(printf 'SRR_A1\tPRJ_A\t')"   "$L"
 tiene "SRR_A3 -> PRJ_A2"  "$(printf 'SRR_A3\tPRJ_A2\t')"  "$L"
+# Con 3 tandas de una corrida cada una, "el primero de la tanda" ES la corrida:
+# el caso de arriba no distingue y la mutacion pasaba. Hace falta UNA tanda que
+# cruce los dos BioProjects, que es justo maggi_primario.
+mv "$TMP/trim/aa_primario" "$TMP/aa_primario.bak"
+S7=$(PRES=100 corre correr aa/primario)
+tiene "una sola tanda con los dos BioProjects" "en 1 tanda(s)" "$S7"
+L7=$(cat "$TMP/trim/aa_primario/recortadas.tsv" 2>/dev/null)
+tiene "y aun así SRR_A3 -> PRJ_A2" "$(printf 'SRR_A3\tPRJ_A2\t')" "$L7"
+rm -rf "$TMP/trim/aa_primario"; mv "$TMP/aa_primario.bak" "$TMP/trim/aa_primario"
 
 echo "== 8. el fastq sin recortar se borra; el de una PRE-TRIMMED NO"
 [[ -z "$(ls -A "$TMP/trim/aa_primario/untrimmed")" ]] \
@@ -368,6 +377,20 @@ if [[ -n "${_pre:-}" ]]; then
 else
   mal "el ledger de bb_primario no tiene filas"
 fi
+
+echo "== 14c2. rehacer solo borra lo que está en trim/, aunque la fila no diga PRE-TRIMMED"
+# La segunda defensa: una fila con conteos cuyo fichero apunta afuera de trim/
+# (una ruta absoluta, un ledger viejo) tampoco es salida de YASMA. Sin este
+# caso, la mutacion que la sacaba pasaba: 14c solo cubre la primera defensa.
+A="$TMP/trim/aa_primario"
+mkdir -p "$A/untrimmed"; printf 'ORIGINAL' > "$A/untrimmed/SRR_FUERA.fastq.gz"
+printf 'SRR_FUERA\tPRJ\tuntrimmed/SRR_FUERA.fastq.gz\t1000\t500\t50.0\t2026-10-02T00:00:00Z\n' \
+  >> "$A/recortadas.tsv"
+corre rehacer aa/primario SRR_FUERA >/dev/null 2>&1
+[[ -f "$A/untrimmed/SRR_FUERA.fastq.gz" ]] && ok "lo de afuera de trim/ sigue en disco" \
+  || mal "lo de afuera de trim/ sigue en disco"
+notiene "y sale del registro igual" "SRR_FUERA" "$(cat "$A/recortadas.tsv")"
+rm -f "$A/untrimmed/SRR_FUERA.fastq.gz"
 
 echo "== 14d. rehacer exige las corridas, no rehace un proyecto entero"
 S=$(corre rehacer aa/primario 2>&1 || true)

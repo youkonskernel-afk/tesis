@@ -1112,7 +1112,7 @@ evitan que dos hagan el mismo proyecto. El techo es 4× y lo marca
 Todo corre sin red y en segundos. Antes de cada push:
 
 ```bash
-./tests/run_all.sh              # 23 bancos, 772 chequeos, binarios falsos en el PATH
+./tests/run_all.sh              # 24 bancos, 790 chequeos, binarios falsos en el PATH
 ./tests/mutar.py                # rompe el codigo y exige que algun banco grite
 ./scripts/check_docs.py         # lo que afirman los docs contra data/
 ./scripts/validate_notebooks.py # los .ipynb parsean y no hay duplicados
@@ -1140,6 +1140,15 @@ fallas; si no, se niega en vez de reportar éxito. Del mismo palo,
 `test_reparto` exigía un `3.0x` exacto que sale de `data/calibracion.tsv` y
 cambia con cada proyecto medido: ahora afirma lo que importa, que no supere a
 las máquinas.
+Con el piso en cero aparecieron **once huecos de verdad**, y dos tenían una
+causa más: un banco que **revienta** (traceback) no llega a imprimir ningún
+`MAL`, y `run_all.sh` lo sumaba como cero fallas — una mutación que tiraba el
+banco entero salía no detectada. Ahora un banco que sale distinto de 0 sin un
+`MAL` cuenta como una falla. El resto eran chequeos que faltaban: §1c y §2 con
+varias máquinas no tenían banco (`tests/test_celda1c.py`), y en `trim`, `align`
+y `reparto` había casos que la mutación tocaba y ningún escenario ejercía (una
+tanda que cruce dos BioProjects, el valor de RAM en cada fila de `plan`, una
+máquina por debajo del margen de RAM).
 
 **Y una medición vale más que un umbral.** `align.sh verificar` daba `ok` a un
 BAM con 67% de reads sin alinear, porque el único umbral miraba otra cosa. El

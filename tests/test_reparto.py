@@ -99,6 +99,11 @@ print("== 5. un genoma que no se pudo medir NO se declara imposible")
 asign4, sin4 = R.repartir([trabajo('sin_genoma', 3.0, ram_gb=0)], [CHICA])
 chk("entra igual", sum(len(v) for v in asign4.values()) == 1, asign4)
 chk("y no queda sin lugar", sin4 == [], sin4)
+# Tampoco le cobra el margen de RAM: con una maquina de 1 GB —menos que
+# MARGEN_RAM— un genoma sin medir sigue entrando. Sin este caso, sacar el
+# `ram == 0 or` pasaba: cualquier maquina real supera el margen.
+asign4b, sin4b = R.repartir([trabajo('sin_genoma', 3.0, ram_gb=0)], [('mini', 1e9, 1e12)])
+chk("ni en una máquina por debajo del margen", sin4b == [] and asign4b['mini'], (asign4b, sin4b))
 
 print("== 6. dentro de cada máquina el orden es del más chico al más grande")
 # No cambia el makespan y deja algo terminado si la sesion se muere.

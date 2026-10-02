@@ -42,6 +42,7 @@ BANCOS=(
   tests/test_reparto.py
   tests/test_montar.py
   tests/test_celda5.py
+  tests/test_celda1c.py
 )
 
 malos=0 total_ok=0 total_mal=0
@@ -56,6 +57,11 @@ for b in "${BANCOS[@]}"; do
   # el resumen diga cuantos chequeos corrieron, no solo cuantos bancos.
   n_ok=$(grep -c '^  ok  ' <<<"$salida")
   n_mal=$(grep -c '^  MAL ' <<<"$salida")
+  # Un banco que REVIENTA (traceback, set -e) no llega a imprimir ningun MAL, y
+  # sumaba cero fallas: mutar.py, que lee el total, daba por no detectada una
+  # mutacion que tiraba el banco entero. Seis huecos de reparto y §1c eran eso.
+  # Si sale distinto de 0 sin un MAL, cuenta como una falla.
+  [[ $rc -ne 0 && $n_mal -eq 0 ]] && n_mal=1
   total_ok=$((total_ok + n_ok)); total_mal=$((total_mal + n_mal))
 
   if [[ $rc -eq 0 && $n_mal -eq 0 ]]; then

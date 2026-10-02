@@ -332,6 +332,11 @@ S=$(corre correr)
 tiene "correr también"            "RAM: pide"                  "$S"
 S=$(corre plan)
 tiene "y plan trae la columna"    "RAM_GB"                     "$S"
+# El encabezado solo no alcanza: la mutacion que sacaba el VALOR de cada fila
+# dejaba la cabecera intacta y pasaba.
+_ram=$(awk '$1=="aa_primario"{print $5}' <<<"$S")
+[[ "$_ram" =~ ^[0-9]+([.][0-9]+)?$ ]] && ok "y cada fila trae el número ($_ram)" \
+  || mal "y cada fila trae el número (dijo '$_ram')"
 
 echo "== 10d. ledger: una sesión nueva NO borra lo que alinearon las anteriores"
 # En Colab la VM es efimera: cada sesion tiene UN proyecto en PROY_DIR. Si el

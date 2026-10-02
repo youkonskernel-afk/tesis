@@ -228,8 +228,11 @@ MUTACIONES = [
        'if f.exists():')]),
     # Un punto no sostiene una recta: el s/M plano sale de un genoma de 39 Mb
     # y galga es 1.05 Gb.
+    # Con un solo guardia sacado es equivalente: el `if not den` tambien ataja
+    # dos puntos sobre el mismo genoma. Se sacan los dos juntos.
     ("reparto: ajusta la recta con un solo genoma", "scripts/reparto.py",
-     [('    if len({g for g, _ in pts}) < 2:', '    if False:')]),
+     [('    if len({g for g, _ in pts}) < 2:', '    if False:'),
+      ('    if not den:', '    if False:')]),
     # §1c del notebook: la tanda repartida.
     ("alinear1c: rehace lo que ya esta en Drive", "notebooks/20_alinear.ipynb",
      [('        if _hecho(_p):', '        if False:')]),
