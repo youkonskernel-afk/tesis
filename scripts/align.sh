@@ -164,12 +164,29 @@ preparar_genoma() {
 # Mismo prefijo y mismo --offrate que usaria yasma (genome_file.with_suffix('')),
 # asi que despues dice "index found" y no lo rehace. El tiempo queda en
 # <acc>.indice_s, para que el reloj de §4 se pueda leer limpio.
+# El indice esta completo si .indice_s existe: se escribe DESPUES de que
+# bowtie-build sale bien, y es lo unico que lo distingue de uno cortado a la
+# mitad. Mirar solo .rev.1.ebwt no alcanza: bowtie-build lo deja escrito antes
+# de terminar, asi que un §2 interrumpido dejaba un indice roto que la corrida
+# siguiente daba por bueno ("ya está"). Uno construido afuera de este script
+# (por yasma, o a mano) no tiene .indice_s ni .build.log: vale si estan los seis.
+indice_estado() {
+  local pre="$1" f
+  [[ -f "$pre.indice_s" ]] && { echo completo; return; }
+  [[ -f "$pre.build.log" ]] && { echo cortado; return; }
+  for f in 1 2 3 4 rev.1 rev.2; do
+    [[ -s "$pre.$f.ebwt" ]] || { echo falta; return; }
+  done
+  echo completo
+}
+
 construir_indice() {
   local fna="$1" pre="${1%.fna}" t0 t1
-  if [[ -f "$pre.rev.1.ebwt" ]]; then
-    echo "           índice bowtie: ya está"
-    return 0
-  fi
+  case "$(indice_estado "$pre")" in
+    completo) echo "           índice bowtie: ya está"; return 0 ;;
+    cortado)  echo "           índice bowtie: hay uno a medias (un bowtie-build que se cortó): lo rehago"
+              rm -f "$pre".*.ebwt "$pre.build.log" ;;
+  esac
   echo "           índice bowtie: construyendo (--offrate $OFFRATE, $CORES hilos)..."
   t0=$(date +%s)
   if ! bowtie-build --threads "$CORES" --offrate "$OFFRATE" "$fna" "$pre" >"$pre.build.log" 2>&1; then
@@ -441,6 +458,14 @@ cmd_correr() {
 
     IFS=$'\t' read -r acc esp < <(genoma_de "$org")
     fna=$(preparar_genoma "$org")
+
+    # yasma solo mira si existe .rev.1.ebwt para decidir no construirlo, y un
+    # bowtie-build cortado lo deja escrito: alinearia contra un indice roto.
+    if [[ "$(indice_estado "${fna%.fna}")" == cortado ]]; then
+      echo "   el índice de bowtie quedó a medias (un bowtie-build que se cortó). Corré:" >&2
+      echo "     ./scripts/align.sh genoma $org" >&2
+      die "no alineo contra un índice incompleto"
+    fi
 
     # La RAM, ANTES de arrancar. `unique_d` se arma entero al principio y sale
     # de las bases del genoma, no de los reads: se sabe en un segundo o a las

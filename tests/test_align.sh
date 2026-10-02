@@ -380,6 +380,25 @@ S=$(corre correr aa/primario)
 notiene "una PRE-TRIMMED no cuenta como vacía" "vacías"        "$S"
 sembrar_trim; : > "$LOG_YA"
 
+echo "== 10g. un índice a medias no se da por bueno"
+# bowtie-build deja .rev.1.ebwt escrito antes de terminar. Un §2 cortado dejaba
+# ese fichero, la corrida siguiente decia "ya está", y yasma —que mira lo mismo—
+# habria alineado contra un indice roto. .indice_s es lo que marca que termino.
+rm -f "$GEN/aa/GCF_TEST.1.indice_s"; : > "$GEN/aa/GCF_TEST.1.build.log"
+S=$(corre correr aa/primario); RC=$?
+[[ $RC -ne 0 ]] && ok "correr se niega" || mal "correr se niega (rc=$RC)"
+tiene "y manda a genoma"          "align.sh genoma aa"        "$S"
+notiene "sin llamar a yasma"      "CWD="                      "$(cat "$LOG_YA")"
+: > "$LOG_BB"; S=$(corre genoma)
+tiene "genoma lo ve a medias"     "a medias"                  "$S"
+[[ -s "$LOG_BB" ]] && ok "y lo reconstruye" || mal "y lo reconstruye"
+[[ -s "$GEN/aa/GCF_TEST.1.indice_s" ]] && ok "y queda marcado completo" \
+  || mal "y queda marcado completo"
+: > "$LOG_BB"; S=$(corre genoma)
+tiene "la vez siguiente ya está"  "índice bowtie: ya está"    "$S"
+[[ ! -s "$LOG_BB" ]] && ok "sin reconstruir" || mal "sin reconstruir"
+sembrar_trim; : > "$LOG_YA"
+
 echo "== 11. errores"
 tiene "modo desconocido"  "modo desconocido"  "$(corre nosequé 2>&1 || true)"
 S=$(corre plan noexiste 2>&1 || true)

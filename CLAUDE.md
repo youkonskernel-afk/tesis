@@ -807,6 +807,13 @@ probabilidad calibrada.
   **Medido después, ya afuera del reloj: el índice de `phypa` (472 Mb) tardó
   26 min con 2 hilos.** O sea que en `gadmo` (670 Mb, un hilo) el índice
   puede explicar fácil una hora de aquellas 2.4 h.
+  **Y "ya está" no puede salir de `.rev.1.ebwt`.** `bowtie-build` lo escribe
+  antes de terminar, así que un §2 cortado lo dejaba y la corrida siguiente
+  daba el índice por bueno —y `yasma` mira el mismo fichero, así que habría
+  alineado contra uno roto—. Ahora lo completo es `<acc>.indice_s`, que se
+  escribe **después** de que `bowtie-build` sale bien: con `.build.log` y sin
+  `.indice_s`, `genoma` lo rehace y `correr` se niega. §4 decide
+  `indice_en_reloj` con el mismo criterio. Banco en `test_align.sh` 10g.
   Lo que sí vale de esa corrida son los bytes: **20.2 B/read de BAM y 33.1 en
   `.t.fq.gz`**, contra 14.1 y 21.8 de `sclsc`. Era lo esperado —se había dejado
   escrito que un read colocado ocupa más que uno sin alinear, y `gadmo` alinea
@@ -1094,7 +1101,7 @@ evitan que dos hagan el mismo proyecto. El techo es 4× y lo marca
 Todo corre sin red y en segundos. Antes de cada push:
 
 ```bash
-./tests/run_all.sh              # 22 bancos, 755 chequeos, binarios falsos en el PATH
+./tests/run_all.sh              # 22 bancos, 763 chequeos, binarios falsos en el PATH
 ./tests/mutar.py                # rompe el codigo y exige que algun banco grite
 ./scripts/check_docs.py         # lo que afirman los docs contra data/
 ./scripts/validate_notebooks.py # los .ipynb parsean y no hay duplicados
@@ -1105,7 +1112,7 @@ y `check_docs.py` dos más.
 
 **Un banco que pasa no prueba nada.** Prueba algo el día que se rompe lo que
 cubre y el banco se queja, y la única forma de saberlo es romper el código a
-propósito: eso es `tests/mutar.py`, 132 mutaciones que tienen que dar todas
+propósito: eso es `tests/mutar.py`, 134 mutaciones que tienen que dar todas
 `[OK]`. Un `[HUECO]` es un chequeo que falta; un `[VIEJA]` es una mutación cuyo
 patrón ya no existe, que tampoco prueba nada. Así aparecieron los dos huecos que
 ninguna otra cosa mostró — el veredicto de `perfil` que iba a la tabla sin estar

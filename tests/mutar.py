@@ -255,6 +255,12 @@ MUTACIONES = [
      [("            rr = ret.get((r['org'], r['bioproject'], r['run']),",
        "            rr = ret.get((r['org'], r['bioproject'], '-'),")]),
     # gadmo_duplicado se alineo con 6 librerias vacias y llego a Drive como bueno.
+    # bowtie-build deja .rev.1.ebwt antes de terminar: un §2 cortado dejaba un
+    # indice roto que la corrida siguiente daba por bueno.
+    ("align: un indice a medias pasa por bueno", "scripts/align.sh",
+     [('  [[ -f "$pre.build.log" ]] && { echo cortado; return; }\n', '')]),
+    ("align: correr alinea contra un indice a medias", "scripts/align.sh",
+     [('    if [[ "$(indice_estado "${fna%.fna}")" == cortado ]]; then', '    if false; then')]),
     ("align: alinea un proyecto con librerias vacias", "scripts/align.sh",
      [('    if [[ -n "$vacias" ]]; then', '    if false; then')]),
     # --- colab_git.py: empujar a GitHub desde Colab ---
