@@ -819,6 +819,17 @@ probabilidad calibrada.
   escrito que un read colocado ocupa más que uno sin alinear, y `gadmo` alinea
   ~80% contra el 17% de `sclsc`—, pero los picos de disco estaban subestimados
   ~35%. §1 ahora toma el mayor medido, con las constantes como piso.
+- **§5 contaba los reads de `recortadas.tsv`, y una PRE-TRIMMED ahí dice
+  `-`.** `gadmo_duplicado` (6 de 12 PRE-TRIMMED) se calibró con **16 M reads en
+  vez de 55**: 360 s/M en vez de ~105 y B_BAM 44 en vez de 13. No llegó a git
+  porque §6 seguía en `REVISAR_PRIMERO`, pero con ese punto la recta habría
+  triplicado el cronograma de los proyectos grandes. Ahora los reads y las
+  librerías salen de `align/library_stats.txt` —la misma fuente que
+  `verificar`— y el disco del recortado, de las rutas del ledger. Banco en
+  `tests/test_celda5.py`, que corre la celda real sobre un proyecto mixto.
+  **Con cuatro puntos limpios el s/M no sube con el genoma**: 58 a 39 Mb
+  (`sclsc`, 67% sin alinear), y después 108, 116 y 105 a 228, 472 y 670 Mb. Lo
+  que lo baja en `sclsc` parece ser cuánto alinea, no cuánto mide el genoma.
 - **`galga` no entra en la RAM de Colab Free, y eso no lo decía nada.** Con
   1.05 Gb de ensamblado, `unique_d` pide ~9.8 GB de los ~11.4 disponibles: los
   dos proyectos de `galga` quedan fuera por **memoria**, no por disco —
@@ -1101,7 +1112,7 @@ evitan que dos hagan el mismo proyecto. El techo es 4× y lo marca
 Todo corre sin red y en segundos. Antes de cada push:
 
 ```bash
-./tests/run_all.sh              # 22 bancos, 763 chequeos, binarios falsos en el PATH
+./tests/run_all.sh              # 23 bancos, 772 chequeos, binarios falsos en el PATH
 ./tests/mutar.py                # rompe el codigo y exige que algun banco grite
 ./scripts/check_docs.py         # lo que afirman los docs contra data/
 ./scripts/validate_notebooks.py # los .ipynb parsean y no hay duplicados
@@ -1112,11 +1123,23 @@ y `check_docs.py` dos más.
 
 **Un banco que pasa no prueba nada.** Prueba algo el día que se rompe lo que
 cubre y el banco se queja, y la única forma de saberlo es romper el código a
-propósito: eso es `tests/mutar.py`, 134 mutaciones que tienen que dar todas
+propósito: eso es `tests/mutar.py`, 136 mutaciones que tienen que dar todas
 `[OK]`. Un `[HUECO]` es un chequeo que falta; un `[VIEJA]` es una mutación cuyo
 patrón ya no existe, que tampoco prueba nada. Así aparecieron los dos huecos que
 ninguna otra cosa mostró — el veredicto de `perfil` que iba a la tabla sin estar
 cubierto, y `estado` sin banco.
+
+**Y `mutar.py` estuvo mintiendo un tiempo, por el mismo motivo.** Copiaba
+`tests/`, `scripts/` y `notebooks/` a un tmpdir, pero no `data/`, y los bancos
+que la leen —`reparto`, `celda_alinear`— fallaban **siempre** en la copia: 20
+chequeos rojos de piso. Con ese piso cualquier mutación salía `[OK]`, así que
+las corridas desde que existe `test_reparto.py` no probaban nada. Se encontró
+porque mutaciones sin relación entre sí daban todas ~20 en rojo. Ahora copia
+el repo entero y corre primero una **línea de base** que tiene que dar cero
+fallas; si no, se niega en vez de reportar éxito. Del mismo palo,
+`test_reparto` exigía un `3.0x` exacto que sale de `data/calibracion.tsv` y
+cambia con cada proyecto medido: ahora afirma lo que importa, que no supere a
+las máquinas.
 
 **Y una medición vale más que un umbral.** `align.sh verificar` daba `ok` a un
 BAM con 67% de reads sin alinear, porque el único umbral miraba otra cosa. El

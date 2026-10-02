@@ -33,7 +33,11 @@
 # <rol>.alineado.tsv que §5 dejo en Drive (10_bam/<org>/): §6 nunca empujo
 # porque no habia GITHUB_TOKEN. gadmo_duplicado NO esta aunque su alineado.tsv
 # este en Drive: se alineo con 6 librerias vacias (16 M reads de ~53) y se rehace.
+#
+# gadmo_duplicado (rehecho el 2026-10-02 con las 6 PRE-TRIMMED, 55 M reads)
+# tambien copiada exacta de su alineado.tsv en Drive: §6 no tenia token.
 proyecto	org	rol	accession	sha256_gz	max_multi	max_random	unique_locality	offrate	corridas	fecha_utc
+gadmo_duplicado	gadmo	duplicado	GCF_902167405.1	6ab4c34995f75e24f9f3d3aa96f44b76e25069fb26775e3a93f8e1016f083bc0	50	3	50	3	12	2026-10-02T13:36:13Z
 gadmo_primario	gadmo	primario	GCF_902167405.1	6ab4c34995f75e24f9f3d3aa96f44b76e25069fb26775e3a93f8e1016f083bc0	50	3	50	3	7	2026-10-01T03:01:34Z
 phypa_duplicado	phypa	duplicado	GCF_000002425.5	84dd9413e770682380321428cb6af2ccc52e87b02c503afd12b52b857c120b79	50	3	50	3	10	2026-10-01T15:26:01Z
 prupe_primario	prupe	primario	GCF_000346465.2	2b2290bbc405c1feea4f9be4993baedc62aef6c904cfeb2669a52ca3be42bbdb	50	3	50	3	8	2026-10-01T18:56:27Z

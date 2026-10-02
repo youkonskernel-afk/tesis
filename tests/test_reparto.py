@@ -19,6 +19,7 @@ Lo que este banco protege, por orden de gravedad:
 import datetime
 import importlib.util
 import pathlib
+import re
 import subprocess
 import sys
 import tempfile
@@ -189,7 +190,13 @@ chk("nombra los que no entran", 'galga/duplicado' in out and 'le falta RAM' in o
 chk("dice cuántas horas deja afuera", 'NO cubre' in out, out[-600:])
 chk("y da el de punta a punta", 'punta a punta' in out, out[-600:])
 _sp = [l for l in out.splitlines() if 'makespan de lo repartido' in l]
-chk("el speedup es sobre lo repartido", _sp and '3.0x' in _sp[0], _sp)
+# No un numero fijo: sale de data/calibracion.tsv, que cambia con cada proyecto
+# medido (con 4 puntos da 2.9x). Lo que no puede pasar es que supere a las 3
+# maquinas, que es lo que daba al contar las horas de galga sin repartir.
+_m = re.search(r'([\d.]+) h\s+\(([\d.]+)x contra las ([\d.]+) h', _sp[0]) if _sp else None
+chk("el speedup es sobre lo repartido",
+    _m is not None and float(_m.group(2)) <= 3.0
+    and abs(float(_m.group(3)) / float(_m.group(1)) - float(_m.group(2))) < 0.1, _sp)
 chk("no infla a 4.5x", not any('4.5x' in l for l in _sp), _sp)
 
 print()

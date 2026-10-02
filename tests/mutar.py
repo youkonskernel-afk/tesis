@@ -297,6 +297,12 @@ MUTACIONES = [
     # arregla el bug en uno y los otros siguen rotos.
     # Un drive.mount pelado dio 'mount failed' sin decir que hacer, y la persona
     # salto a §1, que revento con NameError: CLON — apuntando a otra celda.
+    # §5 contaba los reads de READS_OUT, que en una PRE-TRIMMED es '-':
+    # gadmo_duplicado calibro con 16 M de 55 y dio 360 s/M en vez de ~105.
+    ("§5: calibra solo con las librerias recortadas", "notebooks/20_alinear.ipynb",
+     [("for r in _libs if len(r) >= 9)", "for r in _libs if len(r) >= 9 and r[1] < 'SRR3')")]),
+    ("§5: cuenta librerias por .t.fq.gz", "notebooks/20_alinear.ipynb",
+     [("nlib = len(_libs) or", "nlib = len(list((pdir / 'trim').glob('*.t.fq.gz'))) or")]),
     ("montar: no desmonta antes de reintentar", "notebooks/20_alinear.ipynb",
      [("drive.flush_and_unmount()", "pass")]),
     ("montar: el reintento no fuerza", "notebooks/20_alinear.ipynb",
@@ -485,13 +491,28 @@ def main():
     filtro = sys.argv[1] if len(sys.argv) > 1 else ''
     base = tempfile.mkdtemp(prefix='mutar.')
     try:
-        shutil.copytree(RAIZ / 'tests', pathlib.Path(base) / 'tests')
-        shutil.copytree(RAIZ / 'notebooks', pathlib.Path(base) / 'notebooks')
+        # El repo ENTERO (sin .git), no solo tests/ y notebooks/. Antes faltaba
+        # data/, y los bancos que la leen (reparto, celda_alinear) fallaban en
+        # la copia SIEMPRE: 20 chequeos rojos de piso, asi que cualquier
+        # mutacion salia "detectada" aunque ningun banco la viera. Las 130 [OK]
+        # de entonces no probaban nada.
+        shutil.rmtree(base)
+        shutil.copytree(RAIZ, base, symlinks=True,
+                        ignore=shutil.ignore_patterns('.git', '__pycache__'))
         huecos = viejas = 0
         elegidas = [m for m in MUTACIONES if filtro.lower() in m[0].lower()]
         if not elegidas:
             print(f"ninguna mutacion matchea '{filtro}'", file=sys.stderr)
             return 1
+
+        # La linea de base: sin mutar, la copia tiene que dar CERO fallas. Si
+        # no, un rojo no dice nada de la mutacion y el resultado es mentira.
+        piso, linea = correr(pathlib.Path(base))
+        if piso != 0:
+            print(f"[ERROR ] la copia SIN mutar ya falla: {linea}", file=sys.stderr)
+            print("         cualquier mutacion saldria 'detectada'. Arreglá eso primero.",
+                  file=sys.stderr)
+            return 2
 
         for nombre, fich, pares in elegidas:
             # Se restauran los dos arboles mutables antes de cada mutacion:

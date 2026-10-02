@@ -41,6 +41,7 @@ BANCOS=(
   tests/test_parche.py
   tests/test_reparto.py
   tests/test_montar.py
+  tests/test_celda5.py
 )
 
 malos=0 total_ok=0 total_mal=0
