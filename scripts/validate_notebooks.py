@@ -81,19 +81,24 @@ def preambulos(fallos):
     en los otros, los otros siguen con el bug y nadie lo ve — es la misma forma
     de la trampa de las tres rutas de los .sra, un nivel mas arriba.
     """
-    vistas = {}
-    for nb in sorted(NB_DIR.glob("*.ipynb")):
-        celdas = json.loads(nb.read_text()).get("cells", [])
-        for c in celdas:
-            src = "".join(c.get("source", []))
-            if c.get("cell_type") == "code" and "URL_ANON" in src:
-                vistas.setdefault(src, []).append(nb.name)
-                break
-    if len(vistas) > 1:
-        fallos.append(
-            "la celda de clon derivo: hay " + str(len(vistas)) + " versiones\n"
-            + "\n".join("       " + ", ".join(v) for v in vistas.values())
-            + "\n       Tiene que ser identica en todos (ver tests/test_clon.py).")
+    # La de montar Drive tambien: el reintento con force_remount se agrego en
+    # los cinco a la vez, y uno que se quede con el drive.mount pelado vuelve a
+    # dar 'mount failed' sin decir que hacer.
+    for nombre, marca in (("clon", "URL_ANON"), ("montaje", "drive.mount(")):
+        vistas = {}
+        for nb in sorted(NB_DIR.glob("*.ipynb")):
+            celdas = json.loads(nb.read_text()).get("cells", [])
+            for c in celdas:
+                src = "".join(c.get("source", []))
+                if c.get("cell_type") == "code" and marca in src:
+                    vistas.setdefault(src, []).append(nb.name)
+                    break
+        if len(vistas) > 1:
+            fallos.append(
+                f"la celda de {nombre} derivo: hay " + str(len(vistas)) + " versiones\n"
+                + "\n".join("       " + ", ".join(v) for v in vistas.values())
+                + "\n       Tiene que ser identica en todos (ver tests/test_clon.py"
+                  " y tests/test_montar.py).")
 
 
 def sueltos():

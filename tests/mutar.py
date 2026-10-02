@@ -289,6 +289,18 @@ MUTACIONES = [
      [('    if tok and "github.com" in url:', '    if tok:')]),
     # La celda de clon esta copiada en todos los notebooks: si deriva, alguien
     # arregla el bug en uno y los otros siguen rotos.
+    # Un drive.mount pelado dio 'mount failed' sin decir que hacer, y la persona
+    # salto a §1, que revento con NameError: CLON — apuntando a otra celda.
+    ("montar: no desmonta antes de reintentar", "notebooks/20_alinear.ipynb",
+     [("drive.flush_and_unmount()", "pass")]),
+    ("montar: el reintento no fuerza", "notebooks/20_alinear.ipynb",
+     [("force_remount=True, timeout_ms=300000", "timeout_ms=300000")]),
+    ("montar: el error arrastra el traceback de google.colab", "notebooks/20_alinear.ipynb",
+     [(") from None", ")")]),
+    ("alinear: §1 sin las celdas de arriba da NameError", "notebooks/20_alinear.ipynb",
+     [("if _faltan:", "if False:")]),
+    ("notebooks: la celda de montaje puede derivar", "scripts/validate_notebooks.py",
+     [(', ("montaje", "drive.mount(")', '')]),
     ("notebooks: la celda de clon puede derivar", "scripts/validate_notebooks.py",
      [('    if len(vistas) > 1:', '    if False:')]),
     # §1 de 20_alinear: un proyecto que no entra en disco tiene que saberse en

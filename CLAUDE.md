@@ -861,6 +861,18 @@ probabilidad calibrada.
   un nivel más arriba— y la del módulo no correría nunca. La celda está copiada
   en los cuatro notebooks que clonan y **tiene que ser idéntica**:
   `scripts/validate_notebooks.py` falla si una deriva.
+- **`drive.mount` falla con un `mount failed` pelado, y el error que se ve
+  después apunta a otra celda.** Casi siempre es la ventana de permisos —una
+  casilla sin tildar, la ventana cerrada, otra cuenta— o un montaje a medias.
+  Lo que pasó: la persona saltó a §1 y §1 reventó con `NameError: CLON`, que
+  manda a buscar el bug en la celda equivocada. Ahora la celda de montaje
+  desmonta y reintenta con `force_remount`, y si tampoco, dice qué hacer
+  (cuenta `seb.ugazm@gmail.com`, todas las casillas, borrar el entorno); y §1 y
+  §2 de `20_alinear` arrancan con un guardia que dice *Ejecutar anteriores* en
+  vez de un `NameError`. La celda es la misma en los cinco notebooks y
+  `validate_notebooks.py` lo exige, igual que con la de clon. Banco en
+  `tests/test_montar.py`, que corre la fuente real contra un `google.colab`
+  falso, y cinco mutaciones.
 - **El genoma tiene que estar ADENTRO del `-o` de `yasma align`, y por symlink
   al directorio.** `inputClass.check()` hace
   `value.relative_to(self.output_directory)` sin protegerlo: un genoma
@@ -1082,7 +1094,7 @@ evitan que dos hagan el mismo proyecto. El techo es 4× y lo marca
 Todo corre sin red y en segundos. Antes de cada push:
 
 ```bash
-./tests/run_all.sh              # 21 bancos, 730 chequeos, binarios falsos en el PATH
+./tests/run_all.sh              # 22 bancos, 755 chequeos, binarios falsos en el PATH
 ./tests/mutar.py                # rompe el codigo y exige que algun banco grite
 ./scripts/check_docs.py         # lo que afirman los docs contra data/
 ./scripts/validate_notebooks.py # los .ipynb parsean y no hay duplicados
@@ -1093,7 +1105,7 @@ y `check_docs.py` dos más.
 
 **Un banco que pasa no prueba nada.** Prueba algo el día que se rompe lo que
 cubre y el banco se queja, y la única forma de saberlo es romper el código a
-propósito: eso es `tests/mutar.py`, 127 mutaciones que tienen que dar todas
+propósito: eso es `tests/mutar.py`, 132 mutaciones que tienen que dar todas
 `[OK]`. Un `[HUECO]` es un chequeo que falta; un `[VIEJA]` es una mutación cuyo
 patrón ya no existe, que tampoco prueba nada. Así aparecieron los dos huecos que
 ninguna otra cosa mostró — el veredicto de `perfil` que iba a la tabla sin estar
