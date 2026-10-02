@@ -55,6 +55,14 @@ S=$(corre drive_pull.sh sra prupe --go)
 tiene "destino local" "$L/sra_cache/prupe"     "$(cat "$LOG_RC")"
 tiene "origen remoto" "tesis/80_sra/prupe"     "$(cat "$LOG_RC")"
 
+echo "== 4b. DRIVE_ROOT='' es válido: un remoto que ya apunta a tesis/"
+# Con `:-` en vez de `-`, el vacio se pisaba con 'tesis' y rclone buscaba
+# tesis/tesis/80_sra: 0 ficheros y exit 0. Lo habia encontrado el banco de
+# drive_check, pero para drive_pull no habia caso y la mutacion pasaba.
+S=$(DRIVE_ROOT='' corre drive_pull.sh sra prupe --go)
+tiene "origen sin el tesis/ de más" ":80_sra/prupe"   "$(cat "$LOG_RC")"
+notiene "y sin tesis/ delante"       "tesis/80_sra"    "$(cat "$LOG_RC")"
+
 echo "== 5. purge exige ORG: 'purge sra' borraria el cache entero"
 S=$(corre drive_pull.sh purge sra --go); RC=$?
 [[ $RC -ne 0 ]] && ok "exit != 0" || mal "exit != 0 (rc=$RC)"
