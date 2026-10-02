@@ -830,6 +830,19 @@ probabilidad calibrada.
   **Con cuatro puntos limpios el s/M no sube con el genoma**: 58 a 39 Mb
   (`sclsc`, 67% sin alinear), y después 108, 116 y 105 a 228, 472 y 670 Mb. Lo
   que lo baja en `sclsc` parece ser cuánto alinea, no cuánto mide el genoma.
+- **La cola (`scripts/cola.py`, §8 del notebook) corre sola horas, así que
+  sus guardias son los de §2-§6 y no otros.** Toma de Drive lo que falta, de
+  menor a mayor, y por proyecto hace genoma → recorte → `trim.sh verificar` →
+  alineamiento → `align.sh verificar` → BAM y registros a Drive → calibración →
+  limpieza del disco. Un recorte que no verifica **no se alinea** y la cola
+  sigue; un BAM que no verifica no sube. Es **reanudable**: lo pendiente son
+  ~110 h y Colab Free corta a las ~12, así que relanzarla sigue desde el primero
+  que no está en Drive, y `max_horas` no arranca un proyecto que no termina
+  antes del corte. La calibración va también a `10_bam/<org>/<rol>.calibracion.tsv`,
+  al lado del BAM, porque sin token la fila de git muere con la VM. Y es **la
+  misma** `registrar_calibracion()` que usa §5: dos implementaciones del conteo
+  de reads ya divergieron una vez (16 M contra 55). Banco en `tests/test_cola.py`
+  con `align.sh` y `trim.sh` falsos, y nueve mutaciones.
 - **`galga` no entra en la RAM de Colab Free, y eso no lo decía nada.** Con
   1.05 Gb de ensamblado, `unique_d` pide ~9.8 GB de los ~11.4 disponibles: los
   dos proyectos de `galga` quedan fuera por **memoria**, no por disco —
@@ -1084,6 +1097,7 @@ Lo que necesita red va en otro lado:
 | manifiesto y `.sra` | Colab | `notebooks/10_descarga_runs.ipynb` |
 | ver qué falta | Colab | `notebooks/90_estado.ipynb` |
 | recorte y alineamiento (los que entran) | Colab | `notebooks/20_alinear.ipynb` |
+| todos los que faltan, en cola | Colab | §8 de `20_alinear.ipynb` (`scripts/cola.py`) |
 | empujar a git desde Colab | Colab | `scripts/colab_git.py` + un PAT en Secrets |
 | configurar rclone | máquina local | `docs/rclone.md` + `scripts/drive_check.sh` |
 | traer `.sra` para alinear | máquina local | `scripts/drive_pull.sh sra <org> --go` |
@@ -1112,7 +1126,7 @@ evitan que dos hagan el mismo proyecto. El techo es 4× y lo marca
 Todo corre sin red y en segundos. Antes de cada push:
 
 ```bash
-./tests/run_all.sh              # 24 bancos, 792 chequeos, binarios falsos en el PATH
+./tests/run_all.sh              # 25 bancos, 823 chequeos, binarios falsos en el PATH
 ./tests/mutar.py                # rompe el codigo y exige que algun banco grite
 ./scripts/check_docs.py         # lo que afirman los docs contra data/
 ./scripts/validate_notebooks.py # los .ipynb parsean y no hay duplicados
@@ -1123,7 +1137,7 @@ y `check_docs.py` dos más.
 
 **Un banco que pasa no prueba nada.** Prueba algo el día que se rompe lo que
 cubre y el banco se queja, y la única forma de saberlo es romper el código a
-propósito: eso es `tests/mutar.py`, 136 mutaciones que tienen que dar todas
+propósito: eso es `tests/mutar.py`, 145 mutaciones que tienen que dar todas
 `[OK]`. Un `[HUECO]` es un chequeo que falta; un `[VIEJA]` es una mutación cuyo
 patrón ya no existe, que tampoco prueba nada. Así aparecieron los dos huecos que
 ninguna otra cosa mostró — el veredicto de `perfil` que iba a la tabla sin estar

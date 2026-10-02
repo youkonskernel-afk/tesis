@@ -119,7 +119,8 @@ chk("lanza AssertionError", isinstance(err, AssertionError), repr(err))
 chk("dice que es la cuenta", "otra cuenta" in str(err), str(err))
 
 print("== 5. §1 y §2 sin las celdas de arriba: Ejecutar anteriores, no NameError")
-for nombre, marca in (("§1", "B_FQGZ = 22"), ("§2", "# El de la TANDA si")):
+for nombre, marca in (("§1", "B_FQGZ = 22"), ("§2", "# El de la TANDA si"),
+                      ("§8", "cola.correr_cola(")):
     try:
         exec(celda(marca), {})
         e = None

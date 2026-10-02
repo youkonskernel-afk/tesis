@@ -36,7 +36,7 @@ def celda(marca):
     return hall[0]
 
 
-FUENTE = celda("medido en")
+FUENTE = celda("cola.registrar_calibracion(")
 
 
 def proyecto(tmp, filas_ledger, libs, bam_bytes, fq_bytes):
@@ -65,7 +65,7 @@ def proyecto(tmp, filas_ledger, libs, bam_bytes, fq_bytes):
 def correr_celda(tmp, t_alin=1000.0):
     calib = tmp / "calibracion.tsv"
     ns = {
-        "PROYECTO": "aa/dup", "correr": lambda *a, **k: 0,
+        "PROYECTO": "aa/dup", "correr": lambda *a, **k: 0, "CLON": RAIZ,
         "DRIVE": tmp / "drive", "BAM_DIR": tmp / "bams", "PROY_DIR": tmp / "proyectos",
         "TANDA": None, "shutil": shutil, "csv": csv,
         "bases_de": lambda org: (100_000_000,), "proy": {("aa", "dup"): (99,)},
