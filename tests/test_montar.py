@@ -130,6 +130,27 @@ for nombre, marca in (("§1", "B_FQGZ = 22"), ("§2", "# El de la TANDA si"),
     chk(f"{nombre}: dice Ejecutar anteriores", "Ejecutar anteriores" in str(e), str(e))
     chk(f"{nombre}: nombra lo que falta", "CLON" in str(e) or "correr" in str(e), str(e))
 
+# §8 es la excepcion: parado ahi, "Ejecutar anteriores" corre tambien §1 a §7, y
+# §3-§4 recortan y alinean un proyecto suelto durante horas antes de la cola.
+# Paso: Preambulo corrido, Herramientas y Configuracion no, y el mensaje decia
+# justo eso de "Ejecutar anteriores".
+print("== 5b. §8 dice qué celdas correr a mano, y que NO Ejecutar anteriores")
+COLA = celda("cola.correr_cola(")
+for nombre, ns, con_preambulo in (("sin nada", {}, True),
+                                  ("con Preámbulo", {"CLON": RAIZ, "DRIVE": RAIZ}, False)):
+    try:
+        exec(COLA, dict(ns))
+        e = None
+    except Exception as x:  # noqa: BLE001
+        e = x
+    msg = str(e)
+    chk(f"§8 {nombre}: RuntimeError", isinstance(e, RuntimeError), repr(e))
+    chk(f"§8 {nombre}: advierte no usar Ejecutar anteriores",
+        'NO uses "Ejecutar anteriores"' in msg, msg)
+    chk(f"§8 {nombre}: nombra Herramientas y Configuración",
+        "Herramientas" in msg and "Configuración" in msg, msg)
+    chk(f"§8 {nombre}: Preámbulo solo si falta", ("Preámbulo" in msg) == con_preambulo, msg)
+
 print("== 6. la celda de montaje es la misma en todos los notebooks")
 todas = {nb.name: celda("drive.mount(", nb)
          for nb in sorted((RAIZ / "notebooks").glob("*.ipynb"))

@@ -843,6 +843,12 @@ probabilidad calibrada.
   misma** `registrar_calibracion()` que usa §5: dos implementaciones del conteo
   de reads ya divergieron una vez (16 M contra 55). Banco en `tests/test_cola.py`
   con `align.sh` y `trim.sh` falsos, y nueve mutaciones.
+  **Su guardia no puede mandar a *Ejecutar anteriores*.** Parado en §8, eso
+  corre también §1 a §7, y §3-§4 recortan y alinean un proyecto suelto durante
+  horas antes de que arranque la cola. El mensaje lo recomendaba, y pasó en la
+  primera corrida: Preámbulo hecho, Herramientas y Configuración no. Ahora dice
+  qué celdas correr a mano —el Preámbulo solo si falta— y advierte en contra
+  (`test_montar.py` 5b, dos mutaciones).
 - **`galga` no entra en la RAM de Colab Free, y eso no lo decía nada.** Con
   1.05 Gb de ensamblado, `unique_d` pide ~9.8 GB de los ~11.4 disponibles: los
   dos proyectos de `galga` quedan fuera por **memoria**, no por disco —
@@ -1126,7 +1132,7 @@ evitan que dos hagan el mismo proyecto. El techo es 4× y lo marca
 Todo corre sin red y en segundos. Antes de cada push:
 
 ```bash
-./tests/run_all.sh              # 25 bancos, 823 chequeos, binarios falsos en el PATH
+./tests/run_all.sh              # 25 bancos, 831 chequeos, binarios falsos en el PATH
 ./tests/mutar.py                # rompe el codigo y exige que algun banco grite
 ./scripts/check_docs.py         # lo que afirman los docs contra data/
 ./scripts/validate_notebooks.py # los .ipynb parsean y no hay duplicados
@@ -1137,7 +1143,7 @@ y `check_docs.py` dos más.
 
 **Un banco que pasa no prueba nada.** Prueba algo el día que se rompe lo que
 cubre y el banco se queja, y la única forma de saberlo es romper el código a
-propósito: eso es `tests/mutar.py`, 145 mutaciones que tienen que dar todas
+propósito: eso es `tests/mutar.py`, 147 mutaciones que tienen que dar todas
 `[OK]`. Un `[HUECO]` es un chequeo que falta; un `[VIEJA]` es una mutación cuyo
 patrón ya no existe, que tampoco prueba nada. Así aparecieron los dos huecos que
 ninguna otra cosa mostró — el veredicto de `perfil` que iba a la tabla sin estar

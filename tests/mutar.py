@@ -336,6 +336,14 @@ MUTACIONES = [
      [(") from None", ")")]),
     ("alinear: §1 sin las celdas de arriba da NameError", "notebooks/20_alinear.ipynb",
      [("if _faltan:", "if False:")]),
+    # Parado en §8, "Ejecutar anteriores" corre §1-§7: alinea un proyecto
+    # suelto durante horas antes de la cola. El mensaje lo recomendaba.
+    ("cola: el guardia de §8 vuelve a mandar a Ejecutar anteriores",
+     "notebooks/20_alinear.ipynb",
+     [("NO uses \\\"Ejecutar anteriores\\\" parado acá: ", "Usá \\\"Ejecutar anteriores\\\": ")]),
+    ("cola: el guardia de §8 pide el Preámbulo aunque ya corrió",
+     "notebooks/20_alinear.ipynb",
+     [("if {'CLON', 'DRIVE'} & set(_faltan) else []", "if True else []")]),
     ("notebooks: la celda de montaje puede derivar", "scripts/validate_notebooks.py",
      [(', ("montaje", "drive.mount(")', '')]),
     ("notebooks: la celda de clon puede derivar", "scripts/validate_notebooks.py",
