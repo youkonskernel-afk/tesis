@@ -353,6 +353,18 @@ MUTACIONES = [
        "                            ('Herramientas', 'YASMA_REF = ')):")]),
     ("cola: §8 sin Preámbulo sigue de largo", "notebooks/20_alinear.ipynb",
      [("if not all(n in globals() for n in ('CLON', 'DRIVE')):", "if False:")]),
+    # de_quien: un SIN_AL alto puede ser el pipeline o el huesped. rhirr_duplicado
+    # dio 99.9%, y lo que lo decide son los miRNAs de planta en los reads.
+    ("de_quien: ignora el umbral de planta", "scripts/de_quien.py",
+     [("    if suma_pct >= UMBRAL_PCT:", "    if False:")]),
+    ("de_quien: una planta sale como huesped", "scripts/de_quien.py",
+     [('    if reino == "Plantae":', '    if False:')]),
+    ("de_quien: muestrea solo la primera libreria", "scripts/de_quien.py",
+     [("    for run, p in rutas:", "    for run, p in rutas[:1]:")]),
+    ("de_quien: compara la secuencia entera y no el prefijo 5'", "scripts/de_quien.py",
+     [("if q.startswith(s))", "if q == s)")]),
+    ("de_quien: el tope de lecturas es global", "scripts/de_quien.py",
+     [("        c = collections.Counter()\n", "        c = total\n")]),
     ("notebooks: la celda de montaje puede derivar", "scripts/validate_notebooks.py",
      [(', ("montaje", "drive.mount(")', '')]),
     ("notebooks: la celda de clon puede derivar", "scripts/validate_notebooks.py",

@@ -302,6 +302,17 @@ probabilidad calibrada.
   e insertos de 71-87 nt. Es mRNA. Los 126 M spots por corrida ya lo hacían
   sospechoso y perfilarlo antes de adoptarlo evitó cambiar un duplicado que no
   servía por otro que tampoco.
+- **`rhirr_duplicado` (`PRJNA722321`) no alinea: 99.9% sin alinear en las 13
+  corridas.** Alineado contra `GCF_026210795.1` con el `sha256` verificado y un
+  recorte que retuvo 3.7-16.9 M reads por corrida, así que no es ni el genoma ni
+  el adaptador. `verificar` marcó las 13 `MUY BAJA` y el BAM **no subió a
+  Drive**. Es la misma sospecha que el 67% de `sclsc_duplicado`, llevada al
+  extremo: *Rhizophagus* es simbionte obligado, y una librería de raíz
+  micorrizada sería casi toda de la planta. **Sin confirmar todavía**: lo decide
+  `./scripts/de_quien.py` (§5b de `20_alinear`), que mide miRNAs de planta
+  conservados en los reads. Hasta tener esa salida no se declara nada, y
+  `rhirr/duplicado` no conviene dejarlo en la cola: es el primero y la cola lo
+  re-alinearía, ~2.5 h para el mismo resultado.
 - **`cloro` primario es `ncRNA-Seq`**, no miRNA-Seq. Igual que `phypa`, hay que
   declararlo en métodos. (Que venga ya recortado está anotado arriba.)
 - **Re-estimado con datos, no con reglas de tres.** Con 3.4× más reads, las
@@ -1136,7 +1147,7 @@ evitan que dos hagan el mismo proyecto. El techo es 4× y lo marca
 Todo corre sin red y en segundos. Antes de cada push:
 
 ```bash
-./tests/run_all.sh              # 25 bancos, 835 chequeos, binarios falsos en el PATH
+./tests/run_all.sh              # 26 bancos, 855 chequeos, binarios falsos en el PATH
 ./tests/mutar.py                # rompe el codigo y exige que algun banco grite
 ./scripts/check_docs.py         # lo que afirman los docs contra data/
 ./scripts/validate_notebooks.py # los .ipynb parsean y no hay duplicados
@@ -1147,7 +1158,7 @@ y `check_docs.py` dos más.
 
 **Un banco que pasa no prueba nada.** Prueba algo el día que se rompe lo que
 cubre y el banco se queja, y la única forma de saberlo es romper el código a
-propósito: eso es `tests/mutar.py`, 149 mutaciones que tienen que dar todas
+propósito: eso es `tests/mutar.py`, 154 mutaciones que tienen que dar todas
 `[OK]`. Un `[HUECO]` es un chequeo que falta; un `[VIEJA]` es una mutación cuyo
 patrón ya no existe, que tampoco prueba nada. Así aparecieron los dos huecos que
 ninguna otra cosa mostró — el veredicto de `perfil` que iba a la tabla sin estar
