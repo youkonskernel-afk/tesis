@@ -132,24 +132,94 @@ for nombre, marca in (("§1", "B_FQGZ = 22"), ("§2", "# El de la TANDA si"),
 
 # §8 es la excepcion: parado ahi, "Ejecutar anteriores" corre tambien §1 a §7, y
 # §3-§4 recortan y alinean un proyecto suelto durante horas antes de la cola.
-# Paso: Preambulo corrido, Herramientas y Configuracion no, y el mensaje decia
-# justo eso de "Ejecutar anteriores".
-print("== 5b. §8 dice qué celdas correr a mano, y que NO Ejecutar anteriores")
+# Paso dos veces: Preambulo corrido, Herramientas y Configuracion no. Ahora §8
+# las corre sola, con la fuente del notebook del clon; el Preambulo no puede
+# (montar pide autorizar en una ventana), asi que ese lo pide.
+print("== 5b. §8 sin Preámbulo: lo pide, y NO Ejecutar anteriores")
 COLA = celda("cola.correr_cola(")
-for nombre, ns, con_preambulo in (("sin nada", {}, True),
-                                  ("con Preámbulo", {"CLON": RAIZ, "DRIVE": RAIZ}, False)):
+try:
+    exec(COLA, {})
+    e = None
+except Exception as x:  # noqa: BLE001
+    e = x
+chk("§8 sin nada: RuntimeError", isinstance(e, RuntimeError), repr(e))
+chk("§8 sin nada: pide el Preámbulo", "Preámbulo" in str(e), str(e))
+chk("§8 sin nada: advierte no usar Ejecutar anteriores",
+    'NO uses "Ejecutar anteriores"' in str(e), str(e))
+
+print("== 5c. §8 con Preámbulo: corre Herramientas y Configuración y sigue a la cola")
+HERR = "YASMA_REF = 'x'\nORDEN.append('Herramientas')\n"
+CONF = ("import os\nENV = dict(os.environ)\nORDEN.append('Configuración')\n"
+        "GENOMES = PROY_DIR = BAM_DIR = CLON\n")
+COLA_FALSA = ("LLAMADAS = []\n"
+              "def correr_cola(**kw):\n    LLAMADAS.append(kw)\n    return {'ok': True}\n")
+
+
+def clon_falso(d, celdas):
+    (d / "notebooks").mkdir(parents=True)
+    (d / "scripts").mkdir()
+    (d / "notebooks" / "20_alinear.ipynb").write_text(json.dumps(
+        {"cells": [{"cell_type": "code", "source": [c]} for c in celdas]}))
+    (d / "scripts" / "cola.py").write_text(COLA_FALSA)
+    (d / "scripts" / "reparto.py").write_text("")
+
+
+def correr_cola_con(d, ns):
+    viejos = {k: sys.modules.pop(k, None) for k in ("cola", "reparto")}
+    path = list(sys.path)
+    buf, err = io.StringIO(), None
     try:
-        exec(COLA, dict(ns))
-        e = None
+        with redirect_stdout(buf):
+            exec(COLA, ns)
     except Exception as x:  # noqa: BLE001
-        e = x
-    msg = str(e)
-    chk(f"§8 {nombre}: RuntimeError", isinstance(e, RuntimeError), repr(e))
-    chk(f"§8 {nombre}: advierte no usar Ejecutar anteriores",
-        'NO uses "Ejecutar anteriores"' in msg, msg)
-    chk(f"§8 {nombre}: nombra Herramientas y Configuración",
-        "Herramientas" in msg and "Configuración" in msg, msg)
-    chk(f"§8 {nombre}: Preámbulo solo si falta", ("Preámbulo" in msg) == con_preambulo, msg)
+        err = x
+    finally:
+        sys.path[:] = path
+        for k, v in viejos.items():
+            sys.modules.pop(k, None)
+            if v is not None:
+                sys.modules[k] = v
+    return buf.getvalue(), err
+
+
+with tempfile.TemporaryDirectory() as d:
+    d = pathlib.Path(d)
+    # Configuracion ANTES que Herramientas en el notebook: el orden lo pone §8.
+    clon_falso(d / "a", [CONF, "print('§1')", HERR])
+    ns = {"CLON": d / "a", "DRIVE": d / "a", "ORDEN": []}
+    out, err = correr_cola_con(d / "a", ns)
+    chk("§8 con Preámbulo: sin error", err is None, repr(err))
+    chk("corre Herramientas y después Configuración",
+        ns["ORDEN"] == ["Herramientas", "Configuración"], ns["ORDEN"])
+    chk("y no otras celdas (§1)", "§1" not in out, out)
+    chk("avisa que las corrió", "la corro" in out, out)
+    llam = ns.get("cola") and ns["cola"].LLAMADAS
+    chk("llega a la cola con el ENV de Configuración",
+        bool(llam) and llam[0]["env"] is ns.get("ENV"), llam)
+
+    # Ya corridas: no las repite (Herramientas instala; no hace falta otra vuelta).
+    ns2 = dict(ns, ORDEN=[])
+    out, err = correr_cola_con(d / "a", ns2)
+    chk("ya corridas: no las repite", err is None and ns2["ORDEN"] == [], (err, ns2["ORDEN"]))
+
+    # Un notebook donde no esta la celda: error claro, no NameError mas abajo.
+    clon_falso(d / "b", [HERR])
+    ns3 = {"CLON": d / "b", "DRIVE": d / "b", "ORDEN": []}
+    out, err = correr_cola_con(d / "b", ns3)
+    chk("sin la celda de Configuración: RuntimeError que la nombra",
+        isinstance(err, RuntimeError) and "Configuración" in str(err), repr(err))
+
+# Y en el notebook DE VERDAD cada marca encuentra exactamente una celda: si no,
+# en Colab §8 cortaria en vez de correrlas.
+# Mismo filtro que §8: la propia celda de la cola lleva las marcas como texto.
+_codigo = ["".join(c["source"]) for c in json.loads(NB.read_text())["cells"]
+           if c["cell_type"] == "code"]
+reales = [[c for c in _codigo if m in c and "correr_cola(" not in c]
+          for m in ("YASMA_REF = ", "ENV = dict(os.environ)")]
+chk("las marcas de §8 encuentran UNA celda cada una en el notebook real",
+    [len(r) for r in reales] == [1, 1], [len(r) for r in reales])
+chk("y son Herramientas y Configuración",
+    all(reales) and "apt-get" in reales[0][0] and "PROY_DIR" in reales[1][0])
 
 print("== 6. la celda de montaje es la misma en todos los notebooks")
 todas = {nb.name: celda("drive.mount(", nb)
