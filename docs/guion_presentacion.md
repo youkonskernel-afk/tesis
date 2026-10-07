@@ -878,7 +878,7 @@ uno dejó un chequeo automático detrás.
 Y antes de respaldar nada: **verificar antes de subir**. Un resultado alineado
 contra el genoma equivocado se ve igual que uno bueno una vez guardado.
 
-**855 chequeos automáticos · 26 bancos de prueba · 154 mutaciones.**
+**862 chequeos automáticos · 26 bancos de prueba · 156 mutaciones.**
 
 Ninguno de estos chequeos se agregó por precaución abstracta. **Cada uno existe
 porque una cosa concreta falló en silencio.**

@@ -355,6 +355,10 @@ MUTACIONES = [
      [("if not all(n in globals() for n in ('CLON', 'DRIVE')):", "if False:")]),
     # de_quien: un SIN_AL alto puede ser el pipeline o el huesped. rhirr_duplicado
     # dio 99.9%, y lo que lo decide son los miRNAs de planta en los reads.
+    ("align: verificar no corre de_quien con SIN_AL alto", "scripts/align.sh",
+     [("exit !(s + 0 > 50) }' && diag", "exit !(s + 0 > 100) }' && diag")]),
+    ("align: verificar corre de_quien una vez por libreria", "scripts/align.sh",
+     [('    echo "--- ${d##*/}: más de la mitad', '    "$DE_QUIEN" "$d" "${diag[$d]}"; echo "--- ${d##*/}: más de la mitad')]),
     ("de_quien: ignora el umbral de planta", "scripts/de_quien.py",
      [("    if suma_pct >= UMBRAL_PCT:", "    if False:")]),
     ("de_quien: una planta sale como huesped", "scripts/de_quien.py",

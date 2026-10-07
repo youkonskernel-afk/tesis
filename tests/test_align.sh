@@ -262,6 +262,34 @@ tiene "lo nombra"        "MUY BAJA"                  "$S"
 tiene "y sugiere qué es" "el genoma correcto"        "$S"
 tiene "y a dónde ir"     "fetch_genomes.sh verificar" "$S"
 
+echo "== 9e. SIN_AL alto: verificar corre de_quien.py por proyecto, y nada más"
+# rhirr_duplicado: 99.9% sin alinear con genoma y recorte verificados. Lo que
+# decide si es el pipeline o el huesped son los reads; verificar lo corre solo,
+# porque la cola no tiene a nadie mirando que vaya a correr otra celda.
+cat > "$TMP/bin/de_quien_falso" <<'DQ'
+#!/usr/bin/env bash
+echo "DE_QUIEN $*"; echo ">>> HUESPED VEGETAL"; exit 3
+DQ
+chmod +x "$TMP/bin/de_quien_falso"
+sembrar_trim
+FAKE_COUNTS=$(printf '0\t0\t0\t0\t0\t1000\t0') corre correr >/dev/null 2>&1
+S=$(DE_QUIEN="$TMP/bin/de_quien_falso" corre verificar); RC=$?
+[[ $RC -ne 0 ]] && ok "sigue fallando: su salida no cambia el veredicto" || mal "sigue fallando (rc=$RC)"
+tiene "lo corre sobre aa_primario"  "DE_QUIEN $PROY/aa_primario aa"   "$S"
+tiene "y sobre aa_duplicado"        "DE_QUIEN $PROY/aa_duplicado aa"  "$S"
+tiene "y muestra lo que dice"       ">>> HUESPED VEGETAL"             "$S"
+[[ $(grep -c '^DE_QUIEN' <<<"$S") -eq 2 ]] && ok "una vez por proyecto, no por librería" \
+  || mal "una vez por proyecto (vi $(grep -c '^DE_QUIEN' <<<"$S"))"
+# Con todo alineado no lo corre: un BAM bueno no necesita diagnostico.
+sembrar_trim; corre correr >/dev/null 2>&1
+S=$(DE_QUIEN="$TMP/bin/de_quien_falso" corre verificar)
+notiene "con todo alineado no lo corre" "DE_QUIEN" "$S"
+# El umbral es SIN_AL, no ALIN bajo: lo de -m 50 (9d) no es otro organismo.
+sembrar_trim
+FAKE_COUNTS=$(printf '300\t0\t0\t100\t600\t0\t0') corre correr >/dev/null 2>&1
+S=$(DE_QUIEN="$TMP/bin/de_quien_falso" corre verificar)
+notiene "con el caso de -m tampoco" "DE_QUIEN" "$S"
+
 echo "== 9b. mucho por encima de -m 50 avisa, pero no es una falla"
 # El hallazgo de danre: los tRF multimapean y -m 50 descarta el 76%. Es
 # esperable, no un error — pero hay que verlo antes de tocar -m.

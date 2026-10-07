@@ -309,8 +309,10 @@ probabilidad calibrada.
   Drive**. Es la misma sospecha que el 67% de `sclsc_duplicado`, llevada al
   extremo: *Rhizophagus* es simbionte obligado, y una librería de raíz
   micorrizada sería casi toda de la planta. **Sin confirmar todavía**: lo decide
-  `./scripts/de_quien.py` (§5b de `20_alinear`), que mide miRNAs de planta
-  conservados en los reads. Hasta tener esa salida no se declara nada, y
+  `./scripts/de_quien.py`, que mide miRNAs de planta conservados en los
+  reads. **`align.sh verificar` lo corre solo** para cada proyecto con más de la
+  mitad sin alinear —lo imprimen §5 y la cola—, porque mandar a correr una celda
+  aparte no funcionó: se re-corrió §5 tres veces sin llegar a §5b. Hasta tener esa salida no se declara nada, y
   `rhirr/duplicado` no conviene dejarlo en la cola: es el primero y la cola lo
   re-alinearía, ~2.5 h para el mismo resultado.
 - **`cloro` primario es `ncRNA-Seq`**, no miRNA-Seq. Igual que `phypa`, hay que
@@ -1147,7 +1149,7 @@ evitan que dos hagan el mismo proyecto. El techo es 4× y lo marca
 Todo corre sin red y en segundos. Antes de cada push:
 
 ```bash
-./tests/run_all.sh              # 26 bancos, 855 chequeos, binarios falsos en el PATH
+./tests/run_all.sh              # 26 bancos, 862 chequeos, binarios falsos en el PATH
 ./tests/mutar.py                # rompe el codigo y exige que algun banco grite
 ./scripts/check_docs.py         # lo que afirman los docs contra data/
 ./scripts/validate_notebooks.py # los .ipynb parsean y no hay duplicados
@@ -1158,7 +1160,7 @@ y `check_docs.py` dos más.
 
 **Un banco que pasa no prueba nada.** Prueba algo el día que se rompe lo que
 cubre y el banco se queja, y la única forma de saberlo es romper el código a
-propósito: eso es `tests/mutar.py`, 154 mutaciones que tienen que dar todas
+propósito: eso es `tests/mutar.py`, 156 mutaciones que tienen que dar todas
 `[OK]`. Un `[HUECO]` es un chequeo que falta; un `[VIEJA]` es una mutación cuyo
 patrón ya no existe, que tampoco prueba nada. Así aparecieron los dos huecos que
 ninguna otra cosa mostró — el veredicto de `perfil` que iba a la tabla sin estar

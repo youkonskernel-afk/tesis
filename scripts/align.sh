@@ -83,6 +83,9 @@ MAX_RANDOM="${MAX_RANDOM:-3}"
 UNIQUE_LOCALITY="${UNIQUE_LOCALITY:-50}"
 OFFRATE="${OFFRATE:-3}"
 FORZAR="${FORZAR:-0}"
+# Lo que verificar corre cuando mas de la mitad no alinea en ninguna parte. Por
+# variable para que el banco lo reemplace por uno falso.
+DE_QUIEN="${DE_QUIEN:-$ROOT/scripts/de_quien.py}"
 
 LEDGER_ALIN=alineado.tsv
 
@@ -544,6 +547,7 @@ cmd_correr() {
 # columna los dos casos se ven igual: "poco alineado".
 cmd_verificar() {
   local filtro="${1:-}" org rol dir stats fallas=0 filas=0
+  local -A diag=()
   printf '%-18s %-12s %10s %7s %7s %7s %7s  %s\n' \
     PROYECTO CORRIDA READS ALIN SIN_AL ">m$MAX_MULTI" FILTR VEREDICTO
   while IFS=$'\t' read -r org rol; do
@@ -579,9 +583,21 @@ cmd_verificar() {
       [[ "$ver" == ok* ]] || fallas=$((fallas+1))
       printf '%-18s %-12s %10s %7s %7s %7s %7s  %s\n' \
         "${org}_${rol}" "$run" "$tot" "$al" "$sa" "$ov" "$fr" "$ver"
+      awk -v s="${sa%\%}" 'BEGIN { exit !(s + 0 > 50) }' && diag["$dir"]="$org"
     done < "$stats"
   done < <(proyectos "$filtro")
   echo
+  # SIN_AL alto dice CUANTO no alinea, no POR QUE: el pipeline (genoma, recorte)
+  # o reads que no son de este organismo. rhirr_duplicado dio 99.9% con todo
+  # verificado, y lo que lo decide son los miRNAs de planta en los reads. Se
+  # corre aca y no en una celda aparte porque la cola corre sola y su log es
+  # lo unico que se lee al volver. Su falla no cambia el veredicto de verificar.
+  local d
+  for d in "${!diag[@]}"; do
+    echo "--- ${d##*/}: más de la mitad no alinea en ninguna parte. ¿De quién son los reads? ---"
+    "$DE_QUIEN" "$d" "${diag[$d]}" || echo "   (de_quien.py no pudo correr: ver arriba)"
+    echo
+  done
   if [[ $fallas -eq 0 ]]; then
     echo "$filas librerías verificadas, ninguna fuera de lo esperado"
     return 0
