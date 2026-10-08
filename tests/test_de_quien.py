@@ -155,6 +155,104 @@ with tempfile.TemporaryDirectory() as d:
     chk("con un clon viejo manda a re-clonar", isinstance(e, RuntimeError)
         and "clonar" in str(e), repr(e))
 
+print("== 9. extremos: un inserto con 4 nt aleatorios en el 3' (lo de rhirr_duplicado)")
+import itertools  # noqa: E402
+import os  # noqa: E402
+import random  # noqa: E402
+rnd = random.Random(7)
+NUCLEO_R = "TGCTGAGATTAAGCCCGTGTTCTAAGATTTGT"   # el de verdad, del top 15 de rhirr
+OTRO = "GATTCGAAGGTCAATCGAATCCGTAGCATGCA"
+
+
+def cuatro():
+    return "".join(rnd.choice("ACGT") for _ in range(4))
+
+
+def con_4n(nucleo, n, cinco=False):
+    return [(cuatro() if cinco else "") + nucleo + cuatro() for _ in range(n)]
+
+
+with tempfile.TemporaryDirectory() as d:
+    tmp = pathlib.Path(d) / "h"
+    pdir = proyecto(tmp, [("R1", "trim/R1.t.fq.gz", con_4n(NUCLEO_R, 600) + con_4n(OTRO, 400))])
+    rc, out = correr(pdir, "rhirr")
+    chk("el 3' sale ALEATORIO", re.search(r"3'\s+la variante más común se lleva\s+\d+\.\d%.*ALEATORIO", out), out)
+    chk("el 5' no", not re.search(r"5'.*ALEATORIO", out), out)
+    chk("sin índice: EXTREMOS ALEATORIOS, que nombra el 3'",
+        ">>> EXTREMOS ALEATORIOS: los 4 nt del 3' varían" in out, out[-500:])
+    chk("y pide --indice para confirmarlo", "--indice" in out, out[-400:])
+    chk("el de planta sigue saliendo debajo", ">>> SIN PLANTA" in out, out[-300:])
+
+    print("== 10. una librería normal, con isomiRs, no es ALEATORIO")
+    # miR-like de 22 nt: la forma templada domina, y hay isomiRs 3' de mismo largo.
+    MIR = "TGAGGTAGTAGGTTGTATAGTT"
+    seqs = ([MIR] * 800 + [MIR[:-1] + "A"] * 100 + [MIR[:-2] + "TT"] * 50
+            + [OTRO] * 300 + [OTRO[:-1] + "G"] * 30)
+    tmp = pathlib.Path(d) / "i"
+    pdir = proyecto(tmp, [("R1", "trim/R1.t.fq.gz", seqs)])
+    rc, out = correr(pdir, "rhirr")
+    chk("ningún extremo ALEATORIO", "ALEATORIO" not in out, out)
+    chk("ni veredicto de extremos", "EXTREMOS" not in out, out[-400:])
+
+    print("== 11. con --indice: bowtie decide, y dice QUÉ recortar")
+    # bowtie falso: alinea mucho solo si se le recorta lo que hay que recortar.
+    # BUEN_3/BUEN_5 dicen qué recortes lo arreglan; lee el fq real y cuenta.
+    bindir = pathlib.Path(d) / "bin"
+    bindir.mkdir()
+    (bindir / "bowtie").write_text(r"""#!/usr/bin/env bash
+echo "$*" >> "$LOG_BT"
+t5=0; t3=0; prev=""
+for a in "$@"; do
+  [[ $prev == --trim5 ]] && t5=$a; [[ $prev == --trim3 ]] && t3=$a; prev=$a
+done
+fq="${@: -1}"; n=$(( $(wc -l < "$fq") / 4 ))
+ok=1
+[[ ${BUEN_3:-0} -gt 0 && $t3 -lt $BUEN_3 ]] && ok=0
+[[ ${BUEN_5:-0} -gt 0 && $t5 -lt $BUEN_5 ]] && ok=0
+[[ ${BUEN_3:-0} -eq 0 && ${BUEN_5:-0} -eq 0 ]] && ok=0
+if [[ $ok == 1 ]]; then k=$(( n * 85 / 100 + (t5 + t3) * n / 200 )); else k=$(( n / 500 + (t5 + t3) * n / 400 )); fi
+for ((i=0; i<k; i++)); do echo "m$i	+	chr1	1	ACGT"; done
+""")
+    (bindir / "bowtie").chmod(0o755)
+    viejo_path = os.environ["PATH"]
+    os.environ["PATH"] = f"{bindir}:{viejo_path}"
+    os.environ["LOG_BT"] = str(pathlib.Path(d) / "bt.log")
+    tmp = pathlib.Path(d) / "j"
+    pdir = proyecto(tmp, [("R1", "trim/R1.t.fq.gz", con_4n(NUCLEO_R, 600) + con_4n(OTRO, 400)),
+                          ("R2", "trim/R2.t.fq.gz", con_4n(OTRO, 1000))])
+
+    def con_indice(**env):
+        for k in ("BUEN_3", "BUEN_5"):
+            os.environ.pop(k, None)
+        os.environ.update({k: str(v) for k, v in env.items()})
+        pathlib.Path(os.environ["LOG_BT"]).write_text("")
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            de_quien.main([str(pdir), "rhirr", "--n", "1000", "--n-bowtie", "300",
+                           "--indice", "/x/GCF_X.1", "--cores", "2"])
+        return buf.getvalue(), pathlib.Path(os.environ["LOG_BT"]).read_text()
+
+    try:
+        out, log = con_indice(BUEN_3=4)
+        chk("prueba los cuatro recortes", len(log.splitlines()) == 4, log)
+        chk("con -v 1 y -k 1, como yasma", all("-v 1" in l and "-k 1" in l for l in log.splitlines()), log)
+        chk("contra el índice que se le pasa", all("/x/GCF_X.1" in l for l in log.splitlines()), log)
+        chk("sobre 300 por librería (600)", "bowtie -v 1 sobre 600 lecturas" in out, out)
+        chk("dice EXTREMOS SIN RECORTAR", ">>> EXTREMOS SIN RECORTAR" in out, out[-600:])
+        chk("del 3' solo, aunque las dos puntas alinean un poco más",
+            "sacando 4 nt del 3' alinea" in out, out[-600:])
+        chk("con los dos porcentajes", re.search(r"alinea \d+\.\d% contra \d+\.\d%", out), out[-600:])
+
+        out, log = con_indice(BUEN_3=4, BUEN_5=4)
+        chk("con 4N en las dos puntas, dice las dos", "sacando 4 nt del 5' y 3' alinea" in out, out[-600:])
+
+        out, log = con_indice()
+        chk("si recortar no cambia nada, no culpa a los extremos",
+            "EXTREMOS" not in out.split("bowtie -v 1")[1], out[-600:])
+        chk("aunque la firma de extremos diga ALEATORIO", "ALEATORIO" in out, out)
+    finally:
+        os.environ["PATH"] = viejo_path
+
 print()
 if FALLAS:
     print(f"{FALLAS} fallas")

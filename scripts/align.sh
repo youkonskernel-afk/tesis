@@ -592,10 +592,18 @@ cmd_verificar() {
   # verificado, y lo que lo decide son los miRNAs de planta en los reads. Se
   # corre aca y no en una celda aparte porque la cola corre sola y su log es
   # lo unico que se lee al volver. Su falla no cambia el veredicto de verificar.
-  local d
+  # Con el indice a mano, de_quien alinea una muestra recortando o no 4 nt de
+  # cada punta: es lo que distinguio el kit 4N de rhirr_duplicado de un huesped.
+  local d acc_d pre_d
+  local -a ind
   for d in "${!diag[@]}"; do
     echo "--- ${d##*/}: más de la mitad no alinea en ninguna parte. ¿De quién son los reads? ---"
-    "$DE_QUIEN" "$d" "${diag[$d]}" || echo "   (de_quien.py no pudo correr: ver arriba)"
+    ind=()
+    IFS=$'\t' read -r acc_d _ < <(genoma_de "${diag[$d]}") || true
+    pre_d="$GENOMES_DIR/${diag[$d]}/${acc_d:-}"
+    [[ -n "${acc_d:-}" && "$(indice_estado "$pre_d")" == completo ]] \
+      && ind=(--indice "$pre_d" --cores "$CORES")
+    "$DE_QUIEN" "$d" "${diag[$d]}" "${ind[@]}" || echo "   (de_quien.py no pudo correr: ver arriba)"
     echo
   done
   if [[ $fallas -eq 0 ]]; then

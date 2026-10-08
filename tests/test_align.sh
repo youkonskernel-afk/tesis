@@ -278,8 +278,18 @@ S=$(DE_QUIEN="$TMP/bin/de_quien_falso" corre verificar); RC=$?
 tiene "lo corre sobre aa_primario"  "DE_QUIEN $PROY/aa_primario aa"   "$S"
 tiene "y sobre aa_duplicado"        "DE_QUIEN $PROY/aa_duplicado aa"  "$S"
 tiene "y muestra lo que dice"       ">>> HUESPED VEGETAL"             "$S"
+# Con el indice completo (correr lo construyo) le pasa el prefijo, para que
+# pruebe alinear recortando las puntas: lo que delato el kit 4N de rhirr.
+tiene "con el índice de bowtie"     "--indice $GEN/aa/GCF_TEST.1 --cores" "$S"
 [[ $(grep -c '^DE_QUIEN' <<<"$S") -eq 2 ]] && ok "una vez por proyecto, no por librería" \
   || mal "una vez por proyecto (vi $(grep -c '^DE_QUIEN' <<<"$S"))"
+# Sin indice completo no se lo pasa: de_quien hace lo que puede sin alinear.
+mv "$GEN/aa/GCF_TEST.1.indice_s" "$GEN/aa/GCF_TEST.1.indice_s.bak"
+: > "$GEN/aa/GCF_TEST.1.build.log"
+S=$(DE_QUIEN="$TMP/bin/de_quien_falso" corre verificar)
+notiene "con un índice a medias, sin --indice" "--indice" "$S"
+tiene   "pero lo corre igual"                  "DE_QUIEN $PROY/aa_primario aa" "$S"
+mv "$GEN/aa/GCF_TEST.1.indice_s.bak" "$GEN/aa/GCF_TEST.1.indice_s"; rm -f "$GEN/aa/GCF_TEST.1.build.log"
 # Con todo alineado no lo corre: un BAM bueno no necesita diagnostico.
 sembrar_trim; corre correr >/dev/null 2>&1
 S=$(DE_QUIEN="$TMP/bin/de_quien_falso" corre verificar)

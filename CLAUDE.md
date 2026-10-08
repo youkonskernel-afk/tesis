@@ -304,17 +304,29 @@ probabilidad calibrada.
   servía por otro que tampoco.
 - **`rhirr_duplicado` (`PRJNA722321`) no alinea: 99.9% sin alinear en las 13
   corridas.** Alineado contra `GCF_026210795.1` con el `sha256` verificado y un
-  recorte que retuvo 3.7-16.9 M reads por corrida, así que no es ni el genoma ni
-  el adaptador. `verificar` marcó las 13 `MUY BAJA` y el BAM **no subió a
-  Drive**. Es la misma sospecha que el 67% de `sclsc_duplicado`, llevada al
-  extremo: *Rhizophagus* es simbionte obligado, y una librería de raíz
-  micorrizada sería casi toda de la planta. **Sin confirmar todavía**: lo decide
-  `./scripts/de_quien.py`, que mide miRNAs de planta conservados en los
-  reads. **`align.sh verificar` lo corre solo** para cada proyecto con más de la
-  mitad sin alinear —lo imprimen §5 y la cola—, porque mandar a correr una celda
-  aparte no funcionó: se re-corrió §5 tres veces sin llegar a §5b. Hasta tener esa salida no se declara nada, y
-  `rhirr/duplicado` no conviene dejarlo en la cola: es el primero y la cola lo
-  re-alinearía, ~2.5 h para el mismo resultado.
+  recorte que retuvo 3.7-16.9 M reads por corrida. `verificar` marcó las 13
+  `MUY BAJA` y el BAM **no subió a Drive**.
+  **No es el huésped**: la primera sospecha era raíz micorrizada, como el 67% de
+  `sclsc_duplicado`, y `de_quien.py` dio **0.00% de miRNAs de planta** en las 13.
+  **Lo que sí mostró es la firma de un kit 4N**: las 15 secuencias más
+  abundantes son *el mismo* inserto de 32 nt (`TGCTGAGATTAAGCCCGTGTTCTAAGATTTGT`)
+  seguido de **4 nt distintos en cada una**. Un genoma no produce eso; un
+  adaptador 3' con bases aleatorias en la unión sí (NEXTflex y los "HD"), y
+  cutadapt con `RA3` saca el adaptador pero deja esas 4 bases pegadas al read,
+  que con `-v 1` ya no alinea. Encaja con el `perfil`: inserto modal de 32 nt
+  en un proyecto de sRNA, donde lo esperable son 21-24.
+  **Sin confirmar todavía**: `de_quien.py` ahora mide la variación de cada
+  punta y, con el índice, **alinea una muestra recortando o no 4 nt de cada
+  extremo** — si el 3' recortado pasa de 0.1% a decenas de %, está confirmado y
+  dice qué recortar. `align.sh verificar` lo corre solo para cada proyecto con
+  más de la mitad sin alinear (lo imprimen §5 y la cola), porque mandar a correr
+  una celda aparte no funcionó: se re-corrió §5 tres veces sin llegar a §5b.
+  **Si se confirma, el arreglo es del recorte, no del alineamiento**: hay que
+  sacar esas 4 nt en `trim.sh` y re-alinear, y revisar con la misma prueba los
+  otros proyectos con inserto modal alto —`rhirr PRJEB29180` (30 nt) y `cloro
+  PRJEB51338` (38)—, porque `gadmo PRJNA284846` (32) alineó ~80% y no lo tiene.
+  Hasta tanto, `rhirr/duplicado` no conviene dejarlo en la cola: es el primero y
+  la re-alinearía, ~2.5 h para el mismo resultado.
 - **`cloro` primario es `ncRNA-Seq`**, no miRNA-Seq. Igual que `phypa`, hay que
   declararlo en métodos. (Que venga ya recortado está anotado arriba.)
 - **Re-estimado con datos, no con reglas de tres.** Con 3.4× más reads, las
@@ -1149,7 +1161,7 @@ evitan que dos hagan el mismo proyecto. El techo es 4× y lo marca
 Todo corre sin red y en segundos. Antes de cada push:
 
 ```bash
-./tests/run_all.sh              # 26 bancos, 862 chequeos, binarios falsos en el PATH
+./tests/run_all.sh              # 26 bancos, 882 chequeos, binarios falsos en el PATH
 ./tests/mutar.py                # rompe el codigo y exige que algun banco grite
 ./scripts/check_docs.py         # lo que afirman los docs contra data/
 ./scripts/validate_notebooks.py # los .ipynb parsean y no hay duplicados
@@ -1160,7 +1172,7 @@ y `check_docs.py` dos más.
 
 **Un banco que pasa no prueba nada.** Prueba algo el día que se rompe lo que
 cubre y el banco se queja, y la única forma de saberlo es romper el código a
-propósito: eso es `tests/mutar.py`, 156 mutaciones que tienen que dar todas
+propósito: eso es `tests/mutar.py`, 162 mutaciones que tienen que dar todas
 `[OK]`. Un `[HUECO]` es un chequeo que falta; un `[VIEJA]` es una mutación cuyo
 patrón ya no existe, que tampoco prueba nada. Así aparecieron los dos huecos que
 ninguna otra cosa mostró — el veredicto de `perfil` que iba a la tabla sin estar
