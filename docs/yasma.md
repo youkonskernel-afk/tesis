@@ -232,6 +232,97 @@ cosa que lo delata es la fracción alineada — por eso `align.sh verificar` exi
 y por eso `align.sh` se niega a alinear si el `sha256` del `.gz` no coincide con
 `data/genomas.sha256`.
 
+## `yasma tradeoff` reserva el genoma entero por librería, y el parche
+
+La primera corrida de `30_matriz` murió con **`-9` (SIGKILL, sin memoria) en los
+cuatro proyectos**: `gadmo_duplicado`, `gadmo_primario`, `phypa_duplicado` y
+`prupe_primario`. No es un bug nuestro: es cómo `get_kernel_coverage()` guarda
+los conteos. Antes de leer un solo read, por cada cromosoma reserva:
+
+```python
+pos_size_d[chrom] = [None] * chrom_length                    # 8 B por base
+pos_d[chrom] = np.zeros((chrom_length, C, N, 2), 'uint32')   # 8·C·N B por base
+```
+
+con C condiciones y N librerías. Encima, `numpy_method()` guarda en `cov_d` la
+cobertura de todo el genoma (4 B por base) y no la lee nunca después. Con los
+genomas y las librerías del manifiesto, y C = 1:
+
+| proyecto | genoma | librerías | `pos_d` (virtual) | fijo (16 B/base) |
+| :-- | --: | --: | --: | --: |
+| `sclsc_duplicado` | 39 Mb | 2 | 0.6 GB | 0.6 GB |
+| `prupe_primario` | 228 Mb | 8 | 15 GB | 3.6 GB |
+| `gadmo_duplicado` | 670 Mb | 12 | 64 GB | 10.7 GB |
+| `galga_duplicado` | 1053 Mb | 95 | 800 GB | 16.8 GB |
+
+`np.zeros` reserva perezoso, así que lo residente es lo que se toca. Pero cada
+read toca una página distinta, y con decenas de millones de reads alcanza. Con
+`gadmo` no hacía falta ni eso: los 10.7 GB fijos solos ya no entran en Colab.
+
+### El parche: lo mismo, guardado solo donde hay reads
+
+`scripts/tradeoff_parche.py` copia `scripts/tradeoff_disperso.py` adentro del
+paquete y reemplaza once líneas de `tradeoff.py`. **La salida no cambia**:
+cambia dónde se guardan los conteos, no qué se calcula.
+
+- **`Conteos`** reemplaza a `pos_d`. Guarda `(clave, cuenta)` ordenadas, y cada
+  rebanada que YASMA pide devuelve el mismo arreglo `uint32` que el denso, con
+  la semántica de rebanada de numpy: negativos, fuera de rango, vacía. Todo el
+  código de YASMA que suma rebanadas queda igual.
+- **`Largos`** reemplaza a `pos_size_d`. Devuelve la misma lista de largos por
+  posición y **en el mismo orden de primera aparición**. Ese orden no es un
+  detalle: `sizeClass.get()` desempata con `Counter.most_common()`, que respeta
+  el orden de inserción. Medido: un locus con (21,22) empatado con (22,23)
+  pasa de `22_23` a `21_22` si los largos se reordenan (`chrE` de
+  `tests/bam_sintetico.py`).
+- **La cobertura** sale de las mismas cinco operaciones numpy que el original:
+  suma de hebras en `uint32`, por rpb en `uint32` (con el mismo desborde),
+  mediana entre librerías, `float32`, media entre condiciones. Se calculan
+  fila por fila y solo sobre las posiciones con reads; las demás dan 0 en el
+  original y 0 acá.
+- **`cov_d` deja de guardarse**, porque no se lee nunca.
+
+Se niega si alguna de las once líneas no aparece exactamente una vez, y
+`--verificar` detecta un módulo desactualizado al lado del `tradeoff.py`
+parchado. `matriz.py anotar` lo exige, y además informa la memoria pico y
+distingue un `-9` de cualquier otro error.
+
+### Cómo se verificó que da lo mismo
+
+Corriendo **el original y el parchado sobre el mismo BAM** y comparando byte a
+byte los 12 ficheros que escribe `tradeoff/`. Solo se normalizan, en `log.txt` y
+`params.json`, la hora, la duración y las rutas. Lo hace
+`scripts/tradeoff_control.py`, y `tests/test_tradeoff_parche.py` §5 lo corre
+sobre BAMs sintéticos cuando hay un YASMA instalado. Dio **iguales** en estos
+casos:
+
+- 1, 3, 4 y 7 librerías;
+- 64 scaffolds;
+- condiciones desiguales (3 + 1);
+- una sola condición anotada de tres;
+- compactación forzada a cada 977 reads y bloques de 4 KB;
+- un genoma de 30 Mb con 12 librerías y 5.2 M reads.
+
+En ese último, la memoria pico pasó de **4.4 GB a 0.39 GB** y el tiempo de 145
+a 97 s.
+
+Sobre datos reales lo comprueba §1b de `30_matriz` con `sclsc/duplicado`, el
+único proyecto donde el original entra seguro en Colab.
+
+### Lo que el parche no arregla
+
+- **`ker_d`**: el kernel de cobertura, 4 B por base y `float32`. Hace falta entero
+  para buscar regiones después de fijar el umbral global, así que `galga` sigue
+  pidiendo ~4.2 GB solo por eso.
+- **Los temporales del cromosoma más grande**: unos 24 B por base mientras se
+  calcula su kernel. En `galga` el cromosoma 1 mide ~197 Mb, o sea ~4.7 GB.
+- **`claim_d`**: un dict por base **dentro** de las regiones anotadas. Es memoria
+  proporcional a lo anotado, no al genoma.
+- **El tiempo**: los bucles de Python por base siguen igual.
+
+`galga` es el caso límite: suma unos 9 GB antes de los conteos, y no se sabe si
+entra en Colab hasta medirlo.
+
 ## `yasma adapter`: su criterio de "ya recortada" es más débil que el nuestro
 
 `yasma adapter` marca una librería `PRE-TRIMMED`. El criterio, literal:

@@ -205,11 +205,19 @@ filas = int(os.environ.get('FILAS', '1'))
 cab = {CAB_TXT!r}
 fila = {FILA_TXT!r}
 (o / 'tradeoff' / 'loci.txt').write_text(cab + '\\n' + (fila + '\\n') * filas)
-sys.exit(int(os.environ.get('RC', '0')))
+rc = int(os.environ.get('RC', '0'))
+if rc < 0:
+    import signal
+    os.kill(os.getpid(), -rc)
+sys.exit(rc)
 """)
     falso.chmod(falso.stat().st_mode | stat.S_IEXEC)
     out = d / "anot"
-    r, e, txt = capturar(matriz.anotar, bam, out, str(falso))
+    SI, NO = ["true"], ["false"]
+    _, e, _ = capturar(matriz.anotar, bam, d / "anot0", str(falso), NO)
+    chk("sin el parche de memoria no anota", e is not None and "tradeoff_parche.py" in str(e.code)
+        and not (d / "args").exists(), repr(e))
+    r, e, txt = capturar(matriz.anotar, bam, out, str(falso), SI)
     args, cwd = (d / "args").read_text().splitlines()
     chk("llama a tradeoff", args.startswith("tradeoff"), args)
     chk("con -a absoluto", f"-a {bam.resolve()}" in args, args)
@@ -218,11 +226,16 @@ sys.exit(int(os.environ.get('RC', '0')))
     chk("y los filtros explícitos", "--min_abundance 50" in args and "--max_skew 0.9" in args, args)
     chk("parado adentro de -o", cwd == str(out.resolve()), cwd)
     chk("devuelve el loci.txt", r == out.resolve() / "tradeoff" / "loci.txt", r)
+    chk("informa la memoria pico", "memoria pico de tradeoff:" in txt, txt[-300:])
     os.environ["RC"] = "2"
-    _, e, _ = capturar(matriz.anotar, bam, d / "anot2", str(falso))
+    _, e, _ = capturar(matriz.anotar, bam, d / "anot2", str(falso), SI)
     chk("si yasma falla, corta", e is not None and "salió con 2" in str(e.code), repr(e))
+    os.environ["RC"] = "-9"
+    _, e, _ = capturar(matriz.anotar, bam, d / "anot4", str(falso), SI)
+    chk("si lo mata el sistema (-9), dice que es memoria", e is not None
+        and "sin memoria" in str(e.code), repr(e))
     os.environ["RC"], os.environ["FILAS"] = "0", "0"
-    _, e, _ = capturar(matriz.anotar, bam, d / "anot3", str(falso))
+    _, e, _ = capturar(matriz.anotar, bam, d / "anot3", str(falso), SI)
     chk("si no anotó ningún locus, corta", e is not None and "ningún locus" in str(e.code), repr(e))
     del os.environ["RC"], os.environ["FILAS"]
 

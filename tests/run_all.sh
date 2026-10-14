@@ -46,6 +46,7 @@ BANCOS=(
   tests/test_cola.py
   tests/test_de_quien.py
   tests/test_matriz.py
+  tests/test_tradeoff_parche.py
 )
 
 malos=0 total_ok=0 total_mal=0

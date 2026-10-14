@@ -659,6 +659,33 @@ probabilidad calibrada.
   Los 3 organismos heredados vienen de EnsemblGenomes y los 6 nuevos de NCBI.
   Con el etiquetado por secuencia esto dejó de afectar a los positivos, pero
   sigue valiendo para cualquier otro cruce con coordenadas externas.
+- **`yasma tradeoff` reserva 8 B por base del genoma y POR LIBRERÍA antes de
+  leer un read, y eso es un `-9`.** `get_kernel_coverage()` hace
+  `pos_d[chrom] = np.zeros((L, C, N, 2), 'uint32')` y `pos_size_d[chrom] =
+  [None] * L` por cromosoma, y `cov_d` guarda la cobertura del genoma entero
+  sin leerla nunca. La primera corrida de `30_matriz` murió con `-9` en los
+  cuatro proyectos: `gadmo_duplicado` (670 Mb × 12 librerías) son 64 GB de
+  `pos_d` y 10.7 fijos, y `galga_duplicado` serían 800 GB. Es el mismo tipo de
+  hallazgo que `unique_d` en `yasma align`: **la RAM de YASMA sale del genoma**,
+  y acá además se multiplica por las librerías.
+  Lo arregla `scripts/tradeoff_parche.py`: copia `tradeoff_disperso.py` al
+  paquete y reemplaza once líneas. Guarda `(clave, cuenta)` solo donde hay
+  reads, y cada rebanada que YASMA pide da **el mismo arreglo uint32** que el
+  denso. **No cambia la salida**: original y parchado dan los 12 ficheros de
+  `tradeoff/` iguales byte a byte (`scripts/tradeoff_control.py`), en 1-7
+  librerías, condiciones desiguales, 64 scaffolds y compactación forzada. En
+  30 Mb con 12 librerías el pico bajó de 4.4 GB a 0.39.
+  **El orden de los largos importa y casi se pierde.** `sizeClass` desempata
+  con `Counter.most_common()`, que respeta el orden de inserción: devolver los
+  largos de una posición ordenados en vez de por primera aparición cambia un
+  locus empatado de `22_23` a `21_22`. El BAM sintético no lo ejercitaba y la
+  mutación pasaba; ahora hay un caso armado a propósito (`chrE` de
+  `tests/bam_sintetico.py`).
+  `matriz.py anotar` exige el parche y distingue el `-9`. §1b de `30_matriz`
+  repite la comparación sobre `sclsc/duplicado`, que es real y donde el original
+  entra. Lo que **no** arregla: `ker_d` (4 B por base) y los temporales del
+  cromosoma más grande (~24 B por base), así que `galga` sigue rondando 9 GB
+  antes de contar reads y hay que medirlo. Banco: `tests/test_tradeoff_parche.py`.
 - **`yasma tradeoff` escribe en `<-o>/tradeoff/`** (o `tradeoff_<nombre>/` con
   `-n`): `loci.txt`, `loci.gff3`, `reads.txt`, `stats.txt`. Esta línea decía
   `annotations/<nombre>/loci.gff3`, y no sale del código de v1.1.1
@@ -1189,7 +1216,7 @@ evitan que dos hagan el mismo proyecto. El techo es 4× y lo marca
 Todo corre sin red y en segundos. Antes de cada push:
 
 ```bash
-./tests/run_all.sh              # 27 bancos, 969 chequeos, binarios falsos en el PATH
+./tests/run_all.sh              # 28 bancos, 1008 chequeos, binarios falsos en el PATH
 ./tests/mutar.py                # rompe el codigo y exige que algun banco grite
 ./scripts/check_docs.py         # lo que afirman los docs contra data/
 ./scripts/validate_notebooks.py # los .ipynb parsean y no hay duplicados
@@ -1200,7 +1227,7 @@ y `check_docs.py` dos más.
 
 **Un banco que pasa no prueba nada.** Prueba algo el día que se rompe lo que
 cubre y el banco se queja, y la única forma de saberlo es romper el código a
-propósito: eso es `tests/mutar.py`, 175 mutaciones que tienen que dar todas
+propósito: eso es `tests/mutar.py`, 192 mutaciones que tienen que dar todas
 `[OK]`. Un `[HUECO]` es un chequeo que falta; un `[VIEJA]` es una mutación cuyo
 patrón ya no existe, que tampoco prueba nada. Así aparecieron los dos huecos que
 ninguna otra cosa mostró — el veredicto de `perfil` que iba a la tabla sin estar

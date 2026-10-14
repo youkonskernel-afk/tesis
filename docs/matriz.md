@@ -28,6 +28,20 @@ contra su documentación.
 La anotación **no necesita el genoma**: lee los largos de los cromosomas de la
 cabecera del BAM. Por eso se puede anotar directo desde los BAMs de Drive.
 
+### Sin el parche de memoria no corre
+
+`tradeoff` de v1.1.1 reserva **8 B por base del genoma y por librería** antes
+de leer un read. La primera corrida murió con `-9` en los cuatro proyectos que
+se probaron: `gadmo` solo, con 670 Mb y 12 librerías, son 64 GB.
+
+`scripts/tradeoff_parche.py` guarda lo mismo de forma dispersa y **no cambia la
+salida**: original y parchado dan los mismos 12 ficheros byte a byte.
+`matriz.py anotar` se niega a correr sin el parche, informa la memoria pico y
+distingue un `-9` de cualquier otro error.
+
+§1b del notebook repite la comparación sobre un BAM real. El detalle, con lo
+medido y lo que el parche no arregla, está en `docs/yasma.md`.
+
 ### `--max_length` no filtra reads
 
 - El filtro por largo de `samtools_view` está **comentado** en v1.1.1.

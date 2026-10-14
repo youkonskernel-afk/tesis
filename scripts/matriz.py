@@ -79,6 +79,12 @@ TRADEOFF = [
     "--min_complexity", "10", "--min_abundance", "50",
     "--min_abundance_density", "100", "--min_size", "19",
 ]
+# tradeoff de v1.1.1 reserva 8 B por base y 8 B por base y por libreria antes
+# de leer un read: -9 (sin memoria) en los cuatro proyectos que se probaron en
+# Colab. El parche guarda lo mismo de forma dispersa y no cambia la salida
+# (scripts/tradeoff_parche.py, tests/test_tradeoff_parche.py). Sin él no se anota.
+PARCHE_TRADEOFF = [sys.executable, str(RAIZ / "scripts" / "tradeoff_parche.py"), "--verificar"]
+
 # Columnas de loci.txt en v1.1.1 (assessClass.header). Si cambian, se corta:
 # leer una columna corrida no falla, da features equivocadas.
 CABECERA_LOCI = ["Locus", "Name", "Length", "Reads", "RPM", "UniqueReads", "FracTop",
@@ -150,18 +156,34 @@ def leer_loci(ruta):
     return filas
 
 
-def anotar(bam, d, yasma="yasma"):
+def anotar(bam, d, yasma="yasma", parche=None):
     """yasma tradeoff sobre el BAM, parado adentro de -o (la trampa de rutas de
-    YASMA: guarda rutas relativas y las abre desde el CWD)."""
+    YASMA: guarda rutas relativas y las abre desde el CWD).
+
+    Exige el parche de memoria (`parche` es el comando que lo verifica; los
+    bancos lo reemplazan) e informa la memoria pico, que es lo que decide en
+    qué máquina entra cada proyecto."""
     bam, d = pathlib.Path(bam).resolve(), pathlib.Path(d).resolve()
     if not bam.exists():
         raise SystemExit(f"no existe el BAM {bam}")
+    r = subprocess.run(PARCHE_TRADEOFF if parche is None else parche,
+                       capture_output=True, text=True)
+    if r.returncode != 0:
+        raise SystemExit("falta el parche de memoria de yasma tradeoff: sin él, un genoma "
+                         "de cientos de Mb con varias librerías muere con -9.\n"
+                         "  Aplicalo con: ./scripts/tradeoff_parche.py\n" + (r.stdout + r.stderr).strip())
     d.mkdir(parents=True, exist_ok=True)
     cmd = [yasma, "tradeoff", "-a", str(bam), "-o", str(d), *TRADEOFF]
     print("$ " + " ".join(cmd), flush=True)
-    r = subprocess.run(cmd, cwd=d)
-    if r.returncode != 0:
-        raise SystemExit(f"yasma tradeoff salió con {r.returncode}: mirá {d}/tradeoff/log.txt")
+    p = subprocess.Popen(cmd, cwd=d)
+    _, st, ru = os.wait4(p.pid, 0)
+    rc, pico = os.waitstatus_to_exitcode(st), ru.ru_maxrss * 1024
+    if rc in (-9, 137):
+        raise SystemExit(f"yasma tradeoff se quedó sin memoria (SIGKILL, rc={rc}) tras llegar a "
+                         f"{pico/1e9:.1f} GB: este proyecto necesita una máquina con más RAM")
+    if rc != 0:
+        raise SystemExit(f"yasma tradeoff salió con {rc}: mirá {d}/tradeoff/log.txt")
+    print(f"memoria pico de tradeoff: {pico/1e9:.2f} GB", flush=True)
     loci = encontrar_loci(d)
     n = len(leer_loci(loci))
     if n == 0:
