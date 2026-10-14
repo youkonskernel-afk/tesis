@@ -45,6 +45,7 @@ BANCOS=(
   tests/test_celda1c.py
   tests/test_cola.py
   tests/test_de_quien.py
+  tests/test_matriz.py
 )
 
 malos=0 total_ok=0 total_mal=0

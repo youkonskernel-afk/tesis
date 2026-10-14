@@ -47,6 +47,11 @@ CITAS_DE_SALIDA = {
     "log.txt": "el log de cutadapt que deja yasma trim",
     "inputs.json": "lo escribe trim.sh y lo pisa yasma; es estado de corrida",
     "loci.gff3": "salida de yasma tradeoff",
+    "loci.txt": "salida de yasma tradeoff: una fila por locus (ver docs/matriz.md)",
+    "reads.txt": "salida de yasma tradeoff: los reads mas abundantes por locus",
+    "stats.txt": "salida de yasma tradeoff: totales de la anotacion",
+    "params.json": "salida de yasma tradeoff: los parametros de la corrida",
+    "features_entrenamiento.tsv": "lo que exporta matriz.py para loo_cv.py; vive en Drive/40_features",
     "library_stats.txt": "conteos por read group que escribe yasma align",
     "alineado.tsv": "contra que genoma alineo cada proyecto; lo escribe align.sh",
 }
@@ -60,6 +65,7 @@ CITAS_EXTERNAS = {
     "__init__.py": "NateyJay/YASMA@v1.1.1 — es donde align.py esta comentado",
     "trim.py": "NateyJay/YASMA@v1.1.1",
     "generics.py": "NateyJay/YASMA@v1.1.1",
+    "tradeoff.py": "NateyJay/YASMA@v1.1.1 — la anotacion de loci",
 }
 
 ORGS = ["rhirr", "sclsc", "cloro", "phypa", "prupe", "maldo", "gadmo", "galga",

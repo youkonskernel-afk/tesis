@@ -35,6 +35,7 @@ Links directos — Colab abre el notebook desde GitHub sin descargar nada:
 | genomas | https://colab.research.google.com/github/youkonskernel-afk/tesis/blob/claude/github-google-drive-setup-cwapri/notebooks/descarga_genomas.ipynb |
 | 10 corridas | https://colab.research.google.com/github/youkonskernel-afk/tesis/blob/claude/github-google-drive-setup-cwapri/notebooks/10_descarga_runs.ipynb |
 | 20 alinear | https://colab.research.google.com/github/youkonskernel-afk/tesis/blob/claude/github-google-drive-setup-cwapri/notebooks/20_alinear.ipynb |
+| 30 matriz | https://colab.research.google.com/github/youkonskernel-afk/tesis/blob/claude/github-google-drive-setup-cwapri/notebooks/30_matriz.ipynb |
 | 90 estado | https://colab.research.google.com/github/youkonskernel-afk/tesis/blob/claude/github-google-drive-setup-cwapri/notebooks/90_estado.ipynb |
 
 Ojo: la rama está en la URL. Cuando el default pase a `main` y esta rama se

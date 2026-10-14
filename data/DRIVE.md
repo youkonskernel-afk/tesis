@@ -27,9 +27,9 @@ de la cuenta. Lo que se excluye de abajo se excluye por criterio de reproducibil
 | :-- | :-- | :-- |
 | `00_manifiestos/` | `1rZ6AQ7xu8D7F9WqR7qBfgzATWG_FrJWY` | Snapshots de `organismos.tsv`, `config.sh`, `environment.yml` por corrida |
 | `10_bam/` | `1l_65g9VbWDqHik9UrBjgJCYNr7aurDB_` | `<org>/<RUN>.bam` + `.bai` — ~425 corridas, ~340 GB |
-| `20_yasma/` | `14MGZizfNGREiX4CvHzZOPEnlwoTSu62s` | `<org>/annotations/<nombre>/loci.gff3`, counts |
+| `20_yasma/` | `14MGZizfNGREiX4CvHzZOPEnlwoTSu62s` | `<org>/<rol>/tradeoff/`: `loci.txt`, `loci.gff3`, `reads.txt` de `yasma tradeoff` (ver `docs/matriz.md`) |
 | `30_qc/` | `11NXk3e0UFTw9RCCPMm-IpkqMsMVWnbsQ` | `<org>/` fastp `.json`/`.html`, flagstat, distribución de longitudes |
-| `40_features/` | `1fHV2-QM6yvEW3yCCuyA8uWwvkEAeZS6x` | Matrices de features por locus para PU learning |
+| `40_features/` | `1fHV2-QM6yvEW3yCCuyA8uWwvkEAeZS6x` | `<org>/<rol>.matriz.tsv` (una fila por locus), `maduros/<org>.fa` (MirGeneDB), `features_entrenamiento.tsv` (lo que lee `loo_cv.py`) |
 | `50_modelos/` | `1q59gopI-uKOGJhvQ_JbDJFx4qJL1wKO7` | Modelos entrenados, checkpoints, predicciones |
 | `60_figuras/` | `13rOdpXqd_EbNi3RDamLLeIBUko-Zc7BC` | Figuras raster pesadas |
 | `70_genomas/` | `1Ik2edbmuH6OLqjQDIOH6zLuUgYe_e4yy` | `<org>/<accession>.fna.gz` + `.sha256` — el FASTA exacto usado |

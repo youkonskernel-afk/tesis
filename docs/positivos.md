@@ -145,6 +145,10 @@ Implementado en `scripts/loo_cv.py`:
 ./scripts/loo_cv.py --self-test         # verifica la lógica sin datos
 ```
 
+El `features.tsv` lo arma `scripts/matriz.py exportar` (`notebooks/30_matriz.ipynb`
+§4): solo primarios de entrenamiento, ya etiquetados con este criterio. Qué es
+cada feature y cómo se etiqueta: `docs/matriz.md`.
+
 ### Cómo se mide, sin negativos
 
 No hay negativos conocidos, así que no se reporta precisión ni AUC contra

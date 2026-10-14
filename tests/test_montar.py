@@ -221,11 +221,24 @@ chk("las marcas de §8 encuentran UNA celda cada una en el notebook real",
 chk("y son Herramientas y Configuración",
     all(reales) and "apt-get" in reales[0][0] and "PROY_DIR" in reales[1][0])
 
+print("== 5d. 30_matriz: cada celda sin las de arriba dice cuáles correr, no NameError")
+NB30 = RAIZ / "notebooks" / "30_matriz.ipynb"
+for marca, nombre in (("TRABAJO = pathlib.Path", "Configuración"), ("EST = matriz.estado_drive", "§1"),
+                      ("SOLO    = []", "§2"), ("MIRGENEDB = {", "§3"),
+                      ("etiquetadas = []", "§4"), ("REVISAR_PRIMERO = True", "§5")):
+    try:
+        exec(celda(marca, NB30), {})
+        e = None
+    except Exception as x:  # noqa: BLE001
+        e = x
+    chk(f"30_matriz {nombre}: RuntimeError que dice qué correr",
+        isinstance(e, RuntimeError) and ("Faltan" in str(e) or "Preámbulo" in str(e)), repr(e))
+
 print("== 6. la celda de montaje es la misma en todos los notebooks")
 todas = {nb.name: celda("drive.mount(", nb)
          for nb in sorted((RAIZ / "notebooks").glob("*.ipynb"))
          if "drive.mount(" in nb.read_text()}
-chk("cinco notebooks montan", len(todas) == 5, sorted(todas))
+chk("seis notebooks montan", len(todas) == 6, sorted(todas))
 chk("con la misma celda", len(set(todas.values())) == 1)
 
 # Y validate_notebooks lo detecta si una deriva.

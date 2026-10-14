@@ -1,0 +1,5 @@
+# Qué matriz de features se armó por proyecto (notebooks/30_matriz.ipynb §5).
+# La matriz vive en Drive/40_features/<org>/<rol>.matriz.tsv; el sha256 es el
+# ancla de cuál se usó. loci = filas; positivos = y == 1 (vacío si no se
+# etiquetó); features = cuántas de matriz.FEATURES trae. Ver docs/matriz.md.
+proyecto	org	rol	loci	positivos	features	sha256	fecha_utc

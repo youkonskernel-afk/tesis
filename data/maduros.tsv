@@ -1,0 +1,4 @@
+# De dónde salieron los positivos de entrenamiento (notebooks/30_matriz.ipynb §5).
+# El FASTA vive en Drive/40_features/maduros/<org>.fa; el sha256 dice contra
+# qué versión de MirGeneDB se etiquetó. valido = pasó matriz.validar_maduros.
+org	fuente	url	secuencias	valido	sha256	fecha_utc

@@ -44,7 +44,8 @@ no el aporte de la tesis:
 2. `yasma trim` (cutadapt, 15-50 nt) → `yasma align` (bowtie1 `-v 1 -m 50`,
    pesado estilo ShortStack3)
 3. Anotación de loci con YASMA v1.1.1
-4. Features por locus → PU learning → candidatos priorizados
+4. Features por locus (`scripts/matriz.py`, `docs/matriz.md`) → PU learning →
+   candidatos priorizados
 
 ## Dataset
 
@@ -658,9 +659,35 @@ probabilidad calibrada.
   Los 3 organismos heredados vienen de EnsemblGenomes y los 6 nuevos de NCBI.
   Con el etiquetado por secuencia esto dejó de afectar a los positivos, pero
   sigue valiendo para cualquier otro cruce con coordenadas externas.
-- **YASMA v1.1.1 escribe en `annotations/<nombre>/loci.gff3`**, no en
-  `annotation/`. Un chequeo contra la ruta vieja hacía abortar el pipeline tras
-  el primer organismo.
+- **`yasma tradeoff` escribe en `<-o>/tradeoff/`** (o `tradeoff_<nombre>/` con
+  `-n`): `loci.txt`, `loci.gff3`, `reads.txt`, `stats.txt`. Esta línea decía
+  `annotations/<nombre>/loci.gff3`, y no sale del código de v1.1.1
+  (`tradeoff.py`, `dir_name`); era de otra versión o de otro comando. Por eso
+  `matriz.py` no adivina la ruta: busca `tradeoff*/loci.txt` y exige que haya
+  **uno solo**.
+- **El `--max_length` de `tradeoff` no filtra reads, y su default es 30.** El
+  filtro por largo de `samtools_view` está **comentado** en v1.1.1 y el
+  `sizecall` usa 15-30 fijo en `sizeClass.update()`, así que los reads de 31-50
+  igual cuentan para cobertura, profundidad y RNA mayoritario. Parecía que el
+  default de 30 contradecía la ventana del proyecto; medido en el código, no la
+  toca. Igual se pasa `--max_length 50` explícito, porque `tradeoff` lo escribe
+  en `inputs.json` y `params.json`, y un 30 ahí se leería como un filtro que no
+  existe. Ver `docs/matriz.md`.
+- **La matriz cuenta los reads de cada locus con la regla de YASMA y lo
+  compara.** `fetch` solapado, sin no mapeados: `reads_bam` tiene que dar igual a
+  `Reads` de `loci.txt`. Si difiere, no se está mirando lo que YASMA miró —otro
+  BAM— y `features` sale con 1 y el notebook no sube la matriz. Medido contra un
+  BAM real en `tests/test_matriz.py` §9 (7 chequeos que solo corren si hay
+  `pysam` y ViennaRNA instalados; sin ellos el banco lo avisa y no los cuenta).
+- **El duplicado nunca entra a `features_entrenamiento.tsv`.** `matriz.py
+  exportar` saca solo primarios de `set_modelo == entrenamiento` y dice qué dejó
+  afuera y por qué. Su matriz se arma igual, para validar. Tampoco exporta
+  `y_ref`, `y_mm` ni `y_dlen`: le darían la etiqueta al modelo.
+- **El pliegue en la hebra − cuenta el offset desde el final de la ventana.** El
+  banco lo probaba con el mayoritario centrado, donde los dos offsets dan igual,
+  y la mutación que lo rompía pasaba: hueco real, encontrado por `mutar.py`.
+  Ahora hay un caso pegado al borde del cromosoma, donde la ventana es
+  asimétrica.
 - **El BAM que va a YASMA tiene que traer `@RG` por corrida.** `yasma tradeoff`
   hace `header['RG']` sin `.get()`: un BAM sin read groups no degrada, tira
   `KeyError: 'RG'`. Y no es cosmético — agrega profundidad por read group, así
@@ -1133,6 +1160,7 @@ Lo que necesita red va en otro lado:
 | ver qué falta | Colab | `notebooks/90_estado.ipynb` |
 | recorte y alineamiento (los que entran) | Colab | `notebooks/20_alinear.ipynb` |
 | todos los que faltan, en cola | Colab | §8 de `20_alinear.ipynb` (`scripts/cola.py`) |
+| matriz de features (anotar, features, etiquetar, exportar) | Colab | `notebooks/30_matriz.ipynb` (`scripts/matriz.py`) |
 | empujar a git desde Colab | Colab | `scripts/colab_git.py` + un PAT en Secrets |
 | configurar rclone | máquina local | `docs/rclone.md` + `scripts/drive_check.sh` |
 | traer `.sra` para alinear | máquina local | `scripts/drive_pull.sh sra <org> --go` |
@@ -1161,7 +1189,7 @@ evitan que dos hagan el mismo proyecto. El techo es 4× y lo marca
 Todo corre sin red y en segundos. Antes de cada push:
 
 ```bash
-./tests/run_all.sh              # 26 bancos, 882 chequeos, binarios falsos en el PATH
+./tests/run_all.sh              # 27 bancos, 969 chequeos, binarios falsos en el PATH
 ./tests/mutar.py                # rompe el codigo y exige que algun banco grite
 ./scripts/check_docs.py         # lo que afirman los docs contra data/
 ./scripts/validate_notebooks.py # los .ipynb parsean y no hay duplicados
@@ -1172,7 +1200,7 @@ y `check_docs.py` dos más.
 
 **Un banco que pasa no prueba nada.** Prueba algo el día que se rompe lo que
 cubre y el banco se queja, y la única forma de saberlo es romper el código a
-propósito: eso es `tests/mutar.py`, 162 mutaciones que tienen que dar todas
+propósito: eso es `tests/mutar.py`, 175 mutaciones que tienen que dar todas
 `[OK]`. Un `[HUECO]` es un chequeo que falta; un `[VIEJA]` es una mutación cuyo
 patrón ya no existe, que tampoco prueba nada. Así aparecieron los dos huecos que
 ninguna otra cosa mostró — el veredicto de `perfil` que iba a la tabla sin estar

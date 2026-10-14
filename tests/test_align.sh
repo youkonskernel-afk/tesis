@@ -167,6 +167,25 @@ S=$(corre correr); RC=$?
 notiene "no llamó a yasma"      "ARGS="                      "$(cat "$LOG_YA")"
 ledger_ok
 
+echo "== 1d. fasta: el FASTA verificado, sin índice, y a stdout solo la ruta"
+# La matriz pliega una ventana alrededor de cada locus: necesita la secuencia
+# exacta contra la que se alineo, no el indice. bowtie-build en 1 Gb son horas.
+fasta_out() { MANIFEST="$MAN" GENOMAS_LEDGER="$LED" GENOMES_DIR="$GEN" PROY_DIR="$PROY" \
+  BAM_DIR="$TMP/bams" CORES=2 bash "$A" fasta "$@" 2>/dev/null; }
+rm -f "$GEN/aa/GCF_TEST.1.fna"; : > "$LOG_BB"
+F=$(fasta_out aa); RC=$?
+[[ $RC -eq 0 ]] && ok "exit 0" || mal "exit 0 (rc=$RC)"
+[[ "$F" == "$GEN/aa/GCF_TEST.1.fna" ]] && ok "stdout es la ruta y nada más" || mal "stdout es la ruta y nada más: [$F]"
+[[ -s "$GEN/aa/GCF_TEST.1.fna" ]] && ok "y lo descomprimió" || mal "y lo descomprimió"
+[[ ! -s "$LOG_BB" ]] && ok "sin bowtie-build" || mal "sin bowtie-build: $(cat "$LOG_BB")"
+printf 'org\taccession\tassembly\tsha256\tfecha_utc\naa\tGCF_TEST.1\tTestAsm\tdeadbeef\t2026-09-23\n' > "$LED"
+S=$(corre fasta aa); RC=$?
+[[ $RC -ne 0 ]] && ok "con el sha256 que no coincide, falla" || mal "con el sha256 que no coincide, falla (rc=$RC)"
+tiene "y dice por qué"           "no coincide con el ledger"  "$S"
+ledger_ok
+S=$(corre fasta aa/primario); RC=$?
+[[ $RC -ne 0 ]] && ok "pide un organismo, no un proyecto" || mal "pide un organismo (rc=$RC)"
+
 echo "== 2. plan: un proyecto por organismo y rol, con su accession"
 S=$(corre plan); RC=$?
 [[ $RC -eq 0 ]] && ok "exit 0" || mal "exit 0 (rc=$RC)"

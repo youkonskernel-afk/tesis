@@ -2,6 +2,7 @@
 # Alineamiento con `yasma align` (bowtie1 nativo, pesado estilo ShortStack3).
 #
 #   ./scripts/align.sh genoma    [<org>]            verifica y descomprime el FASTA
+#   ./scripts/align.sh fasta     <org>              idem, sin índice; imprime la ruta
 #   ./scripts/align.sh parche                       parcha yasma (ver yasma_parche.py)
 #   ./scripts/align.sh plan      [<org>[/<rol>]]    que se haria, sin hacerlo
 #   ./scripts/align.sh correr    [<org>[/<rol>]]    alinea
@@ -220,6 +221,17 @@ cmd_genoma() {
     printf '           RAM de yasma align: ~%s GB (%s bases x %s B)\n' \
       "$(ram_gb_de "$(bases_de "$fna")")" "$(bases_de "$fna")" "$B_POR_BASE"
   done
+}
+
+# Solo el FASTA verificado, sin el indice de bowtie: para lo que lee secuencia y
+# no alinea (la matriz pliega una ventana alrededor de cada locus). Mismo sha256
+# contra el ledger y misma descompresion que `genoma`, pero sin bowtie-build,
+# que en un genoma de 1 Gb son horas para nada. A stdout va SOLO la ruta, para
+# que se pueda hacer fna=$(align.sh fasta <org>).
+cmd_fasta() {
+  local org="${1:-}"
+  [[ -n "$org" && "$org" != */* ]] || die "fasta pide un organismo: ./scripts/align.sh fasta <org>"
+  preparar_genoma "$org"
 }
 
 # --- la memoria, que es lo que mata a los proyectos grandes -------------------
@@ -665,6 +677,7 @@ cmd_ledger() {
 [[ $# -ge 1 ]] || { sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
 case "$1" in
   genoma)    shift; cmd_genoma    "${1:-}" ;;
+  fasta)     shift; cmd_fasta     "${1:-}" ;;
   parche)    shift; "$ROOT/scripts/yasma_parche.py" "$@" ;;
   plan)      shift; cmd_plan      "${1:-}" ;;
   estado)    shift; cmd_estado    "${1:-}" ;;
@@ -672,5 +685,5 @@ case "$1" in
   verificar) shift; cmd_verificar "${1:-}" ;;
   ledger)    shift; cmd_ledger    "${1:-}" ;;
   -h|--help) sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//' ;;
-  *) die "modo desconocido: $1 (genoma|parche|plan|correr|estado|verificar|ledger)" ;;
+  *) die "modo desconocido: $1 (genoma|fasta|parche|plan|correr|estado|verificar|ledger)" ;;
 esac
