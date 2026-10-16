@@ -33,9 +33,15 @@
 # la suma de verificar); 96 min de §4 -> 104.7 s/M; BAM de 673 MiB -> 12.8 B/read.
 # b_fqgz 32.2 es solo de las 6 RA3 (los .t.fq.gz): el fastq de las PRE-TRIMMED
 # no se midio. Desde ahora §5 cuenta de align/library_stats.txt.
-proyecto	org	rol	accession	genoma_mb	librerias	reads_trim	seg_reloj	s_por_m	b_bam	b_fqgz	fecha_utc	indice_en_reloj
-gadmo_duplicado	gadmo	duplicado	GCF_902167405.1	670	12	54993770	5760	104.7	12.8	32.2	2026-10-02T13:36:13Z	no
-gadmo_primario	gadmo	primario	GCF_902167405.1	670	7	54970025	8575	156.0	20.2	33.1	2026-10-01T03:01:34Z	si
-phypa_duplicado	phypa	duplicado	GCF_000002425.5	472	10	85265445	9887	116.0	19.5	30.6	2026-10-01T15:26:01Z	no
-prupe_primario	prupe	primario	GCF_000346465.2	228	8	81683944	8820	108.0	13.2	18.6	2026-10-01T18:56:27Z	no
-sclsc_duplicado	sclsc	duplicado	GCF_000146945.2	39	2	32146090	1860	57.9	14.1	21.8	2026-09-22T00:00:00Z	no
+#
+# nucleos: los de la maquina donde se midio (bowtie corre con -p <nucleos>).
+# Agregada el 2026-10-16, antes de la primera corrida en Colab Pro: una fila
+# de 8 nucleos en la misma recta que las de 2 desviaba todas las estimaciones.
+# Las cinco de abajo son de Colab Free, 2 vCPU: el 2 es lo que se midio, no
+# un supuesto. reparto.elegir_nucleos elige las filas segun la maquina.
+proyecto	org	rol	accession	genoma_mb	librerias	reads_trim	seg_reloj	s_por_m	b_bam	b_fqgz	fecha_utc	indice_en_reloj	nucleos
+gadmo_duplicado	gadmo	duplicado	GCF_902167405.1	670	12	54993770	5760	104.7	12.8	32.2	2026-10-02T13:36:13Z	no	2
+gadmo_primario	gadmo	primario	GCF_902167405.1	670	7	54970025	8575	156.0	20.2	33.1	2026-10-01T03:01:34Z	si	2
+phypa_duplicado	phypa	duplicado	GCF_000002425.5	472	10	85265445	9887	116.0	19.5	30.6	2026-10-01T15:26:01Z	no	2
+prupe_primario	prupe	primario	GCF_000346465.2	228	8	81683944	8820	108.0	13.2	18.6	2026-10-01T18:56:27Z	no	2
+sclsc_duplicado	sclsc	duplicado	GCF_000146945.2	39	2	32146090	1860	57.9	14.1	21.8	2026-09-22T00:00:00Z	no	2

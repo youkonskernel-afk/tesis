@@ -72,6 +72,7 @@ def correr_celda(tmp, t_alin=1000.0):
         "B_FQGZ": 22, "B_BAM": 16, "s_por_m": lambda mb: 60.0,
         "CALIB": calib, "_acc": {"aa": "GCF_X.1"},
         "T_ALIN": t_alin, "INDICE_EN_RELOJ": False,
+        "ENV": {"CORES": "6"},
     }
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
@@ -102,6 +103,7 @@ with tempfile.TemporaryDirectory() as d:
     chk("el disco incluye el fastq de las PRE-TRIMMED (4 x 50 000)",
         r.get("b_fqgz") == "20.0", r)
     chk("y lo imprime así", "0 M reads" in out and "B_BAM   15.0" in out, out)
+    chk("con los núcleos de esta VM (los de ENV)", r.get("nucleos") == "6", r)
 
     print("== 2. sin library_stats no inventa una calibración")
     tmp = pathlib.Path(d) / "b"

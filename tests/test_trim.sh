@@ -122,12 +122,33 @@ PY
 YA
 cat > "$TMP/bin/cutadapt" <<'CA'
 #!/usr/bin/env bash
-echo "cutadapt 4.0"
+# Sin -o solo dice la version. Con -o (lo que llama `muestra`) anota los
+# argumentos y deja la mitad de las lecturas, como si la otra mitad no tuviera
+# adaptador (--trimmed-only).
+[[ " $* " == *" -o "* ]] || { echo "cutadapt 4.0"; exit 0; }
+echo "CA $*" >> "$LOG_CA"
+python3 - "$@" <<'PY'
+import gzip, sys
+a = sys.argv[1:]
+out, inp = a[a.index('-o') + 1], a[-1]
+lineas = open(inp).read().splitlines()
+recs = [lineas[i:i + 4] for i in range(0, len(lineas), 4)]
+with gzip.open(out, 'wt') as h:
+    for r in recs[::2]:
+        h.write('\n'.join(r) + '\n')
+PY
 CA
+cat > "$TMP/bin/fastq-dump" <<'FQD'
+#!/usr/bin/env bash
+# -X N lecturas a stdout (-Z). Anota como fue llamado.
+echo "FQD $*" >> "$LOG_FQD"
+n=0; while [[ $# -gt 0 ]]; do case "$1" in -X) n="$2"; shift 2 ;; *) shift ;; esac; done
+for ((i = 0; i < n; i++)); do printf '@r%d\nACGTACGTACGTACGTACGTAC\n+\nIIIIIIIIIIIIIIIIIIIIII\n' "$i"; done
+FQD
 chmod +x "$TMP/bin"/*
 export PATH="$TMP/bin:$PATH"
-export LOG_FQ="$TMP/fq.log" LOG_YA="$TMP/ya.log"
-: > "$LOG_FQ"; : > "$LOG_YA"
+export LOG_FQ="$TMP/fq.log" LOG_YA="$TMP/ya.log" LOG_CA="$TMP/ca.log" LOG_FQD="$TMP/fqd.log"
+: > "$LOG_FQ"; : > "$LOG_YA"; : > "$LOG_CA"; : > "$LOG_FQD"
 
 # PRESUPUESTO_GB=2 con corridas de ~2 GB estimados -> una tanda por corrida, que
 # es lo que ejercita el ledger. SOLAPAR=0 para que el log de fasterq sea
@@ -425,6 +446,50 @@ S=$(corre verificar aa/primario)
 L2=$(grep 'SRR_A2' <<<"$S")
 tiene "verificar la reconoce"            "pre-trimmed"   "$L2"
 notiene "y no la marca VACIA"            "VACIA"         "$L2"
+
+echo "== 16. muestra: N lecturas por corrida, el mismo recorte que yasma"
+# Para la prueba 4N sin recortar y alinear el proyecto entero (~2.5 h en rhirr).
+tabla_completa
+: > "$LOG_CA"; : > "$LOG_FQD"
+S=$(corre muestra aa/primario 6); RC=$?
+M="$TMP/trim/_muestras/aa_primario"
+[[ $RC -eq 0 ]] && ok "exit 0" || mal "exit 0 (rc=$RC): $S"
+LED=$(cat "$M/recortadas.tsv" 2>/dev/null)
+tiene "ledger con las columnas del de verdad" \
+  "$(printf 'run\tbioproject\tfichero\treads_in\treads_out\tretencion_pct\tfecha_utc')" "$LED"
+tiene "las tres corridas, también la del otro BioProject" \
+  "$(printf 'SRR_A3\tPRJ_A2\ttrim/SRR_A3.t.fq.gz\t6\t3\t50.0')" "$LED"
+tiene "fastq-dump con -X N a stdout"    "-X 6 -Z $DEST/aa/SRR_A1.sra"  "$(cat "$LOG_FQD")"
+CA=$(cat "$LOG_CA")
+tiene "cutadapt con los argumentos de yasma trim" \
+  "-a $RA3 --minimum-length 15 --maximum-length 50 -j 2 -O 4 --max-n 0 --trimmed-only" "$CA"
+tiene "y cada BioProject con SU adaptador" "-a $UNIV" "$CA"
+[[ -s "$M/trim/SRR_A1.t.fq.gz" && ! -e "$M/untrimmed/SRR_A1.fq" ]] \
+  && ok "deja el .t.fq.gz y borra el crudo" || mal "deja el .t.fq.gz y borra el crudo"
+printf 'aa\tPRJ_A\tSRR_A2\t-\tPRE-TRIMMED\t0\t-\t100\tYA RECORTADA\t2026-09-22\n' >> "$TABLA"
+: > "$LOG_CA"
+S=$(corre muestra aa/primario 6)
+LED=$(cat "$M/recortadas.tsv")
+tiene "la fila de la corrida le gana: SRR_A2 va sin recortar" \
+  "$(printf 'SRR_A2\tPRJ_A\tuntrimmed/SRR_A2.fq.gz\t6\t6')" "$LED"
+notiene "y cutadapt no la toca"          "SRR_A2"                       "$(cat "$LOG_CA")"
+tabla_completa
+S=$(corre muestra aa/primario 4 SRR_A3)
+LED=$(cat "$M/recortadas.tsv")
+tiene "con RUNs, solo esas"              "SRR_A3"                       "$LED"
+notiene "y no las otras"                 "SRR_A1"                       "$LED"
+S=$(corre muestra bb/primario 5)
+tiene "una PRE-TRIMMED no se recorta" \
+  "$(printf 'SRR_B1\tPRJ_B\tuntrimmed/SRR_B1.fq.gz\t5\t5')" "$(cat "$TMP/trim/_muestras/bb_primario/recortadas.tsv")"
+mv "$DEST/aa/SRR_A1.sra" "$DEST/aa/SRR_A1.sra.no"
+S=$(corre muestra aa/primario 6); RC=$?
+mv "$DEST/aa/SRR_A1.sra.no" "$DEST/aa/SRR_A1.sra"
+tiene "sin el .sra lo dice"              "FALTA el .sra: SRR_A1"        "$S"
+[[ $RC -eq 0 ]] && ok "y sigue con las otras" || mal "y sigue con las otras (rc=$RC)"
+S=$(corre muestra aa/primario cero 2>&1); RC=$?
+[[ $RC -ne 0 ]] && ok "un N que no es número corta" || mal "un N que no es número corta"
+S=$(corre muestra aa 2>&1); RC=$?
+[[ $RC -ne 0 ]] && ok "sin rol corta" || mal "sin rol corta"
 
 echo "== 15. errores"
 tiene "modo desconocido"            "modo desconocido"             "$(corre nosequé 2>&1 || true)"

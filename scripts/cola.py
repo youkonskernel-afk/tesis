@@ -41,9 +41,18 @@ import time
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import reparto  # noqa: E402
 
+# `nucleos` al final: las filas viejas no la tienen y se leen por nombre de
+# columna. Sin ella una fila medida con 8 nucleos entraba en la misma recta que
+# las de 2 y desviaba todas las estimaciones (ver reparto.elegir_nucleos).
 COLS_CALIB = ['proyecto', 'org', 'rol', 'accession', 'genoma_mb', 'librerias',
               'reads_trim', 'seg_reloj', 's_por_m', 'b_bam', 'b_fqgz', 'fecha_utc',
-              'indice_en_reloj']
+              'indice_en_reloj', 'nucleos']
+
+
+def nucleos_maquina(env=None):
+    """Los nucleos con los que corre bowtie: CORES del entorno (lo que align.sh
+    le pasa a yasma), o los de la maquina."""
+    return reparto.nucleos_de((env or os.environ).get('CORES') or os.cpu_count() or 1)
 
 
 # ------------------------------------------------------------------ utilidades
@@ -99,7 +108,7 @@ def bases_genoma(genomes, org, acc):
 # ---------------------------------------------------------- la calibracion
 def registrar_calibracion(pdir, org, rol, acc, gen_mb, t_alin, indice_en_reloj,
                           calib, nlib_def=0, b_fqgz_ref=None, b_bam_ref=None,
-                          spm_pred=None):
+                          spm_pred=None, nucleos=None):
     """Mide el proyecto recien alineado y escribe su fila en `calib`.
 
     UNA implementacion, la usan §5 del notebook y la cola. Devuelve la fila
@@ -148,11 +157,13 @@ def registrar_calibracion(pdir, org, rol, acc, gen_mb, t_alin, indice_en_reloj,
     # indice_en_reloj = si: el reloj incluye bowtie-build y el s/M no sirve
     # para la recta (gadmo_primario lo tuvo: 156 s/M, inflado). §1 lo saltea.
     en_reloj = 'si' if indice_en_reloj else 'no'
+    nuc = nucleos or nucleos_maquina()
+    print(f'  medido con {nuc} núcleos')
     nueva = dict(zip(COLS_CALIB, [
         f'{org}_{rol}', org, rol, acc or '?', f'{gen_mb:.0f}', str(nlib), str(reads),
         f'{t_alin:.0f}', f'{spm:.1f}', f'{bam/reads:.1f}', f'{fq/reads:.1f}',
         datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
-        en_reloj]))
+        en_reloj, str(nuc)]))
     if en_reloj == 'si':
         print('  OJO: el reloj incluye la construccion del indice; la fila queda '
               'marcada y §1 no la usa para la recta')
@@ -167,7 +178,10 @@ def registrar_calibracion(pdir, org, rol, acc, gen_mb, t_alin, indice_en_reloj,
         for r in csv.DictReader((l for l in lineas if l and not l.startswith('#')),
                                 delimiter='\t'):
             if r.get('proyecto') and r['proyecto'] != f'{org}_{rol}':
-                filas.append({c: (r.get(c) or '?') for c in COLS_CALIB})
+                fila = {c: (r.get(c) or '?') for c in COLS_CALIB}
+                # Una fila de antes de la columna es de Colab Free: NUCLEOS_REF.
+                fila['nucleos'] = str(reparto.nucleos_de(r.get('nucleos')))
+                filas.append(fila)
     filas.append(nueva)
     filas.sort(key=lambda r: r['proyecto'])
     calib.write_text('\n'.join(comentarios + ['\t'.join(COLS_CALIB)]
@@ -177,9 +191,9 @@ def registrar_calibracion(pdir, org, rol, acc, gen_mb, t_alin, indice_en_reloj,
 
 
 # ------------------------------------------------------------------ la cola
-def pendientes(clon, drive, solo=()):
+def pendientes(clon, drive, solo=(), nucleos=None):
     """[(org, rol, costo)] que faltan en Drive, de menor a mayor."""
-    cst, _aj = reparto.costos(clon, reparto.GENOMAS_MB)
+    cst, _aj = reparto.costos(clon, reparto.GENOMAS_MB, nucleos=nucleos)
     hechos = {k for k in cst
               if (pathlib.Path(drive) / '10_bam' / k[0] / f'{k[1]}.bam').exists()}
     quiero = {tuple(s.split('/')) for s in solo} if solo else None
@@ -233,9 +247,13 @@ def correr_cola(clon, drive, env, genomes, proy_dir, bam_dir, max_horas=11.0,
     t0 = reloj()
     res = dict(hechos=[], fallados=[], saltados=[], cortado=False)
 
-    cola, n_hechos = pendientes(clon, drive, solo)
+    nuc = nucleos_maquina(env)
+    cola, n_hechos = pendientes(clon, drive, solo, nucleos=nuc)
     print(f'== cola: {len(cola)} pendiente(s), {n_hechos} ya en Drive. '
-          f'Tope de esta sesion: {max_horas:.1f} h.')
+          f'Tope de esta sesion: {max_horas:.1f} h. Núcleos: {nuc}.')
+    _, usados = reparto.elegir_nucleos(reparto.filas_calibracion(clon), nuc)
+    if reparto.aviso_nucleos(usados, nuc):
+        print('   ' + reparto.aviso_nucleos(usados, nuc))
     for o, r, c in cola:
         print(f'   {o}/{r:<10} {c["runs"]:>3} corridas  ~{c["horas"]:.1f} h  '
               f'RAM ~{c["ram_b"]/1e9:.1f} GB')
@@ -306,16 +324,34 @@ def _un_proyecto(clon, drive, env, genomes, proy_dir, bam_dir, org, rol, acc, c,
     src = drive / '70_genomas' / org
     if src.exists():
         shutil.copytree(src, genomes / org, dirs_exist_ok=True)
-    rc, _ = correr(clon, env, 'align.sh', 'genoma', org)
-    if rc != 0:
-        return False, 'el genoma no se pudo preparar (sha256 o descompresion)'
 
-    rc, _ = correr(clon, dict(env, PRESUPUESTO_GB=str(presupuesto_gb)),
-                   'trim.sh', 'correr', p)
-    if rc != 0:
+    # El indice y el recorte no dependen uno del otro, y se hacian en fila: en
+    # galga el indice es ~1 h con 2 nucleos, y el recorte pasa buena parte del
+    # tiempo leyendo .sra del FUSE de Drive. Se lanzan juntos; el alineamiento
+    # espera a los dos. La salida del genoma va a un log que se imprime al
+    # terminar, para no entreverarla con la del recorte.
+    pdir = proy_dir / f'{org}_{rol}'
+    pdir.mkdir(parents=True, exist_ok=True)
+    log_gen = pdir / 'genoma.log'
+    print(f'   align.sh genoma {org}: en paralelo con el recorte (log en {log_gen})', flush=True)
+    with open(log_gen, 'w') as h:
+        gen = subprocess.Popen([str(pathlib.Path(clon) / 'scripts' / 'align.sh'), 'genoma', org],
+                               stdout=h, stderr=subprocess.STDOUT, env=env)
+    try:
+        rc_trim, _ = correr(clon, dict(env, PRESUPUESTO_GB=str(presupuesto_gb)),
+                            'trim.sh', 'correr', p)
+        rc_ver = correr(clon, env, 'trim.sh', 'verificar', p)[0] if rc_trim == 0 else None
+    finally:
+        # Siempre se espera: un bowtie-build huerfano seguiria escribiendo el
+        # indice mientras la limpieza borra el directorio del genoma.
+        rc_gen = gen.wait()
+        print(f'\n--- align.sh genoma {org} (corrió en paralelo con el recorte) ---')
+        print(log_gen.read_text(errors='replace').rstrip())
+    if rc_gen != 0:
+        return False, 'el genoma no se pudo preparar (sha256 o descompresion)'
+    if rc_trim != 0:
         return False, 'el recorte fallo'
-    rc, _ = correr(clon, env, 'trim.sh', 'verificar', p)
-    if rc != 0:
+    if rc_ver != 0:
         return False, ('el recorte no verifica (alguna corrida VACIA o DESVIADA): '
                        'no lo alineo. Arreglalo con §3b/§3c del notebook')
 
@@ -341,7 +377,6 @@ def _un_proyecto(clon, drive, env, genomes, proy_dir, bam_dir, org, rol, acc, c,
         if f.exists():
             shutil.copy2(f, destino / f.name)
             print(f'   {f.name} -> {destino}  ({f.stat().st_size/1e9:.1f} GB)')
-    pdir = proy_dir / f'{org}_{rol}'
     led = pdir / 'alineado.tsv'
     if led.exists():
         shutil.copy2(led, destino / f'{rol}.alineado.tsv')
@@ -349,7 +384,7 @@ def _un_proyecto(clon, drive, env, genomes, proy_dir, bam_dir, org, rol, acc, c,
     gen_mb = bases_genoma(genomes, org, acc) / 1e6 if acc else 0
     calib = clon / 'data' / 'calibracion.tsv'
     fila = registrar_calibracion(pdir, org, rol, acc, gen_mb, t_alin, en_reloj, calib,
-                                 nlib_def=c['runs'])
+                                 nlib_def=c['runs'], nucleos=nucleos_maquina(env))
     if fila:
         # Copia en Drive al lado del BAM: si la sesion muere antes del push,
         # la fila se recupera de ahi y no de lo que se haya impreso.

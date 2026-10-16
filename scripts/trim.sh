@@ -6,6 +6,9 @@
 #   ./scripts/trim.sh estado    [<org>[/<rol>]]   que esta recortado y que falta
 #   ./scripts/trim.sh verificar [<org>[/<rol>]]   la retencion medida vs la esperada
 #   ./scripts/trim.sh rehacer <org>/<rol> RUN...  saca esas del registro y las re-recorta
+#   ./scripts/trim.sh muestra <org>/<rol> [N] [RUN...]
+#                                    N lecturas de cada corrida, recortadas igual que
+#                                    yasma trim, en $PROY_DIR/_muestras/<org>_<rol>/
 #
 # El filtro es un organismo (`galga`) o un organismo y un rol (`galga/primario`).
 #
@@ -715,13 +718,73 @@ print(f"   ahora `correr` las vuelve a recortar con lo que diga la tabla")
 PY
 }
 
-[[ $# -ge 1 ]] || { sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
+# --- una muestra, para diagnosticar sin recortar el proyecto entero ----------
+#
+# Existe para la prueba 4N de rhirr_duplicado: hasta ahora solo se podia correr
+# despues de recortar y alinear el proyecto entero (~2.5 h) para ver que no
+# alineaba. Con N lecturas de cada corrida la prueba son minutos.
+#
+# El recorte es la MISMA llamada a cutadapt que hace yasma trim v1.1.1
+# (trim.py, linea 153), con la secuencia que sale de data/adaptadores.tsv por
+# corrida —la misma busqueda que `correr`, incluida la fila por corrida que le
+# gana a la del proyecto—. Una PRE-TRIMMED no se recorta, igual que en YASMA.
+# Deja un recortadas.tsv con las columnas del de verdad, asi que de_quien.py la
+# lee sin saber que es una muestra.
+#
+# Todas las corridas y no una: un BioProject puede mezclar kits, y ya mezclo.
+cmd_muestra() {
+  local filtro="${1:-}" n="${2:-50000}"
+  [[ "$filtro" == */* ]] || die "muestra pide <org>/<rol>"
+  [[ "$n" =~ ^[0-9]+$ && "$n" -gt 0 ]] || die "N tiene que ser un entero positivo (dio: $n)"
+  shift 2 2>/dev/null || shift $#
+  local org="${filtro%%/*}" rol="${filtro##*/}"
+  command -v fastq-dump >/dev/null || die "no está fastq-dump (sra-tools)"
+  command -v cutadapt >/dev/null || die "no está cutadapt"
+  local dir="$PROY_DIR/_muestras/${org}_${rol}"
+  rm -rf "$dir"; mkdir -p "$dir/trim" "$dir/untrimmed" "$dir/logs"
+  local led="$dir/$LEDGER" run proy _rc _bc sec src raw fich rin rout hechas=0
+  local -a pedidas=("$@")
+  printf 'run\tbioproject\tfichero\treads_in\treads_out\tretencion_pct\tfecha_utc\n' > "$led"
+  while IFS=$'\t' read -r run proy _rc _bc; do
+    if [[ ${#pedidas[@]} -gt 0 && " ${pedidas[*]} " != *" $run "* ]]; then continue; fi
+    sec=$(secuencia_de "$org" "$proy" "$run")
+    if [[ -z "$sec" || "$sec" == "-" ]]; then
+      echo "   $run: sin adaptador recortable en $ADAPTADORES_TSV, la salteo" >&2; continue
+    fi
+    src=$(ruta_sra "$org" "$run") || { echo "   FALTA el .sra: $run" >&2; continue; }
+    raw="$dir/untrimmed/$run.fq"
+    # -X N: solo las primeras N; -Z a stdout. fasterq-dump no tiene como cortar.
+    fastq-dump -X "$n" -Z "$src" > "$raw" 2> "$dir/logs/$run.fastq-dump.log" </dev/null \
+      || { echo "   $run: fastq-dump falló (log: $dir/logs/$run.fastq-dump.log)" >&2; continue; }
+    rin=$(( $(wc -l < "$raw") / 4 ))
+    if [[ "$sec" == "PRE-TRIMMED" ]]; then
+      gzip -f "$raw"; fich="untrimmed/$run.fq.gz"; rout=$rin
+    else
+      fich="trim/$run.t.fq.gz"
+      cutadapt -a "$sec" --minimum-length 15 --maximum-length 50 -j "$CORES" -O 4 \
+        --max-n 0 --trimmed-only -o "$dir/$fich" "$raw" > "$dir/logs/$run.cutadapt.log" 2>&1 </dev/null \
+        || { echo "   $run: cutadapt falló (log: $dir/logs/$run.cutadapt.log)" >&2; continue; }
+      rm -f "$raw"
+      rout=$(( $(gzip -dc "$dir/$fich" | wc -l) / 4 ))
+    fi
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$run" "$proy" "$fich" "$rin" "$rout" \
+      "$(awk -v a="$rout" -v b="$rin" 'BEGIN { printf "%.1f", (b ? 100*a/b : 0) }')" \
+      "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$led"
+    printf '   %-14s %8d -> %8d   %s\n' "$run" "$rin" "$rout" "${sec:0:21}"
+    hechas=$((hechas + 1))
+  done < <(corridas "$org" "$rol")
+  [[ $hechas -gt 0 ]] || die "no salió ninguna corrida de $filtro (ver arriba)"
+  echo "muestra de $hechas corrida(s) en $dir"
+}
+
+[[ $# -ge 1 ]] || { sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
 case "$1" in
   plan)      shift; cmd_plan      "${1:-}" ;;
   estado)    shift; cmd_estado    "${1:-}" ;;
   correr)    shift; cmd_correr    "${1:-}" ;;
   verificar) shift; cmd_verificar "${1:-}" ;;
   rehacer)   shift; cmd_rehacer   "$@" ;;
-  -h|--help) sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//' ;;
-  *) die "modo desconocido: $1 (plan|correr|estado|verificar|rehacer)" ;;
+  muestra)   shift; cmd_muestra   "$@" ;;
+  -h|--help) sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//' ;;
+  *) die "modo desconocido: $1 (plan|correr|estado|verificar|rehacer|muestra)" ;;
 esac

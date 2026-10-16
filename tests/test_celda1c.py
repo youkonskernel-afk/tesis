@@ -41,7 +41,7 @@ def celda(marca):
     return hall[0]
 
 
-C1C = celda("import reparto")
+C1C = celda("CLAIMS = DRIVE / '90_claims'")
 C2 = celda("# El de la TANDA si")
 assert "TANDA = None\n" in C1C, "§1c ya no tiene la línea TANDA = None"
 

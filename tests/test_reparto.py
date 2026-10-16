@@ -166,6 +166,36 @@ with tempfile.TemporaryDirectory() as d:
     chk("saltea la marcada", (670.0, 156.0) not in pts, pts)
     chk("y deja las otras (vacía cuenta como limpia)", len(pts) == 2, pts)
 
+print("== 11d. la calibración se elige por núcleos")
+# bowtie corre con -p <nucleos>: una fila medida con 8 en la recta de las de 2
+# desvia todas las estimaciones. Las filas sin el dato son de Colab Free (2).
+chk("sin dato cuenta como 2", [R.nucleos_de(v) for v in (None, "", "?", "0", "-3")] == [2] * 5)
+chk("con dato, el dato", R.nucleos_de("8") == 8 and R.nucleos_de(" 4 ") == 4)
+F = [(39, 58, 2), (670, 105, 2), (39, 20, 8), (670, 30, 8)]
+chk("8 núcleos -> las filas de 8", R.elegir_nucleos(F, 8) == ([(39, 20), (670, 30)], 8))
+chk("2 núcleos -> las de 2", R.elegir_nucleos(F, 2) == ([(39, 58), (670, 105)], 2))
+chk("sin nucleos -> las de referencia (2)", R.elegir_nucleos(F)[1] == 2)
+pts, us = R.elegir_nucleos(F, 4)
+chk("4 núcleos sin filas propias -> las de 2, por debajo (cota superior)",
+    us == 2 and pts == [(39, 58), (670, 105)], (pts, us))
+chk("y lo dice como cota superior", "cota superior" in R.aviso_nucleos(us, 4))
+pts, us = R.elegir_nucleos([(39, 20, 8), (670, 30, 8)], 2)
+chk("2 núcleos y solo filas de 8 -> las de 8, avisando", us == 8, us)
+chk("y avisa que pueden quedarse cortas", "cortas" in R.aviso_nucleos(us, 2))
+chk("sin aviso si coinciden", R.aviso_nucleos(2, 2) == "")
+pts, us = R.elegir_nucleos([(39, 58, 2), (670, 105, 2), (670, 30, 8)], 8)
+chk("una sola fila de 8 no alcanza: usa las de 2", us == 2, us)
+with tempfile.TemporaryDirectory() as d:
+    (pathlib.Path(d) / "data").mkdir()
+    (pathlib.Path(d) / "data" / "calibracion.tsv").write_text(
+        "proyecto\tgenoma_mb\ts_por_m\tindice_en_reloj\tnucleos\n"
+        "a\t39\t58\tno\t\nb\t670\t105\tno\t2\n"
+        "c\t39\t20\tno\t8\nd\t670\t30\tno\t8\ne\t670\t300\tsi\t8\n")
+    chk("leer_calibracion con 8 lee las de 8 (sin la del índice en el reloj)",
+        sorted(R.leer_calibracion(d, 8)) == [(39.0, 20.0), (670.0, 30.0)], R.leer_calibracion(d, 8))
+    chk("y con 2 las de 2, incluida la que no tenía el dato",
+        sorted(R.leer_calibracion(d, 2)) == [(39.0, 58.0), (670.0, 105.0)], R.leer_calibracion(d, 2))
+
 print("== 11c. la retención es por corrida si hay fila de esa corrida")
 # Con una sola clave (org, bioproject) la ULTIMA fila por corrida pisaba a las
 # demas: gadmo_duplicado tomaba el 100% de una PRE-TRIMMED para las 12 y se

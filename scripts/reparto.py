@@ -73,6 +73,13 @@ MARGEN_RAM = 2e9
 # el que imprime §1 del notebook o `align.sh plan`.
 COLAB_FREE = (11.4, 220.0)
 
+# Nucleos de la maquina donde se midio cada fila de data/calibracion.tsv.
+# bowtie corre con -p <nucleos>, asi que un s/M medido con 8 no vale para una
+# VM de 2: mezclarlos en la misma recta desvia todas las estimaciones. Las
+# filas anteriores a la columna son todas de Colab Free, 2 vCPU: una fila sin
+# el dato cuenta como NUCLEOS_REF, que es lo que se midio de verdad.
+NUCLEOS_REF = 2
+
 
 # ---------------------------------------------------------------- el modelo
 def ajuste_s_por_m(calib):
@@ -99,8 +106,18 @@ def s_por_m(mb, aj):
     return S_POR_M_PLANO if aj is None else max(1.0, aj[0] + aj[1] * mb)
 
 
-def leer_calibracion(clon):
-    pts = []
+def nucleos_de(valor):
+    """El valor de la columna `nucleos`; sin dato, NUCLEOS_REF (ver arriba)."""
+    try:
+        n = int(str(valor).strip())
+    except (TypeError, ValueError):
+        return NUCLEOS_REF
+    return n if n > 0 else NUCLEOS_REF
+
+
+def filas_calibracion(clon):
+    """[(genoma_mb, s_por_m, nucleos)] de data/calibracion.tsv."""
+    out = []
     f = pathlib.Path(clon) / 'data' / 'calibracion.tsv'
     if f.is_file():
         with open(f) as fh:
@@ -110,20 +127,68 @@ def leer_calibracion(clon):
                 if (r.get('indice_en_reloj') or '').strip() == 'si':
                     continue
                 try:
-                    pts.append((float(r['genoma_mb']), float(r['s_por_m'])))
+                    out.append((float(r['genoma_mb']), float(r['s_por_m']),
+                                nucleos_de(r.get('nucleos'))))
                 except (KeyError, ValueError, TypeError):
                     pass
-    return pts
+    return out
 
 
-def costos(clon, genomas_mb, calib=None):
+def elegir_nucleos(filas, nucleos=None):
+    """-> ([(genoma_mb, s_por_m)], nucleos de las filas usadas).
+
+    Las filas medidas con los MISMOS nucleos que la maquina, si alcanzan para
+    la recta (dos genomas distintos). Si no, las del grupo mas cercano POR
+    DEBAJO: con menos nucleos bowtie no es mas rapido, asi que el estimado
+    queda como cota superior y no como promesa. Solo si no hay ninguno por
+    debajo se usan las de mas nucleos, y quien llama tiene que avisar que esa
+    estimacion puede quedarse corta.
+    """
+    objetivo = nucleos or NUCLEOS_REF
+    grupos = collections.defaultdict(list)
+    for g, s, n in filas:
+        grupos[n].append((g, s))
+
+    def ajustable(n):
+        return len({g for g, _ in grupos[n]}) >= 2
+
+    if ajustable(objetivo):
+        return grupos[objetivo], objetivo
+    abajo = [n for n in sorted(grupos, reverse=True) if n < objetivo and ajustable(n)]
+    if abajo:
+        return grupos[abajo[0]], abajo[0]
+    arriba = [n for n in sorted(grupos) if n > objetivo and ajustable(n)]
+    if arriba:
+        return grupos[arriba[0]], arriba[0]
+    # Nada ajustable: lo que haya de estos nucleos (un punto -> s/M plano).
+    return grupos.get(objetivo, []), objetivo
+
+
+def aviso_nucleos(usados, nucleos):
+    """La linea que hay que imprimir si la recta no es de estos nucleos, o ''."""
+    if usados == nucleos:
+        return ''
+    if usados < nucleos:
+        return (f'calibración: no hay con qué ajustar a {nucleos} núcleos; uso las filas de '
+                f'{usados}. Con más núcleos bowtie no es más lento, así que las horas son '
+                f'una cota superior.')
+    return (f'OJO: calibración solo con filas de {usados} núcleos, MÁS que esta máquina '
+            f'({nucleos}): las horas pueden quedarse cortas.')
+
+
+def leer_calibracion(clon, nucleos=None):
+    return elegir_nucleos(filas_calibracion(clon), nucleos)[0]
+
+
+def costos(clon, genomas_mb, calib=None, nucleos=None):
     """-> {(org, rol): dict} con runs, trim, horas, ram_b, pico_b, genoma_mb.
 
     `genomas_mb` es {org: Mb}. Un org que no este ahi queda con genoma 0, que
     quien llama tiene que tratar como "no se pudo medir" y NO como "no entra".
+    `nucleos` son los de la maquina: elige con que filas se ajusta el s/M.
     """
     clon = pathlib.Path(clon)
-    aj = ajuste_s_por_m(calib if calib is not None else leer_calibracion(clon))
+    aj = ajuste_s_por_m(calib if calib is not None else leer_calibracion(clon, nucleos))
 
     ret = {}
     with open(clon / 'data' / 'adaptadores.tsv') as f:
@@ -294,6 +359,8 @@ def main():
     ap.add_argument('--hechos', nargs='*', default=[],
                     help='proyectos ya terminados, como org/rol')
     ap.add_argument('--clon', default=str(pathlib.Path(__file__).resolve().parent.parent))
+    ap.add_argument('--nucleos', type=int, default=NUCLEOS_REF,
+                    help=f'núcleos de las máquinas, para elegir la calibración (default {NUCLEOS_REF})')
     args = ap.parse_args()
 
     if len(args.maquinas) == 1 and args.maquinas[0].isdigit():
@@ -301,7 +368,10 @@ def main():
     else:
         maquinas = [_maquina(s, i) for i, s in enumerate(args.maquinas, 1)]
 
-    c, aj = costos(args.clon, GENOMAS_MB)
+    c, aj = costos(args.clon, GENOMAS_MB, nucleos=args.nucleos)
+    _, usados = elegir_nucleos(filas_calibracion(args.clon), args.nucleos)
+    if aviso_nucleos(usados, args.nucleos):
+        print(aviso_nucleos(usados, args.nucleos))
     hechos = {h.replace('_', '/') for h in args.hechos}
     trabajos = [(f'{o}/{r}', v['horas'], v['ram_b'], v['pico_b'])
                 for (o, r), v in c.items() if f'{o}/{r}' not in hechos]

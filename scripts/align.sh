@@ -9,6 +9,8 @@
 #   ./scripts/align.sh estado    [<org>[/<rol>]]    que esta alineado y que falta
 #   ./scripts/align.sh verificar [<org>[/<rol>]]    el BAM contra el manifiesto
 #   ./scripts/align.sh ledger                       junta los alineado.tsv en data/
+#   ./scripts/align.sh prueba    <org>/<rol> [N]    prueba de extremos 4N sobre una
+#                                                   muestra, sin alinear el proyecto
 #
 # El filtro es un organismo (`galga`) o un organismo y un rol (`galga/primario`),
 # igual que en trim.sh. La unidad es el proyecto YASMA <org>_<rol>: un BAM por
@@ -675,6 +677,33 @@ cmd_ledger() {
 }
 
 [[ $# -ge 1 ]] || { sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
+# --- la prueba 4N sobre una muestra --------------------------------------------
+#
+# rhirr_duplicado no alinea (99.9% sin alinear) y el top de secuencias tiene la
+# firma de un kit 4N. La prueba que decide —bowtie -v 1 recortando o no 4 nt de
+# cada punta, en de_quien.py— solo corria dentro de `verificar`, o sea despues de
+# recortar y alinear el proyecto entero: ~2.5 h para ver que no alinea. Mientras
+# tanto rhirr/duplicado, rhirr/primario y cloro/duplicado quedan parados.
+# Aca son minutos: N lecturas de cada corrida (`trim.sh muestra`, el mismo
+# recorte que yasma), el indice del organismo, y de_quien.py sobre eso.
+cmd_prueba() {
+  local filtro="${1:-}" n="${2:-50000}" org rol acc pre dir nb
+  [[ "$filtro" == */* ]] || die "prueba pide <org>/<rol>: ./scripts/align.sh prueba rhirr/duplicado"
+  org="${filtro%%/*}"; rol="${filtro##*/}"
+  cmd_genoma "$org"
+  IFS=$'\t' read -r acc _ < <(genoma_de "$org") || true
+  [[ -n "${acc:-}" ]] || die "$org no está en $GENOMAS_LEDGER"
+  pre="$GENOMES_DIR/$org/$acc"
+  [[ "$(indice_estado "$pre")" == completo ]] || die "el índice de $org no quedó completo ($pre)"
+  echo
+  echo "== muestra de $n lecturas por corrida de $filtro"
+  "$ROOT/scripts/trim.sh" muestra "$filtro" "$n"
+  dir="$PROY_DIR/_muestras/${org}_${rol}"
+  nb=$(( n < 20000 ? n : 20000 ))
+  echo
+  "$DE_QUIEN" "$dir" "$org" --indice "$pre" --cores "$CORES" --n "$n" --n-bowtie "$nb"
+}
+
 case "$1" in
   genoma)    shift; cmd_genoma    "${1:-}" ;;
   fasta)     shift; cmd_fasta     "${1:-}" ;;
@@ -684,6 +713,7 @@ case "$1" in
   correr)    shift; cmd_correr    "${1:-}" ;;
   verificar) shift; cmd_verificar "${1:-}" ;;
   ledger)    shift; cmd_ledger    "${1:-}" ;;
-  -h|--help) sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//' ;;
-  *) die "modo desconocido: $1 (genoma|fasta|parche|plan|correr|estado|verificar|ledger)" ;;
+  prueba)    shift; cmd_prueba    "$@" ;;
+  -h|--help) sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//' ;;
+  *) die "modo desconocido: $1 (genoma|fasta|parche|plan|correr|estado|verificar|ledger|prueba)" ;;
 esac

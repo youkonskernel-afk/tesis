@@ -135,6 +135,18 @@ for nombre, marca in (("§1", "B_FQGZ = 22"), ("§2", "# El de la TANDA si"),
 # Paso dos veces: Preambulo corrido, Herramientas y Configuracion no. Ahora §8
 # las corre sola, con la fuente del notebook del clon; el Preambulo no puede
 # (montar pide autorizar en una ventana), asi que ese lo pide.
+print("== 5a. §5c (prueba 4N) sin Configuración: lo pide, y NO Ejecutar anteriores")
+# Parado en §5c, "Ejecutar anteriores" correria §1-§5 y alinearia un proyecto
+# entero: lo que la prueba sobre una muestra existe para no hacer.
+try:
+    exec(celda("PRUEBA_4N = ["), {})
+    e = None
+except Exception as x:  # noqa: BLE001
+    e = x
+chk("§5c sin nada: RuntimeError", isinstance(e, RuntimeError), repr(e))
+chk("§5c: nombra Configuración", "Configuración" in str(e), str(e))
+chk("§5c: advierte no usar Ejecutar anteriores", 'NO uses "Ejecutar anteriores"' in str(e), str(e))
+
 print("== 5b. §8 sin Preámbulo: lo pide, y NO Ejecutar anteriores")
 COLA = celda("cola.correr_cola(")
 try:

@@ -68,6 +68,10 @@ def correr(tmp, corridas, libre_gb, retenciones, en_drive=(),
         (drive / "10_bam" / org).mkdir(parents=True, exist_ok=True)
         (drive / "10_bam" / org / f"{rol}.bam").write_bytes(b"BAM")
     (clon / "data").mkdir(parents=True, exist_ok=True)
+    # §1 importa reparto del clon (la regla de que filas de calibracion valen
+    # para esta VM): el clon de mentira usa los scripts de verdad.
+    if not (clon / "scripts").exists():
+        (clon / "scripts").symlink_to(RAIZ / "scripts")
     (clon / "data" / "srr_manifest.tsv").write_text("\n".join([HDR] + corridas) + "\n")
     (clon / "data" / "adaptadores.tsv").write_text(
         "# tabla\n"
@@ -88,10 +92,10 @@ def correr(tmp, corridas, libre_gb, retenciones, en_drive=(),
     if calib is not None:
         (clon / "data" / "calibracion.tsv").write_text(
             "proyecto\torg\trol\taccession\tgenoma_mb\tlibrerias\treads_trim\t"
-            "seg_reloj\ts_por_m\tb_bam\tb_fqgz\tfecha_utc\tindice_en_reloj\n"
+            "seg_reloj\ts_por_m\tb_bam\tb_fqgz\tfecha_utc\tindice_en_reloj\tnucleos\n"
             + "".join(f"p{i}\to\tr\tA\t{c[0]}\t2\t1000\t100\t{c[1]}\t"
                       f"{c[3] if len(c) > 3 else 14}\t22\t2026-09-23T00:00:00Z\t"
-                      f"{c[2] if len(c) > 2 else 'no'}\n"
+                      f"{c[2] if len(c) > 2 else 'no'}\t{c[4] if len(c) > 4 else ''}\n"
                       for i, c in enumerate(calib)))
 
     # Se parchea shutil.disk_usage de verdad en vez de inyectar un falso en el
@@ -113,7 +117,8 @@ def correr(tmp, corridas, libre_gb, retenciones, en_drive=(),
         celdas = celda if isinstance(celda, (list, tuple)) else [celda]
         fuentes = ["".join(json.loads(NB.read_text())["cells"][c]["source"])
                    for c in celdas]
-        ns = {"CLON": clon, "DRIVE": drive, "GENOMES": genomes, "open": _open}
+        ns = {"CLON": clon, "DRIVE": drive, "GENOMES": genomes, "open": _open,
+              "ENV": {"CORES": "2"}}
         ns.update(ns_extra or {})
         buf = io.StringIO()
         with redirect_stdout(buf):
@@ -280,6 +285,22 @@ with tempfile.TemporaryDirectory() as d:
         dos["s_por_m"](1000))
     chk("lo dice", "AJUSTADO" in out12, out12)
     chk("y muestra los dos estimados", "plano" in out12, out12)
+
+    print("== 12b. la recta es con las filas de los núcleos de esta VM")
+    # Una fila medida con 8 nucleos (Colab Pro) en la recta de las de 2 desvia
+    # todo: con 10 s/M a 639 Mb, galga saldria en minutos.
+    c12b = [(39, 58, "no", 14, ""), (639, 108, "no", 14, "2"),
+            (39, 5, "no", 14, "8"), (639, 10, "no", 14, "8")]
+    _, ns2 = correr(tmp / "n2", corr12, libre_gb=200, retenciones=ret12,
+                    genomas={"galga": 1000}, calib=c12b)
+    chk("VM de 2: la recta de las de 2", round(ns2["s_por_m"](1000)) == 138, ns2["s_por_m"](1000))
+    _, ns8 = correr(tmp / "n8", corr12, libre_gb=200, retenciones=ret12,
+                    genomas={"galga": 1000}, calib=c12b, ns_extra={"ENV": {"CORES": "8"}})
+    chk("VM de 8: la de las de 8", round(ns8["s_por_m"](639)) == 10, ns8["s_por_m"](639))
+    out4, ns4 = correr(tmp / "n4", corr12, libre_gb=200, retenciones=ret12,
+                       genomas={"galga": 1000}, calib=c12b, ns_extra={"ENV": {"CORES": "4"}})
+    chk("VM de 4 sin filas propias: las de 2 (cota superior)",
+        round(ns4["s_por_m"](1000)) == 138 and "cota superior" in out4, out4[-500:])
 
     print("== 13. si el ajustado se va del plano, avisa")
     # Dos puntos no son un modelo. Cuando la recta manda el cronograma lejos del

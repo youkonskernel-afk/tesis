@@ -461,6 +461,50 @@ tiene "la vez siguiente ya está"  "índice bowtie: ya está"    "$S"
 [[ ! -s "$LOG_BB" ]] && ok "sin reconstruir" || mal "sin reconstruir"
 sembrar_trim; : > "$LOG_YA"
 
+echo "== 10h. prueba: muestra, índice y de_quien, sin alinear el proyecto"
+# La prueba 4N de rhirr_duplicado solo corria dentro de verificar, o sea
+# despues de recortar y alinear todo (~2.5 h). Aca son minutos.
+mkdir -p "$TMP/sra/aa"
+for r in SRR_P1 SRR_P2 SRR_D1; do head -c 64 /dev/zero > "$TMP/sra/aa/$r.sra"; done
+{ printf 'org\tbioproject\trun\tfamilia\tsecuencia\tadapt_pct\tinserto_modal\tretencion_est\tveredicto\tfecha_utc\n'
+  printf 'aa\tPRJ_A\t-\tRA3\tTGGAATTCTCGGGTGCCAAGG\t98\t32\t95\tPARECE sRNA-seq\t2026-09-22\n'
+} > "$TMP/adapt.tsv"
+cat > "$TMP/bin/fastq-dump" <<'FQD'
+#!/usr/bin/env bash
+n=0; while [[ $# -gt 0 ]]; do case "$1" in -X) n="$2"; shift 2 ;; *) shift ;; esac; done
+for ((i = 0; i < n; i++)); do printf '@r%d\nACGTACGTACGTACGTACGTAC\n+\nIIIIIIIIIIIIIIIIIIIIII\n' "$i"; done
+FQD
+cat > "$TMP/bin/cutadapt" <<'CA'
+#!/usr/bin/env bash
+a=("$@"); o=""; for ((i = 0; i < ${#a[@]}; i++)); do [[ "${a[i]}" == -o ]] && o="${a[i+1]}"; done
+gzip -c "${a[-1]}" > "$o"
+CA
+cat > "$TMP/bin/de_quien_args" <<'DQ'
+#!/usr/bin/env bash
+echo "DE_QUIEN $*"; echo ">>> EXTREMOS SIN RECORTAR: falso"
+DQ
+chmod +x "$TMP/bin/fastq-dump" "$TMP/bin/cutadapt" "$TMP/bin/de_quien_args"
+rm -f "$GEN/aa/GCF_TEST.1".*.ebwt "$GEN/aa/GCF_TEST.1.indice_s" "$GEN/aa/GCF_TEST.1.build.log"
+: > "$LOG_YA"; : > "$LOG_BB"
+prueba() {
+  ADAPTADORES_TSV="$TMP/adapt.tsv" SRA_DEST="$TMP/sra" DE_QUIEN="$TMP/bin/de_quien_args" \
+    corre prueba "$@"
+}
+S=$(prueba aa/primario 8); RC=$?
+[[ $RC -eq 0 ]] && ok "exit 0" || mal "exit 0 (rc=$RC): $S"
+tiene "construye el índice si falta"   "BUILD"                                  "$(cat "$LOG_BB")"
+tiene "toma una muestra de cada corrida" "muestra de 2 corrida(s)"              "$S"
+tiene "y le pasa todo a de_quien" \
+  "DE_QUIEN $PROY/_muestras/aa_primario aa --indice $GEN/aa/GCF_TEST.1 --cores 2 --n 8 --n-bowtie 8" "$S"
+tiene "y muestra su veredicto"         ">>> EXTREMOS SIN RECORTAR"              "$S"
+[[ ! -s "$LOG_YA" ]] && ok "sin llamar a yasma align" || mal "sin llamar a yasma align: $(cat "$LOG_YA")"
+[[ ! -e "$PROY/aa_primario/align" ]] && ok "y sin tocar el proyecto de verdad" \
+  || mal "y sin tocar el proyecto de verdad"
+S=$(prueba aa/primario 30000)
+tiene "la parte de bowtie no pasa de 20 000" "--n 30000 --n-bowtie 20000"     "$S"
+S=$(prueba aa 2>&1); RC=$?
+[[ $RC -ne 0 ]] && ok "sin rol corta" || mal "sin rol corta"
+
 echo "== 11. errores"
 tiene "modo desconocido"  "modo desconocido"  "$(corre nosequé 2>&1 || true)"
 S=$(corre plan noexiste 2>&1 || true)

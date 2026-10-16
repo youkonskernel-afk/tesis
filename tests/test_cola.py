@@ -13,6 +13,7 @@ tiene que garantizar se prueba aca y no en Colab:
   5. Lo medido queda en Drive al lado del BAM, por si la sesion muere.
 """
 import contextlib
+import csv
 import io
 import os
 import pathlib
@@ -40,8 +41,13 @@ case "$1" in
   genoma)
     acc=$(awk -F'\t' -v o="$2" '$1==o{print $2}' "$GENOMAS_LEDGER")
     mkdir -p "$GENOMES_DIR/$2"
+    echo "GENOMA_EMPIEZA $2" >> "$LOG"
+    sleep "${GENOMA_SLEEP:-0}"
+    [[ " ${GENOMA_FALLA:-} " == *" $2 "* ]] && { echo "sha256 NO coincide"; exit 1; }
     printf 'c1\t5000000\n' > "$GENOMES_DIR/$2/$acc.fna.fai"
-    echo 60 > "$GENOMES_DIR/$2/$acc.indice_s" ;;
+    echo 60 > "$GENOMES_DIR/$2/$acc.indice_s"
+    echo "GENOMA_TERMINA $2" >> "$LOG"
+    echo "indice listo para $2" ;;
   correr)
     org=${2%/*}; rol=${2#*/}; d="$PROY_DIR/${org}_${rol}"
     mkdir -p "$d/align" "$BAM_DIR/$org"
@@ -61,6 +67,7 @@ echo "trim.sh $*" >> "$LOG"
 case "$1" in
   correr)
     org=${2%/*}; rol=${2#*/}; d="$PROY_DIR/${org}_${rol}"
+    echo "TRIM_EMPIEZA $2" >> "$LOG"
     mkdir -p "$d/trim"
     { printf 'run\tbioproject\tfichero\treads_in\treads_out\tretencion_pct\tfecha_utc\n'
       awk -F'\t' -v o="$org" -v r="$rol" 'NR>1 && $1==o && $4==r {print $2"\tPRJ\ttrim/"$2".t.fq.gz\t2000\t1000\t50.0\tT"}' "$MANIFEST"
@@ -200,6 +207,62 @@ with tempfile.TemporaryDirectory() as d:
     chk("diciendo quién lo tiene", ("sclsc/primario", "tomado por otra-vm") in res4["saltados"],
         res4["saltados"])
     chk("sin tocarlo", "sclsc/primario" not in log4, log4)
+
+    print("== 10. la calibración guarda los núcleos y la cola dice con qué filas estima")
+    # bowtie corre con -p <nucleos>: una fila de 8 en la recta de las de 2
+    # desvia todo. Las filas viejas (sin columna) son de Colab Free: 2.
+    tmp = pathlib.Path(d) / "e"
+    clon, drive, env, dirs = escenario(tmp)
+    (clon / "data" / "calibracion.tsv").write_text(
+        "# viejo\n"
+        "proyecto\torg\trol\taccession\tgenoma_mb\tlibrerias\treads_trim\tseg_reloj\t"
+        "s_por_m\tb_bam\tb_fqgz\tfecha_utc\tindice_en_reloj\n"
+        "x_primario\tx\tprimario\tA\t39\t2\t1000\t58\t58.0\t14\t22\tT\tno\n"
+        "y_primario\ty\tprimario\tA\t670\t2\t1000\t105\t105.0\t14\t22\tT\tno\n")
+    env["CORES"] = "8"
+    res5, out5, _ = correr(tmp, clon, drive, env, dirs, solo=["sclsc/primario"])
+    chk("dice cuántos núcleos tiene", "Núcleos: 8" in out5, out5[:400])
+    chk("y que estima con las de 2 como cota superior", "cota superior" in out5, out5[:600])
+    filas5 = {r["proyecto"]: r for r in csv.DictReader(
+        (l for l in (clon / "data" / "calibracion.tsv").read_text().splitlines()
+         if not l.startswith("#")), delimiter="\t")}
+    chk("la fila nueva lleva nucleos = 8",
+        filas5.get("sclsc_primario", {}).get("nucleos") == "8", filas5.get("sclsc_primario"))
+    chk("las viejas quedan con 2, no con '?'",
+        [filas5[k].get("nucleos") for k in ("x_primario", "y_primario")] == ["2", "2"], filas5)
+    cal5 = drive / "10_bam" / "sclsc" / "primario.calibracion.tsv"
+    chk("y la copia en Drive también", cal5.exists() and cal5.read_text().splitlines()[1].endswith("\t8"),
+        cal5.read_text() if cal5.exists() else "no existe")
+
+    print("== 11. el índice se construye mientras se recorta, y el alineamiento espera")
+    # Eran en fila: en galga el indice es ~1 h con 2 nucleos. No dependen uno
+    # del otro, asi que el recorte arranca sin esperar al genoma.
+    tmp = pathlib.Path(d) / "f"
+    clon, drive, env, dirs = escenario(tmp)
+    env["GENOMA_SLEEP"] = "1"
+    res6, out6, log6 = correr(tmp, clon, drive, env, dirs, solo=["sclsc/primario"])
+    ev = [ln.split()[0] for ln in log6.splitlines()
+          if ln.split() and ln.split()[0] in ("GENOMA_EMPIEZA", "GENOMA_TERMINA", "TRIM_EMPIEZA")]
+    chk("el recorte empieza antes de que termine el genoma",
+        "TRIM_EMPIEZA" in ev and "GENOMA_TERMINA" in ev
+        and ev.index("TRIM_EMPIEZA") < ev.index("GENOMA_TERMINA"), ev)
+    lin = log6.splitlines()
+    i_term = next((i for i, l in enumerate(lin) if l.startswith("GENOMA_TERMINA")), None)
+    i_alin = next((i for i, l in enumerate(lin) if l.startswith("align.sh correr")), None)
+    chk("y el alineamiento empieza después de que termina el genoma",
+        i_term is not None and i_alin is not None and i_term < i_alin, lin)
+    chk("lo que imprimió el genoma sale entero, aparte", "indice listo para sclsc" in out6
+        and "corrió en paralelo con el recorte" in out6, out6[-600:])
+    chk("y el proyecto se hace", res6["hechos"] == ["sclsc/primario"], res6)
+
+    tmp = pathlib.Path(d) / "g"
+    clon, drive, env, dirs = escenario(tmp)
+    env["GENOMA_FALLA"] = "sclsc"
+    res7, out7, log7 = correr(tmp, clon, drive, env, dirs, solo=["sclsc/primario"])
+    chk("si el genoma falla, el proyecto falla por el genoma",
+        res7["fallados"] and "genoma" in res7["fallados"][0][1], res7)
+    chk("con lo que dijo align.sh a la vista", "sha256 NO coincide" in out7, out7[-600:])
+    chk("y no se alinea", "align.sh correr" not in log7, log7)
 
 print()
 if FALLAS:

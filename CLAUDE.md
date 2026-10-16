@@ -328,6 +328,13 @@ probabilidad calibrada.
   PRJEB51338` (38)—, porque `gadmo PRJNA284846` (32) alineó ~80% y no lo tiene.
   Hasta tanto, `rhirr/duplicado` no conviene dejarlo en la cola: es el primero y
   la re-alinearía, ~2.5 h para el mismo resultado.
+  **La prueba ya no exige alinear el proyecto: `align.sh prueba <org>/<rol>`**
+  (§5c de `20_alinear`, los tres sospechosos de una vez) toma N lecturas de
+  **cada** corrida con `trim.sh muestra` —la misma llamada a cutadapt que
+  `yasma trim`, con el adaptador por corrida de la tabla—, construye el índice
+  y corre `de_quien.py` sobre eso. Minutos en vez de ~2.5 h, y sin tocar el
+  proyecto de verdad: la muestra va a `proyectos/_muestras/`. Banco en
+  `test_trim.sh` 16 y `test_align.sh` 10h.
 - **`cloro` primario es `ncRNA-Seq`**, no miRNA-Seq. Igual que `phypa`, hay que
   declararlo en métodos. (Que venga ya recortado está anotado arriba.)
 - **Re-estimado con datos, no con reglas de tres.** Con 3.4× más reads, las
@@ -866,6 +873,17 @@ probabilidad calibrada.
   Dos puntos no son un modelo, y la celda no finge que sí: imprime el estimado
   plano y el ajustado **lado a lado** y avisa si difieren más de un 25%, que es
   la señal de que hace falta un tercer punto y no de que el segundo sea verdad.
+  **Y la fila dice con cuántos núcleos se midió (`nucleos`).** bowtie corre con
+  `-p <núcleos>`, así que un s/M medido en Colab Pro con 8 no vale para una VM
+  de 2: en la misma recta desviaba todas las estimaciones. Se agregó antes de
+  la primera corrida en Pro, y las cinco filas que había son de Colab Free, o
+  sea 2 —lo medido, no un supuesto—. `reparto.elegir_nucleos` usa las filas de
+  los mismos núcleos que la máquina; si no alcanzan, las del grupo más cercano
+  **por debajo**, que dan una cota superior, y lo dice. §1, la cola y
+  `reparto.py --nucleos` usan esa misma función. Ojo con lo que se espera de
+  más núcleos: en `yasma align` solo bowtie es paralelo; el pesado de los
+  multimapeados y la escritura del BAM son Python de un hilo, así que la
+  primera fila de 8 es la que va a decir cuánto se gana.
   **Cuál medir tampoco se elige a ojo**: §1b rankea los pendientes por
   *(Mb de genoma nuevo) ÷ (horas que cuesta)* y solo entre los que entran en
   esa VM. Con el estado de hoy propone `gadmo/duplicado` —37 M reads contra
@@ -922,6 +940,15 @@ probabilidad calibrada.
   misma** `registrar_calibracion()` que usa §5: dos implementaciones del conteo
   de reads ya divergieron una vez (16 M contra 55). Banco en `tests/test_cola.py`
   con `align.sh` y `trim.sh` falsos, y nueve mutaciones.
+  **El índice se construye mientras se recorta.** Eran pasos en fila y no
+  dependen uno del otro: en `galga` el índice es ~1 h con 2 núcleos, y el
+  recorte pasa buena parte del tiempo leyendo `.sra` del FUSE. `align.sh
+  genoma` corre en paralelo con `trim.sh correr`/`verificar`, su salida va a
+  `genoma.log` y se imprime al final, y el alineamiento espera a los dos
+  (`test_cola.py` 11). **Lo que las horas de la cola NO cuentan** —y conviene
+  saberlo antes de fijar `MAX_HORAS`—: el recorte y el índice. El estimado es
+  solo el alineamiento, calibrado con 2 núcleos; para `galga/primario` son
+  ~20 h más el volcado de 972 M reads crudos.
   **§8 corre sola Herramientas y Configuración, y no manda a *Ejecutar
   anteriores*.** Parado en §8, eso corre también §1 a §7, y §3-§4 recortan y
   alinean un proyecto suelto durante horas antes de que arranque la cola — y el
@@ -1186,6 +1213,7 @@ Lo que necesita red va en otro lado:
 | manifiesto y `.sra` | Colab | `notebooks/10_descarga_runs.ipynb` |
 | ver qué falta | Colab | `notebooks/90_estado.ipynb` |
 | recorte y alineamiento (los que entran) | Colab | `notebooks/20_alinear.ipynb` |
+| prueba 4N sobre una muestra (sin alinear) | Colab | §5c de `20_alinear.ipynb` (`align.sh prueba`) |
 | todos los que faltan, en cola | Colab | §8 de `20_alinear.ipynb` (`scripts/cola.py`) |
 | matriz de features (anotar, features, etiquetar, exportar) | Colab | `notebooks/30_matriz.ipynb` (`scripts/matriz.py`) |
 | empujar a git desde Colab | Colab | `scripts/colab_git.py` + un PAT en Secrets |
@@ -1216,7 +1244,7 @@ evitan que dos hagan el mismo proyecto. El techo es 4× y lo marca
 Todo corre sin red y en segundos. Antes de cada push:
 
 ```bash
-./tests/run_all.sh              # 28 bancos, 1008 chequeos, binarios falsos en el PATH
+./tests/run_all.sh              # 28 bancos, 1065 chequeos, binarios falsos en el PATH
 ./tests/mutar.py                # rompe el codigo y exige que algun banco grite
 ./scripts/check_docs.py         # lo que afirman los docs contra data/
 ./scripts/validate_notebooks.py # los .ipynb parsean y no hay duplicados
@@ -1227,7 +1255,7 @@ y `check_docs.py` dos más.
 
 **Un banco que pasa no prueba nada.** Prueba algo el día que se rompe lo que
 cubre y el banco se queja, y la única forma de saberlo es romper el código a
-propósito: eso es `tests/mutar.py`, 192 mutaciones que tienen que dar todas
+propósito: eso es `tests/mutar.py`, 209 mutaciones que tienen que dar todas
 `[OK]`. Un `[HUECO]` es un chequeo que falta; un `[VIEJA]` es una mutación cuyo
 patrón ya no existe, que tampoco prueba nada. Así aparecieron los dos huecos que
 ninguna otra cosa mostró — el veredicto de `perfil` que iba a la tabla sin estar
