@@ -626,6 +626,16 @@ MUTACIONES = [
      [('        if time.time() - ultimo >= cada:', '        if False:')]),
     ('§1b: vuelve a retener la salida hasta el final', 'notebooks/30_matriz.ipynb',
      [('stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)', 'capture_output=True, text=True)')]),
+    ('excel: los números quedan como texto', 'scripts/matriz.py',
+     [('    if col in _TEXTO:\n        return v\n', '    if True:\n        return v\n')]),
+    # openpyxl ya escribe un float NaN como celda vacia, asi que la regresion
+    # real es que el texto "nan" del TSV llegue a la hoja como texto.
+    ("excel: un NaN queda como texto 'nan'", 'scripts/matriz.py',
+     [('v.strip().lower() == "nan":\n        return None', 'v.strip().lower() == "nan":\n        return v')]),
+    ('excel: el diccionario pierde las fracciones por largo', 'scripts/matriz.py',
+     [('    + [("feature", f"frac_{b}", f"Fracción de reads de {_LARGOS.get(b, b)} nt.") for b, _, _ in BINS]', '    + []')]),
+    ('excel: el resumen cuenta sobre la columna equivocada', 'scripts/matriz.py',
+     [('        loci = f"=COUNTA(\'{hoja}\'!C:C)-1"', '        loci = f"=COUNTA(\'{hoja}\'!B:B)-1"')]),
     # --- núcleos en la calibración, índice en paralelo, prueba 4N sobre muestra ---
     ('reparto: la recta mezcla filas de todos los núcleos', 'scripts/reparto.py',
      [('    for g, s, n in filas:\n        grupos[n].append((g, s))', '    for g, s, n in filas:\n        grupos[objetivo].append((g, s))')]),

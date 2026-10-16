@@ -238,7 +238,8 @@ NB30 = RAIZ / "notebooks" / "30_matriz.ipynb"
 for marca, nombre in (("YASMA_REF = ", "Herramientas"), ("TRABAJO = pathlib.Path", "Configuración"),
                       ("EST = matriz.estado_drive", "§1"), ("MAX_READS = ", "§1b"),
                       ("SOLO    = []", "§2"), ("MIRGENEDB = {", "§3"),
-                      ("etiquetadas = []", "§4"), ("REVISAR_PRIMERO = True", "§5")):
+                      ("etiquetadas = []", "§4"), ("REVISAR_PRIMERO = True", "§5"),
+                      ("EXCEL = FEAT_DRIVE", "§6")):
     try:
         exec(celda(marca, NB30), {})
         e = None

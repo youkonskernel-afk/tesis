@@ -5,6 +5,7 @@
     ./scripts/matriz.py features  <dir> <bam> --org O --rol R --genoma G.fna -o M.tsv
     ./scripts/matriz.py etiquetar <M.tsv> <maduros.fa>... [-o M.tsv]
     ./scripts/matriz.py exportar  <M.tsv>... -o features.tsv        (lo que lee loo_cv.py)
+    ./scripts/matriz.py excel     <M.tsv>... -o features.xlsx       para mirarlas, con diccionario
 
 Una fila por locus, una columna por feature. El locus es lo que anota
 `yasma tradeoff` sobre el BAM de `yasma align`: el alineamiento con `-m 50` es
@@ -539,6 +540,191 @@ def resumen_matriz(ruta):
 
 
 # --------------------------------------------------------------------------
+# Excel: para mirar las matrices, no para entrenar
+# --------------------------------------------------------------------------
+# Qué es cada columna, de dónde sale y por qué está. Es la tabla de
+# docs/matriz.md, para que el Excel se lea solo. El banco exige que cada
+# feature tenga su fila: una columna sin explicar es un número sin unidad.
+_LARGOS = {"15_17": "15-17", "26_30": "26-30", "31_50": "31-50"}
+DICCIONARIO = (
+    [("identificación", c, d) for c, d in (
+        ("org", "Organismo (código del proyecto)."),
+        ("rol", "primario = descubrimiento; duplicado = validación independiente. "
+                "El duplicado nunca entra al entrenamiento."),
+        ("locus_id", "Identificador único: <org>_<rol>:<nombre del locus>."),
+        ("locus", "Coordenadas chrom:inicio-fin, como las da YASMA."),
+        ("nombre", "Nombre del locus en loci.txt."),
+        ("hebra", "Hebra del locus según YASMA (+, - o . si es mixta)."),
+        ("mayoritario", "RNA mayoritario del locus (la secuencia más abundante)."),
+        ("sizecall", "Clase de tamaño que llama YASMA (15-30 nt); N si no hay una dominante."),
+        ("reads_yasma", "Reads del locus según loci.txt."),
+        ("reads_bam", "Reads contados acá con la regla de YASMA. Tiene que ser igual a reads_yasma."),
+    )]
+    + [("etiqueta", c, d) for c, d in (
+        ("y", "1 = el mayoritario coincide con un maduro de la base (positivo). "
+              "0 = SIN ETIQUETAR, no negativo."),
+        ("y_ref", "El maduro más parecido, aunque quede fuera del umbral."),
+        ("y_mm", "Diferencias con ese maduro fuera de la semilla."),
+        ("y_dlen", "Diferencia de largo con ese maduro (isomiRs del 3')."),
+    )]
+    + [("feature", c, d) for c, d in (
+        ("log_largo", "log10(largo del locus + 1). Los loci de miRNA son cortos; los de siRNA, largos."),
+        ("log_reads", "log10(reads + 1): abundancia."),
+        ("log_rpm", "log10(RPM + 1): abundancia normalizada por profundidad."),
+        ("log_unicos", "log10(secuencias únicas + 1). Un miRNA tiene pocas; un siRNA, muchas."),
+        ("complejidad", "Secuencias únicas por nt del locus (Complexity de YASMA)."),
+        ("skew", "Fracción del read más abundante. Alta en miRNAs, que se procesan con precisión."),
+        ("sesgo_hebra", "|2·FracTop − 1|: 1 si todo está en una hebra, 0 si está repartido."),
+    )]
+    + [("feature", f"frac_{b}", f"Fracción de reads de {_LARGOS.get(b, b)} nt.") for b, _, _ in BINS]
+    + [("feature", c, d) for c, d in (
+        ("frac_5A", "Fracción de reads con A en el 5'."),
+        ("frac_5C", "Fracción de reads con C en el 5'."),
+        ("frac_5G", "Fracción de reads con G en el 5'."),
+        ("frac_5U", "Fracción de reads con U en el 5'. La U 5' la prefiere AGO1 (miRNAs)."),
+        ("precision_5p", "En la hebra dominante, fracción de reads que empieza en la posición 5' "
+                         "más común. Dicer corta preciso; la degradación no."),
+        ("frac_multimapeo", "Reads colocados por sorteo (XY P o R) sobre los colocados (U+P+R). "
+                            "Alta en repetidos y transposones."),
+        ("frac_librerias", "Fracción de las librerías del proyecto donde aparece el locus."),
+        ("largo_mayoritario", "Largo del RNA mayoritario (nt)."),
+        ("gc_mayoritario", "Fracción GC del RNA mayoritario."),
+        ("mayoritario_5U", "1 si el RNA mayoritario empieza con U."),
+        ("mfe", "Energía mínima del pliegue (kcal/mol) de ±80 nt alrededor del mayoritario, "
+                "en su hebra. Más negativo = más estable."),
+        ("mfe_por_nt", "mfe dividida por el largo de la ventana. Un precursor de miRNA pliega "
+                       "en horquilla estable."),
+        ("frac_pareado_mayoritario", "Fracción del mayoritario apareada en ese pliegue. "
+                                     "Un miRNA maduro vive en el tallo."),
+    )]
+)
+# Enteros en el Excel; el resto de las numéricas con 3 decimales.
+_ENTEROS = {"reads_yasma", "reads_bam", "y", "y_mm", "y_dlen", "largo_mayoritario",
+            "mayoritario_5U"}
+_TEXTO = {"org", "rol", "locus_id", "locus", "nombre", "hebra", "mayoritario", "sizecall",
+          "y_ref"}
+FILAS_MAX_EXCEL = 1_048_575
+
+
+def _valor(col, v):
+    """El valor de la celda: número si la columna es numérica, vacío si NaN."""
+    if col in _TEXTO:
+        return v
+    if v is None or v.strip() == "" or v.strip().lower() == "nan":
+        return None
+    try:
+        x = float(v)
+    except ValueError:
+        return v
+    if math.isnan(x):
+        return None
+    return int(x) if col in _ENTEROS and x.is_integer() else x
+
+
+def excel(rutas, salida, organismos=RAIZ / "data" / "organismos.tsv"):
+    """Un libro con Resumen, Diccionario y una hoja por proyecto. -> hojas."""
+    from openpyxl import Workbook
+    from openpyxl.cell import WriteOnlyCell
+    from openpyxl.styles import Alignment, Font, PatternFill
+
+    letra = Font(name="Arial", size=10)
+    negrita = Font(name="Arial", size=10, bold=True)
+    gris = PatternFill("solid", start_color="D9D9D9")
+    sm = set_modelo(organismos)
+
+    proyectos = []
+    for r in rutas:
+        cols, filas = leer_tsv(r)
+        faltan = [c for c in META + FEATURES if c not in (cols or [])]
+        if faltan:
+            raise SystemExit(f"{r}: no es una matriz de matriz.py (faltan {faltan[:3]}...)")
+        if len(filas) > FILAS_MAX_EXCEL:
+            raise SystemExit(f"{r}: {len(filas)} loci no entran en una hoja de Excel")
+        org = filas[0]["org"] if filas else pathlib.Path(r).parent.name
+        rol = filas[0]["rol"] if filas else pathlib.Path(r).name.split(".")[0]
+        hoja = f"{org}_{rol}"[:31]
+        if hoja in {p[0] for p in proyectos}:
+            raise SystemExit(f"dos matrices de {org}/{rol}: pasá una sola")
+        orden = META + [c for c in ETIQUETA if c in cols] + FEATURES
+        proyectos.append((hoja, org, rol, orden, filas))
+
+    wb = Workbook(write_only=True)
+    # Las fórmulas del Resumen se escriben sin valor calculado: que Excel y
+    # Sheets las calculen al abrir, en vez de mostrar celdas vacías.
+    wb.calculation.fullCalcOnLoad = True
+
+    def celda(ws, v, font=letra, fmt=None, fill=None):
+        c = WriteOnlyCell(ws, value=v)
+        c.font = font
+        if fmt:
+            c.number_format = fmt
+        if fill:
+            c.fill = fill
+        return c
+
+    # Resumen: los conteos son fórmulas sobre las hojas, no números copiados.
+    ws = wb.create_sheet("Resumen")
+    for letra_col, ancho in zip("ABCDEFG", (20, 10, 11, 14, 9, 14, 20)):
+        ws.column_dimensions[letra_col].width = ancho
+    ws.freeze_panes = "A2"
+    ws.append([celda(ws, h, negrita, fill=gris) for h in
+               ("proyecto", "org", "rol", "set_modelo", "loci", "positivos (y=1)", "hoja")])
+    for hoja, org, rol, orden, _ in proyectos:
+        loci = f"=COUNTA('{hoja}'!C:C)-1"
+        if "y" in orden:
+            col_y = _letra(orden.index("y") + 1)
+            pos = f"=COUNTIF('{hoja}'!{col_y}:{col_y},1)"
+        else:
+            pos = "sin etiquetar"
+        ws.append([celda(ws, v) for v in (f"{org}/{rol}", org, rol, sm.get(org, "?"))]
+                  + [celda(ws, loci, fmt="#,##0"), celda(ws, pos, fmt="#,##0"), celda(ws, hoja)])
+    ws.append([])
+    ws.append([celda(ws, "y = 0 es SIN ETIQUETAR, no negativo (PU learning). "
+                         "Qué es cada columna: hoja Diccionario. Fuente: scripts/matriz.py, "
+                         "docs/matriz.md.")])
+
+    ws = wb.create_sheet("Diccionario")
+    for letra_col, ancho in zip("ABC", (16, 26, 100)):
+        ws.column_dimensions[letra_col].width = ancho
+    ws.freeze_panes = "A2"
+    ws.append([celda(ws, h, negrita, fill=gris) for h in ("grupo", "columna", "qué es")])
+    for grupo, col, desc in DICCIONARIO:
+        c = celda(ws, desc)
+        c.alignment = Alignment(wrap_text=True, vertical="top")
+        ws.append([celda(ws, grupo), celda(ws, col), c])
+
+    for hoja, _org, _rol, orden, filas in proyectos:
+        ws = wb.create_sheet(hoja)
+        for i, col in enumerate(orden, 1):
+            ws.column_dimensions[_letra(i)].width = (
+                30 if col in ("locus_id", "mayoritario", "y_ref") else max(10, len(col) + 2))
+        ws.freeze_panes = "D2"
+        ws.auto_filter.ref = f"A1:{_letra(len(orden))}{len(filas) + 1}"
+        ws.append([celda(ws, c, negrita, fill=gris) for c in orden])
+        for f in filas:
+            ws.append([celda(ws, _valor(c, f.get(c)),
+                             fmt=None if c in _TEXTO else ("0" if c in _ENTEROS else "0.000"))
+                       for c in orden])
+    wb.save(salida)
+    return [p[0] for p in proyectos]
+
+
+def _letra(n):
+    """1 -> A, 27 -> AA."""
+    s = ""
+    while n:
+        n, r = divmod(n - 1, 26)
+        s = chr(65 + r) + s
+    return s
+
+
+def cmd_excel(a):
+    hojas = excel(a.matrices, a.o)
+    print(f"{len(hojas)} proyecto(s) -> {a.o}: Resumen, Diccionario, {', '.join(hojas)}")
+    return 0
+
+
+# --------------------------------------------------------------------------
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -570,11 +756,16 @@ def main(argv=None):
     p.add_argument("matrices", type=pathlib.Path, nargs="+")
     p.add_argument("-o", required=True, type=pathlib.Path)
 
+    p = sub.add_parser("excel", help="las matrices en un .xlsx, con diccionario")
+    p.add_argument("matrices", type=pathlib.Path, nargs="+")
+    p.add_argument("-o", required=True, type=pathlib.Path)
+
     a = ap.parse_args(argv)
     if a.cmd == "anotar":
         anotar(a.bam, a.dir, a.yasma)
         return 0
-    return {"features": cmd_features, "etiquetar": cmd_etiquetar, "exportar": cmd_exportar}[a.cmd](a)
+    return {"features": cmd_features, "etiquetar": cmd_etiquetar, "exportar": cmd_exportar,
+            "excel": cmd_excel}[a.cmd](a)
 
 
 if __name__ == "__main__":

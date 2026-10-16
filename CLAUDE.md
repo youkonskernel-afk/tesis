@@ -1220,7 +1220,7 @@ Lo que necesita red va en otro lado:
 | recorte y alineamiento (los que entran) | Colab | `notebooks/20_alinear.ipynb` |
 | prueba 4N sobre una muestra (sin alinear) | Colab | §5c de `20_alinear.ipynb` (`align.sh prueba`) |
 | todos los que faltan, en cola | Colab | §8 de `20_alinear.ipynb` (`scripts/cola.py`) |
-| matriz de features (anotar, features, etiquetar, exportar) | Colab | `notebooks/30_matriz.ipynb` (`scripts/matriz.py`) |
+| matriz de features (anotar, features, etiquetar, exportar, excel) | Colab | `notebooks/30_matriz.ipynb` (`scripts/matriz.py`) |
 | empujar a git desde Colab | Colab | `scripts/colab_git.py` + un PAT en Secrets |
 | configurar rclone | máquina local | `docs/rclone.md` + `scripts/drive_check.sh` |
 | traer `.sra` para alinear | máquina local | `scripts/drive_pull.sh sra <org> --go` |
@@ -1249,7 +1249,7 @@ evitan que dos hagan el mismo proyecto. El techo es 4× y lo marca
 Todo corre sin red y en segundos. Antes de cada push:
 
 ```bash
-./tests/run_all.sh              # 28 bancos, 1074 chequeos, binarios falsos en el PATH
+./tests/run_all.sh              # 28 bancos, 1090 chequeos, binarios falsos en el PATH
 ./tests/mutar.py                # rompe el codigo y exige que algun banco grite
 ./scripts/check_docs.py         # lo que afirman los docs contra data/
 ./scripts/validate_notebooks.py # los .ipynb parsean y no hay duplicados
@@ -1260,7 +1260,7 @@ y `check_docs.py` dos más.
 
 **Un banco que pasa no prueba nada.** Prueba algo el día que se rompe lo que
 cubre y el banco se queja, y la única forma de saberlo es romper el código a
-propósito: eso es `tests/mutar.py`, 212 mutaciones que tienen que dar todas
+propósito: eso es `tests/mutar.py`, 216 mutaciones que tienen que dar todas
 `[OK]`. Un `[HUECO]` es un chequeo que falta; un `[VIEJA]` es una mutación cuyo
 patrón ya no existe, que tampoco prueba nada. Así aparecieron los dos huecos que
 ninguna otra cosa mostró — el veredicto de `perfil` que iba a la tabla sin estar

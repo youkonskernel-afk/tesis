@@ -52,6 +52,7 @@ CITAS_DE_SALIDA = {
     "stats.txt": "salida de yasma tradeoff: totales de la anotacion",
     "params.json": "salida de yasma tradeoff: los parametros de la corrida",
     "features_entrenamiento.tsv": "lo que exporta matriz.py para loo_cv.py; vive en Drive/40_features",
+    "features.xlsx": "las matrices en Excel (matriz.py excel); vive en Drive/40_features",
     "library_stats.txt": "conteos por read group que escribe yasma align",
     "alineado.tsv": "contra que genoma alineo cada proyecto; lo escribe align.sh",
 }

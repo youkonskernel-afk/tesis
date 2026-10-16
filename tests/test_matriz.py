@@ -312,6 +312,62 @@ with tempfile.TemporaryDirectory() as d:
     _, e, _ = capturar(matriz.exportar, [mp, mp])
     chk("la misma matriz dos veces corta", e is not None and "repetido" in str(e.code), repr(e))
 
+print("== 8c. excel: una hoja por proyecto, con diccionario y resumen")
+try:
+    import openpyxl
+except ImportError:
+    openpyxl = None
+if openpyxl is None:
+    print("  (salteado: sin openpyxl)")
+else:
+    with tempfile.TemporaryDirectory() as d:
+        d = pathlib.Path(d)
+        base = {c: "0.5" for c in matriz.FEATURES}
+        con_y = matriz.META + matriz.FEATURES + matriz.ETIQUETA
+        filas = [dict(base, org="gadmo", rol="primario", locus_id=f"gadmo_primario:l{i}",
+                      locus="c1:1-50", mayoritario="UGA", y=y, y_ref="r" if y else "", y_mm=0,
+                      y_dlen=0, reads_yasma=10, reads_bam=10) for i, y in enumerate([1, 0, 1])]
+        filas[1]["mfe"] = "nan"
+        matriz.escribir(filas, d / "gp.tsv", con_y)
+        sin_y = [dict(base, org="sclsc", rol="duplicado", locus_id="sclsc_duplicado:l0",
+                      reads_yasma=5, reads_bam=5)]
+        matriz.escribir(sin_y, d / "sd.tsv", matriz.META + matriz.FEATURES)
+        out = d / "f.xlsx"
+        r, e, txt = capturar(matriz.main, ["excel", str(d / "gp.tsv"), str(d / "sd.tsv"), "-o", str(out)])
+        wb = openpyxl.load_workbook(out)
+        chk("hojas: Resumen, Diccionario y una por proyecto",
+            wb.sheetnames == ["Resumen", "Diccionario", "gadmo_primario", "sclsc_duplicado"], wb.sheetnames)
+        ws = wb["gadmo_primario"]
+        cab = [c.value for c in ws[1]]
+        chk("columnas: identificación, etiqueta y las 31 features, en ese orden",
+            cab == matriz.META + matriz.ETIQUETA + matriz.FEATURES, cab[:12])
+        fila2 = {h: c.value for h, c in zip(cab, ws[2])}
+        chk("los números son números, no texto",
+            isinstance(fila2["log_largo"], float) and fila2["reads_bam"] == 10, fila2["log_largo"])
+        chk("un NaN queda vacío, no 'nan'", {h: c.value for h, c in zip(cab, ws[3])}["mfe"] is None)
+        chk("sin etiqueta no inventa la columna y",
+            "y" not in [c.value for c in wb["sclsc_duplicado"][1]])
+        res = wb["Resumen"]
+        chk("el resumen cuenta los loci con fórmula sobre la hoja",
+            res["E2"].value == "=COUNTA('gadmo_primario'!C:C)-1", res["E2"].value)
+        col_y = matriz._letra(cab.index("y") + 1)
+        chk("y los positivos sobre la columna y",
+            res["F2"].value == f"=COUNTIF('gadmo_primario'!{col_y}:{col_y},1)", res["F2"].value)
+        chk("sin etiqueta lo dice", res["F3"].value == "sin etiquetar", res["F3"].value)
+        chk("con el set_modelo de organismos.tsv",
+            res["D2"].value == "entrenamiento" and res["D3"].value == "aplicacion")
+        dic = {r[1]: r[2] for r in wb["Diccionario"].iter_rows(min_row=2, values_only=True)}
+        chk("el diccionario explica cada feature", all(dic.get(f) for f in matriz.FEATURES),
+            [f for f in matriz.FEATURES if not dic.get(f)])
+        chk("y dice que y = 0 no es negativo", "no negativo" in (dic.get("y") or ""))
+        chk("letra Arial", ws["K2"].font.name == "Arial")
+        chk("recalcula al abrir", wb.calculation.fullCalcOnLoad is True)
+        _, e, _ = capturar(matriz.excel, [d / "gp.tsv", d / "gp.tsv"], d / "g2.xlsx")
+        chk("dos veces el mismo proyecto corta", e is not None and "dos matrices" in str(e.code), repr(e))
+        (d / "malo.tsv").write_text("a\tb\n1\t2\n")
+        _, e, _ = capturar(matriz.excel, [d / "malo.tsv"], d / "g3.xlsx")
+        chk("algo que no es una matriz corta", e is not None and "no es una matriz" in str(e.code), repr(e))
+
 print("== 8b. lo que usa el notebook: estado en Drive, maduros, resumen")
 with tempfile.TemporaryDirectory() as d:
     d = pathlib.Path(d)

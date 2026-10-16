@@ -175,6 +175,20 @@ formato de `loo_cv.py`.
   - un `locus_id` se repite.
 - No exporta nada de `y_ref`, `y_mm` ni `y_dlen`: le darían la etiqueta al modelo.
 
+## Excel, para mirarlas
+
+`matriz.py excel <M.tsv>... -o features.xlsx` (§6 del notebook) junta las
+matrices en un libro con tres partes:
+- **Resumen**: proyecto, `set_modelo`, loci y positivos, con los conteos como
+  fórmulas sobre cada hoja;
+- **Diccionario**: qué es cada columna (`DICCIONARIO` en `matriz.py`; el banco
+  exige que cada feature tenga su fila);
+- **una hoja por proyecto**, con los números como números, filtros y la
+  cabecera fija.
+
+Es para mirar, no para entrenar: `loo_cv.py` lee `features_entrenamiento.tsv`.
+Va a Drive, no a git.
+
 ## Dónde queda cada cosa
 
 | qué | dónde |
@@ -183,6 +197,7 @@ formato de `loo_cv.py`.
 | Matriz por proyecto | `Drive/40_features/<org>/<rol>.matriz.tsv` |
 | Maduros de MirGeneDB | `Drive/40_features/maduros/<org>.fa` |
 | Lo que entra a `loo_cv.py` | `Drive/40_features/features_entrenamiento.tsv` |
+| Todas las matrices en Excel, para mirarlas | `Drive/40_features/features.xlsx` |
 | Registro en git: qué matriz se armó | `data/matrices.tsv` (loci, positivos, features, **sha256**) |
 | Registro en git: de dónde salieron los positivos | `data/maduros.tsv` (fuente, URL, sha256) |
 
