@@ -620,6 +620,12 @@ MUTACIONES = [
        '    if False:\n        raise SystemExit("falta el parche')]),
     ("matriz: un -9 se informa como un error cualquiera", "scripts/matriz.py",
      [('    if rc in (-9, 137):', '    if False:')]),
+    ('control: el recorte del BAM ignora el tope', 'scripts/tradeoff_control.py',
+     [('            if n >= max_reads:\n                break', '            if False:\n                break')]),
+    ('control: no avisa que sigue vivo', 'scripts/tradeoff_control.py',
+     [('        if time.time() - ultimo >= cada:', '        if False:')]),
+    ('§1b: vuelve a retener la salida hasta el final', 'notebooks/30_matriz.ipynb',
+     [('stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)', 'capture_output=True, text=True)')]),
     # --- núcleos en la calibración, índice en paralelo, prueba 4N sobre muestra ---
     ('reparto: la recta mezcla filas de todos los núcleos', 'scripts/reparto.py',
      [('    for g, s, n in filas:\n        grupos[n].append((g, s))', '    for g, s, n in filas:\n        grupos[objetivo].append((g, s))')]),

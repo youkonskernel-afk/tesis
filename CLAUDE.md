@@ -690,7 +690,12 @@ probabilidad calibrada.
   `tests/bam_sintetico.py`).
   `matriz.py anotar` exige el parche y distingue el `-9`. §1b de `30_matriz`
   repite la comparación sobre `sclsc/duplicado`, que es real y donde el original
-  entra. Lo que **no** arregla: `ker_d` (4 B por base) y los temporales del
+  entra. **Sobre un tramo, no el BAM entero** (`--max-reads`, los primeros
+  scaffolds hasta 3 M reads): con los 32 M eran dos `tradeoff` completos, ~1 h
+  con la salida retenida hasta el final, y se leyó como una celda colgada.
+  Ahora corre en minutos y avisa cada 30 s. **Medido en Colab con el parche:
+  `gadmo_duplicado` (670 Mb, 12 librerías, 48.9 M reads), que había muerto con
+  `-9`, anotó en 50 min: 2163 loci con el 92.4% de los reads.** Lo que **no** arregla: `ker_d` (4 B por base) y los temporales del
   cromosoma más grande (~24 B por base), así que `galga` sigue rondando 9 GB
   antes de contar reads y hay que medirlo. Banco: `tests/test_tradeoff_parche.py`.
 - **`yasma tradeoff` escribe en `<-o>/tradeoff/`** (o `tradeoff_<nombre>/` con
@@ -1244,7 +1249,7 @@ evitan que dos hagan el mismo proyecto. El techo es 4× y lo marca
 Todo corre sin red y en segundos. Antes de cada push:
 
 ```bash
-./tests/run_all.sh              # 28 bancos, 1065 chequeos, binarios falsos en el PATH
+./tests/run_all.sh              # 28 bancos, 1074 chequeos, binarios falsos en el PATH
 ./tests/mutar.py                # rompe el codigo y exige que algun banco grite
 ./scripts/check_docs.py         # lo que afirman los docs contra data/
 ./scripts/validate_notebooks.py # los .ipynb parsean y no hay duplicados
@@ -1255,7 +1260,7 @@ y `check_docs.py` dos más.
 
 **Un banco que pasa no prueba nada.** Prueba algo el día que se rompe lo que
 cubre y el banco se queja, y la única forma de saberlo es romper el código a
-propósito: eso es `tests/mutar.py`, 209 mutaciones que tienen que dar todas
+propósito: eso es `tests/mutar.py`, 212 mutaciones que tienen que dar todas
 `[OK]`. Un `[HUECO]` es un chequeo que falta; un `[VIEJA]` es una mutación cuyo
 patrón ya no existe, que tampoco prueba nada. Así aparecieron los dos huecos que
 ninguna otra cosa mostró — el veredicto de `perfil` que iba a la tabla sin estar

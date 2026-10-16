@@ -236,7 +236,7 @@ chk("y son Herramientas y Configuración",
 print("== 5d. 30_matriz: cada celda sin las de arriba dice cuáles correr, no NameError")
 NB30 = RAIZ / "notebooks" / "30_matriz.ipynb"
 for marca, nombre in (("YASMA_REF = ", "Herramientas"), ("TRABAJO = pathlib.Path", "Configuración"),
-                      ("EST = matriz.estado_drive", "§1"), ("CONTROL = 'sclsc", "§1b"),
+                      ("EST = matriz.estado_drive", "§1"), ("MAX_READS = ", "§1b"),
                       ("SOLO    = []", "§2"), ("MIRGENEDB = {", "§3"),
                       ("etiquetadas = []", "§4"), ("REVISAR_PRIMERO = True", "§5")):
     try:
@@ -246,6 +246,13 @@ for marca, nombre in (("YASMA_REF = ", "Herramientas"), ("TRABAJO = pathlib.Path
         e = x
     chk(f"30_matriz {nombre}: RuntimeError que dice qué correr",
         isinstance(e, RuntimeError) and ("Faltan" in str(e) or "Preámbulo" in str(e)), repr(e))
+
+print("== 5e. 30_matriz §1b: en vivo y sobre un tramo del BAM")
+# Con capture_output y el BAM entero eran ~1 h sin imprimir nada, y se leyo
+# como una celda colgada.
+C1B = celda("MAX_READS = ", NB30)
+chk("§1b no retiene la salida hasta el final", "capture_output=" not in C1B)
+chk("§1b le pasa --max-reads al control", "'--max-reads', str(MAX_READS)" in C1B)
 
 print("== 6. la celda de montaje es la misma en todos los notebooks")
 todas = {nb.name: celda("drive.mount(", nb)

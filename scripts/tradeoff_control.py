@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Corre `yasma tradeoff` original y parchado sobre el MISMO BAM y compara todo.
 
-    ./scripts/tradeoff_control.py <bam> [--trabajo DIR] [-- <args extra de tradeoff>]
+    ./scripts/tradeoff_control.py <bam> [--max-reads N] [--trabajo DIR] [-- <args extra de tradeoff>]
 
 Es la prueba de que el parche de memoria (scripts/tradeoff_parche.py) no cambia
 la anotacion: arma dos copias del paquete yasma instalado —una con el
@@ -15,6 +15,14 @@ Imprime la memoria pico de cada corrida, que es el otro dato que importa.
 El original tiene que entrar en RAM: correlo sobre un proyecto chico
 (sclsc/duplicado son 39 Mb y 2 librerias). Sale 0 si son iguales, 1 si no,
 2 si no se pudo correr.
+
+--max-reads N corre sobre un recorte del BAM: los reads de los primeros
+cromosomas hasta juntar N, con la cabecera entera. Sobre los 32 M reads de
+sclsc/duplicado son dos tradeoff completos, del orden de una hora sin decir
+nada, y en Colab eso se lee como una celda colgada (paso). La prueba de
+igualdad no necesita todo el BAM: necesita reads reales —loci, multimapeados,
+librerias de profundidad distinta—, y eso esta en cualquier tramo. Mientras
+corre, cada CADA_S segundos imprime cuanto lleva y la ultima linea de yasma.
 """
 import argparse
 import os
@@ -31,6 +39,8 @@ import tradeoff_parche  # noqa: E402
 
 # Lineas de log.txt que cambian de una corrida a otra aunque la anotacion sea igual.
 VOLATILES = ("Start time", "elapsed", "Run completed")
+# Cada cuanto avisa que sigue vivo.
+CADA_S = 30
 
 
 def tradeoff_args():
@@ -76,6 +86,53 @@ def armar_copias(pkg, raiz):
     return out
 
 
+def recortar_bam(bam, salida, max_reads):
+    """Los reads de los primeros cromosomas, en el orden de la cabecera, hasta
+    juntar max_reads; el cromosoma en el que se pasa entra entero, para no
+    cortar un locus por la mitad. La cabecera va entera (tradeoff recorre todas
+    las secuencias y los @RG de todas las librerias). -> reads escritos."""
+    import pysam  # noqa: PLC0415
+    n = 0
+    with pysam.AlignmentFile(str(bam), "rb") as ent, \
+            pysam.AlignmentFile(str(salida), "wb", header=ent.header) as sal:
+        for ref in ent.references:
+            if n >= max_reads:
+                break
+            for r in ent.fetch(ref):
+                sal.write(r)
+                n += 1
+    pysam.index(str(salida))
+    return n
+
+
+def ultima_linea(f):
+    """La ultima linea con texto de la salida de yasma (que usa \\r y codigos
+    de terminal para el progreso)."""
+    try:
+        txt = pathlib.Path(f).read_text(errors="replace")
+    except OSError:
+        return ""
+    for l in reversed(txt.replace("\r", "\n").splitlines()):
+        l = l.replace("\x1b[1A", "").replace("\x1b[2K", "").strip()
+        if l:
+            return l[:100]
+    return ""
+
+
+def esperar(p, salida, cada=None):
+    """Espera al proceso avisando cada `cada` s. -> (estado de wait4, rusage)"""
+    cada = CADA_S if cada is None else cada
+    t0 = ultimo = time.time()
+    while True:
+        pid, st, ru = os.wait4(p.pid, os.WNOHANG)
+        if pid:
+            return st, ru
+        if time.time() - ultimo >= cada:
+            ultimo = time.time()
+            print(f"   ... {(ultimo - t0) / 60:.1f} min  {ultima_linea(salida)}", flush=True)
+        time.sleep(min(1.0, cada))
+
+
 def correr(pypath, bam, d, extra):
     """yasma tradeoff con el paquete de `pypath`. -> (rc, segundos, pico en bytes)"""
     d.mkdir(parents=True)
@@ -93,7 +150,7 @@ def correr(pypath, bam, d, extra):
     t = time.time()
     with open(d / "salida.txt", "w") as h:
         p = subprocess.Popen(cmd, cwd=d, env=env, stdout=h, stderr=subprocess.STDOUT)
-        _, st, ru = os.wait4(p.pid, 0)
+        st, ru = esperar(p, d / "salida.txt")
     rc = os.waitstatus_to_exitcode(st)
     return rc, time.time() - t, ru.ru_maxrss * 1024
 
@@ -124,6 +181,8 @@ def main():
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("bam")
     ap.add_argument("--trabajo", help="directorio de trabajo (por defecto, uno temporal)")
+    ap.add_argument("--max-reads", type=int,
+                    help="correr sobre los reads de los primeros cromosomas hasta juntar N")
     ap.add_argument("extra", nargs="*", help="argumentos extra para tradeoff, después de --")
     a = ap.parse_args()
     bam = pathlib.Path(a.bam).resolve()
@@ -141,6 +200,11 @@ def main():
         tmp = tempfile.TemporaryDirectory()
         raiz = pathlib.Path(tmp.name)
     try:
+        if a.max_reads:
+            chico = raiz / "recorte.bam"
+            n = recortar_bam(bam, chico, a.max_reads)
+            print(f"recorte de {bam.name}: {n:,} reads de los primeros cromosomas", flush=True)
+            bam = chico
         copias = armar_copias(paquete_instalado(), raiz)
         res = {}
         for nombre, pypath in copias.items():

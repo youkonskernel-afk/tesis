@@ -26,6 +26,8 @@ Lo que este banco protege:
     contra el parchado sobre BAMs sinteticos, byte a byte.
 """
 import collections
+import contextlib
+import io
 import importlib
 import os
 import pathlib
@@ -372,6 +374,53 @@ with tempfile.TemporaryDirectory() as d:
     chk("un loci.txt distinto se marca", "loci.txt" in dif, dif)
     chk("un log.txt distinto en algo más que la hora se marca", "log.txt" in dif, dif)
     chk("un fichero que está en una sola se marca", faltan == ["reads.txt"], faltan)
+
+print("== 4b. tradeoff_control: el recorte del BAM y el aviso de que sigue vivo")
+# Sobre los 32 M reads de sclsc/duplicado eran dos tradeoff completos, ~1 h sin
+# imprimir nada: en Colab se leyo como una celda colgada.
+try:
+    import pysam  # noqa: F401
+    HAY_PYSAM = True
+except ImportError:
+    HAY_PYSAM = False
+if not HAY_PYSAM:
+    print("  (salteado el recorte: sin pysam)")
+else:
+    with tempfile.TemporaryDirectory() as d:
+        d = pathlib.Path(d)
+        bam = d / "x.bam"
+        subprocess.run([sys.executable, str(RAIZ / "tests" / "bam_sintetico.py"), str(bam)],
+                       check=True, capture_output=True)
+        with pysam.AlignmentFile(str(bam)) as h:
+            por_ref = {r: h.count(r) for r in h.references}
+            refs, rgs = list(h.references), [g["ID"] for g in h.header.to_dict()["RG"]]
+        n = tradeoff_control.recortar_bam(bam, d / "c.bam", 1000)
+        with pysam.AlignmentFile(str(d / "c.bam")) as h:
+            vistos = {r.reference_name for r in h.fetch()}
+            chk("con 1000 entra el primer cromosoma ENTERO y nada más",
+                n == por_ref[refs[0]] and vistos == {refs[0]}, (n, vistos))
+            chk("la cabecera va entera: secuencias y @RG",
+                list(h.references) == refs and [g["ID"] for g in h.header.to_dict()["RG"]] == rgs)
+        chk("y queda indexado", (d / "c.bam.bai").exists())
+        n2 = tradeoff_control.recortar_bam(bam, d / "c2.bam", 10**9)
+        chk("con un tope enorme, todos los mapeados", n2 == sum(por_ref.values()), (n2, por_ref))
+
+with tempfile.TemporaryDirectory() as d:
+    sal = pathlib.Path(d) / "salida.txt"
+    with open(sal, "w") as h:
+        pr = subprocess.Popen([sys.executable, "-c",
+                               "import sys, time\n"
+                               "print('encoding reads ... 43%', flush=True)\n"
+                               "time.sleep(1.5)\nsys.exit(3)"], stdout=h)
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        st, ru = tradeoff_control.esperar(pr, sal, cada=0.3)
+    chk("espera hasta que termina y devuelve su estado", os.waitstatus_to_exitcode(st) == 3, st)
+    chk("mientras tanto avisa que sigue, con la última línea de yasma",
+        "min  encoding reads ... 43%" in buf.getvalue(), buf.getvalue())
+    sal.write_text("a\rencoding 99%\x1b[1A\x1b[2K\n\n")
+    chk("la última línea sin los códigos de terminal",
+        tradeoff_control.ultima_linea(sal) == "encoding 99%", tradeoff_control.ultima_linea(sal))
 
 print("== 5. original contra parchado con yasma de verdad")
 py = os.environ.get("YASMA_PYTHON")
