@@ -16,8 +16,8 @@
 # igual que en trim.sh. La unidad es el proyecto YASMA <org>_<rol>: un BAM por
 # organismo y rol, con un @RG por corrida.
 #
-# Variables: PROY_DIR, GENOMES_DIR, BAM_DIR, MANIFEST, CORES, MAX_MULTI,
-# MAX_RANDOM, UNIQUE_LOCALITY, OFFRATE, FORZAR.
+# Variables: PROY_DIR, GENOMES_DIR, BAM_DIR, MANIFEST, EXTREMOS_TSV, CORES,
+# MAX_MULTI, MAX_RANDOM, UNIQUE_LOCALITY, OFFRATE, FORZAR.
 #
 # POR QUE `yasma align` Y NO UN BOWTIE PROPIO
 # Hasta que se leyo el codigo de v1.1.1, este repo daba por hecho que `yasma
@@ -89,6 +89,9 @@ FORZAR="${FORZAR:-0}"
 # Lo que verificar corre cuando mas de la mitad no alinea en ninguna parte. Por
 # variable para que el banco lo reemplace por uno falso.
 DE_QUIEN="${DE_QUIEN:-$ROOT/scripts/de_quien.py}"
+# Cuantos nt cortar de cada punta en los kits 4N. La escribe `prueba` y la lee
+# trim.sh; aca se mira para no alinear lo recortado con otro corte.
+EXTREMOS_TSV="${EXTREMOS_TSV:-$ROOT/data/extremos.tsv}"
 
 LEDGER_ALIN=alineado.tsv
 
@@ -473,6 +476,19 @@ cmd_correr() {
       die "no alineo un proyecto con librerías vacías: el BAM saldría incompleto y pasaría verificar"
     fi
 
+    # Recortado con otro corte de extremos que el que pide data/extremos.tsv. Es
+    # rhirr_duplicado: recortado antes de saber que el kit era 4N, alinea 0.17%
+    # y ~2.5 h para enterarse. La tabla manda; trim.sh rehace lo desactualizado.
+    local desact
+    desact=$("$ROOT/scripts/extremos.py" --tabla "$EXTREMOS_TSV" desactualizadas "$dir" "$org") \
+      || die "no pude leer $EXTREMOS_TSV (ver arriba)"
+    if [[ -n "$desact" ]]; then
+      echo "   corridas recortadas con otro corte de extremos (corrida, aplicado, pide):" >&2
+      sed 's/^/     /' <<<"$desact" >&2
+      echo "   Re-recortalas con: ./scripts/trim.sh correr $org/$rol" >&2
+      die "no alineo un recorte que no corta lo que pide $EXTREMOS_TSV"
+    fi
+
     IFS=$'\t' read -r acc esp < <(genoma_de "$org")
     fna=$(preparar_genoma "$org")
 
@@ -701,7 +717,11 @@ cmd_prueba() {
   dir="$PROY_DIR/_muestras/${org}_${rol}"
   nb=$(( n < 20000 ? n : 20000 ))
   echo
-  "$DE_QUIEN" "$dir" "$org" --indice "$pre" --cores "$CORES" --n "$n" --n-bowtie "$nb"
+  # --registrar: lo que mida va a data/extremos.tsv, de donde lo toma trim.sh.
+  # La muestra de `trim.sh muestra` no corta extremos, asi que lo que se mide es
+  # el corte total desde el adaptador.
+  "$DE_QUIEN" "$dir" "$org" --indice "$pre" --cores "$CORES" --n "$n" --n-bowtie "$nb" \
+    --registrar "$EXTREMOS_TSV" --manifest "$MANIFEST"
 }
 
 case "$1" in

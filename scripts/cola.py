@@ -221,7 +221,7 @@ def _empujar(clon, mensaje):
     try:
         import colab_git  # noqa: PLC0415
         rutas = [p for p in ('data/alineamientos.tsv', 'data/calibracion.tsv',
-                             'data/adaptadores.tsv')
+                             'data/adaptadores.tsv', 'data/extremos.tsv')
                  if (pathlib.Path(clon) / p).exists()]
         print(colab_git.empujar(clon, rutas, mensaje, revisar=False))
         return True

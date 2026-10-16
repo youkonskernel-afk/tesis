@@ -1,0 +1,17 @@
+# Cuantos nt sacar de cada punta del inserto despues de recortar el adaptador.
+# Lo escribe `de_quien.py --registrar` (via `align.sh prueba`), no se edita a mano.
+# Ver el docstring de scripts/extremos.py.
+#
+# COLUMNAS
+#   org, bioproject, run   a que aplica; run `-` es todo el proyecto, y una fila
+#                          con el RUN exacto le gana (un BioProject puede
+#                          mezclar kits)
+#   cortar_5p, cortar_3p   nt a sacar de cada punta (las bases aleatorias de un
+#                          kit 4N)
+#   alin_sin_pct           % de la muestra que alinea con bowtie -v 1 sin cortar
+#   alin_con_pct           y cortando lo de las dos columnas anteriores: es la
+#                          evidencia, y lo que justifica la fila
+#   lecturas               cuantas lecturas de la muestra se probaron
+#   fuente                 que lo midio
+#   fecha_utc              cuando
+org	bioproject	run	cortar_5p	cortar_3p	alin_sin_pct	alin_con_pct	lecturas	fuente	fecha_utc

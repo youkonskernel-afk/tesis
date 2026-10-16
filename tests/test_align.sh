@@ -28,7 +28,7 @@ ok(){ printf '  ok   %s\n' "$1"; }; mal(){ printf '  MAL  %s\n' "$1"; FALLAS=$((
 # El `--` es imprescindible: sin el, un patron que empieza con '-' (como
 # "-m 50") lo toma grep como opcion, aborta, y en notiene() el exit nonzero cae
 # en la rama de exito -> el chequeo pasa SIEMPRE.
-tiene(){ grep -qF -- "$2" <<<"$3" && ok "$1" || mal "$1 — falta: $2"; }
+tiene(){ [[ -z "$2" || "$2" == *$'\n'* ]] && { mal "$1 — patrón vacío o con salto de línea: grep lo parte en varios y uno vacío matchea todo"; return; }; grep -qF -- "$2" <<<"$3" && ok "$1" || mal "$1 — falta: $2"; }
 notiene(){ grep -qF -- "$2" <<<"$3" && mal "$1 — no deberia estar: $2" || ok "$1"; }
 
 MAN="$TMP/man.tsv"
@@ -442,6 +442,32 @@ S=$(corre correr aa/primario)
 notiene "una PRE-TRIMMED no cuenta como vacía" "vacías"        "$S"
 sembrar_trim; : > "$LOG_YA"
 
+echo "== 10f2. no se alinea un recorte que no corta lo que pide data/extremos.tsv"
+# rhirr_duplicado: recortado antes de saber que el kit era 4N, alinea 0.17% y
+# son ~2.5 h para enterarse. trim.sh lo rehace; align no lo tiene que alinear.
+sembrar_trim; : > "$LOG_YA"
+EXT_A="$TMP/extremos.tsv"
+{ printf 'org\tbioproject\trun\tcortar_5p\tcortar_3p\talin_sin_pct\talin_con_pct\tlecturas\tfuente\tfecha_utc\n'
+  printf 'aa\tPRJ\t-\t4\t4\t0.17\t82.07\t900\tbanco\t2026-10-16\n'; } > "$EXT_A"
+S=$(EXTREMOS_TSV="$EXT_A" corre correr aa/primario); RC=$?
+[[ $RC -ne 0 ]] && ok "exit != 0" || mal "exit != 0 (rc=$RC)"
+tiene "nombra las corridas, lo que tienen y lo que piden" "$(printf 'SRR_P1\t-\t4/4')" "$S"
+tiene "y manda a re-recortar"     "trim.sh correr aa/primario"   "$S"
+notiene "sin llamar a yasma"      "CWD="                         "$(cat "$LOG_YA")"
+cp "$EXT_A" "$TMP/ext.bak"
+printf 'org\tbioproject\trun\tcortar_5p\tcortar_3p\nrhirr\tP\t-\t4\tcuatro\n' > "$EXT_A"
+S=$(EXTREMOS_TSV="$EXT_A" corre correr aa/primario); RC=$?
+[[ $RC -ne 0 ]] && ok "una tabla rota corta" || mal "una tabla rota corta (rc=$RC)"
+tiene "por la tabla" "no pude leer $EXT_A" "$S"
+mv "$TMP/ext.bak" "$EXT_A"
+# Con el corte hecho (la columna 8 del ledger), pasa.
+awk 'BEGIN{FS=OFS="\t"} NR==1 {print $0, "extremos"; next} {print $0, "4/4"}' \
+  "$PROY/aa_primario/recortadas.tsv" > "$TMP/r8" && mv "$TMP/r8" "$PROY/aa_primario/recortadas.tsv"
+S=$(EXTREMOS_TSV="$EXT_A" corre correr aa/primario)
+notiene "con el corte hecho no se queja" "otro corte de extremos" "$S"
+tiene "y alinea"                         "CWD="                   "$(cat "$LOG_YA")"
+sembrar_trim; : > "$LOG_YA"
+
 echo "== 10g. un índice a medias no se da por bueno"
 # bowtie-build deja .rev.1.ebwt escrito antes de terminar. Un §2 cortado dejaba
 # ese fichero, la corrida siguiente decia "ya está", y yasma —que mira lo mismo—
@@ -502,6 +528,8 @@ tiene "y muestra su veredicto"         ">>> EXTREMOS SIN RECORTAR"              
   || mal "y sin tocar el proyecto de verdad"
 S=$(prueba aa/primario 30000)
 tiene "la parte de bowtie no pasa de 20 000" "--n 30000 --n-bowtie 20000"     "$S"
+tiene "y registra lo que mide en la tabla de extremos" \
+  "--registrar $RAIZ/data/extremos.tsv --manifest $MAN" "$S"
 S=$(prueba aa 2>&1); RC=$?
 [[ $RC -ne 0 ]] && ok "sin rol corta" || mal "sin rol corta"
 

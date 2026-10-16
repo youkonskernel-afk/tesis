@@ -12,7 +12,7 @@
 #
 # El filtro es un organismo (`galga`) o un organismo y un rol (`galga/primario`).
 #
-# Variables: SRA_DEST, PROY_DIR, ADAPTADORES_TSV, MANIFEST, CORES,
+# Variables: SRA_DEST, PROY_DIR, ADAPTADORES_TSV, EXTREMOS_TSV, MANIFEST, CORES,
 # PRESUPUESTO_GB, SOLAPAR.
 #
 # LA UNIDAD DE TRABAJO ES <org>_<rol>, NO <org>
@@ -73,11 +73,28 @@
 #      inputs.json es None -> TypeError. Ademas vacia `untrimmed_libraries`, que
 #      para una libreria PRE-TRIMMED es justamente donde esta la salida. El
 #      borrado del fastq sin recortar lo hace este script.
+#
+# KITS 4N: LO UNICO QUE NO RECORTA `yasma trim`
+# rhirr_duplicado alineo 0.17% y cortando 4 nt de cada punta, 82.07%: adaptadores
+# con bases aleatorias en las dos uniones (NEXTflex y los "HD"), que quedan
+# pegadas al inserto. `yasma trim` le pasa a cutadapt `-a` y la ventana, nada
+# mas, asi que las corridas con fila en data/extremos.tsv (la escribe
+# `align.sh prueba`, ver scripts/extremos.py) no van por yasma: van por la MISMA
+# llamada a cutadapt, en dos pasadas:
+#   cutadapt -u <5'> -a <sec> -j <cores> -O 4 --max-n 0 --trimmed-only
+#     | cutadapt -u -<3'> --minimum-length 15 --maximum-length 50 -j <cores>
+# Dos porque cutadapt aplica -u ANTES de buscar el adaptador, y las bases del 3'
+# estan entre el inserto y el adaptador. La ventana va al final, sobre el inserto
+# ya cortado. Lo cortado queda en la columna `extremos` del ledger, y lo
+# recortado con otro corte que el que pide la tabla HOY se rehace solo: la fila
+# llega, por construccion, despues de recortar y ver que no alinea.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MANIFEST="${MANIFEST:-$ROOT/data/srr_manifest.tsv}"
 ADAPTADORES_TSV="${ADAPTADORES_TSV:-$ROOT/data/adaptadores.tsv}"
+EXTREMOS_TSV="${EXTREMOS_TSV:-$ROOT/data/extremos.tsv}"
+EXTREMOS_PY="$ROOT/scripts/extremos.py"
 # shellcheck source=_drive_lib.sh
 . "$ROOT/scripts/_drive_lib.sh"
 # El mismo directorio donde drive_pull.sh deja los .sra, no uno propio.
@@ -138,6 +155,29 @@ columna_de() {
 secuencia_de()          { columna_de 5 "$@"; }
 familia_de()            { columna_de 4 "$@"; }
 retencion_esperada_de() { columna_de 8 "$@"; }
+
+# run -> "<5'> <3'>" de cada corrida del proyecto, de data/extremos.tsv. La
+# busqueda (la fila de la corrida le gana a la del proyecto) es la de
+# scripts/extremos.py, la misma que usan align.sh y de_quien.py: una sola.
+declare -A EXT=()
+cargar_extremos() {
+  local salida r a b
+  salida=$("$EXTREMOS_PY" --tabla "$EXTREMOS_TSV" --manifest "$MANIFEST" requeridos "$1" "$2") \
+    || die "no pude leer $EXTREMOS_TSV (ver arriba)"
+  EXT=()
+  while IFS=$'\t' read -r r a b; do
+    [[ -n "$r" ]] && EXT[$r]="$a $b"
+  done <<<"$salida"
+  return 0
+}
+
+corte_de()  { echo "${EXT[$1]:-0 0}"; }
+etiqueta()  { if [[ "$1 $2" == "0 0" ]]; then echo "-"; else echo "$1/$2"; fi; }
+
+# Lo recortado con otro corte que el que pide la tabla: run <TAB> tiene <TAB> pide.
+desactualizadas_de() {
+  "$EXTREMOS_PY" --tabla "$EXTREMOS_TSV" desactualizadas "$1" "$2"
+}
 
 # El .sra en el destino. Las tres disposiciones que deja prefetch, y -s para que
 # un fichero truncado no cuente como bajado.
@@ -224,10 +264,11 @@ PY
 validar() {
   local filtro="${1:-}"
   local org rol run proy sec fam _rc _bc
-  local -a sin_fila=() no_recortable=()
+  local -a sin_fila=() no_recortable=() pre_cortada=()
   local vistos=""
 
   while IFS=$'\t' read -r org rol; do
+    cargar_extremos "$org" "$rol"
     # Se recorria deduplicando por proyecto, que era correcto cuando la tabla
     # tenia una sola fila por BioProject. Con filas por corrida eso deja de
     # cubrir: una corrida con su propia fila mala no se miraria nunca. Ahora se
@@ -245,6 +286,10 @@ validar() {
         etiqueta="$org $proy"
       else
         etiqueta="$org $proy $run"
+      fi
+      # Una PRE-TRIMMED no pasa por cutadapt: no hay donde cortarle las puntas.
+      if [[ "$sec" == "PRE-TRIMMED" && "$(corte_de "$run")" != "0 0" ]]; then
+        pre_cortada+=("$org $proy $run")
       fi
       [[ " $vistos " == *" $etiqueta|"* ]] && continue
       vistos="$vistos $etiqueta|"
@@ -274,6 +319,13 @@ validar() {
     echo "  esta en los 161 adaptadores de YASMA. Los dos necesitan mirarse." >&2
     return 1
   fi
+  if [[ ${#pre_cortada[@]} -gt 0 ]]; then
+    echo "Corridas PRE-TRIMMED con corte de extremos en $(basename "$EXTREMOS_TSV"):" >&2
+    printf '  %s\n' "${pre_cortada[@]}" >&2
+    echo "  Una PRE-TRIMMED no pasa por cutadapt, y cortarle las puntas no está" >&2
+    echo "  implementado: hay que mirarla antes de inventar cómo." >&2
+    return 1
+  fi
   return 0
 }
 
@@ -289,23 +341,28 @@ cmd_plan() {
   echo
   validar "$filtro" || return 1
 
-  local org rol run proy rc bc dir sec ya est
+  local org rol run proy rc bc dir sec ya est viejas desact
   local total=0 listo=0 hay=0 sin_sra=0
-  printf '%-18s %-14s %-12s %-22s %8s  %s\n' PROYECTO BIOPROJECT CORRIDA SECUENCIA FASTQ_GB ESTADO
+  printf '%-18s %-14s %-12s %-22s %-5s %8s  %s\n' PROYECTO BIOPROJECT CORRIDA SECUENCIA CORTE FASTQ_GB ESTADO
   while IFS=$'\t' read -r org rol; do
     dir="$PROY_DIR/${org}_${rol}"
     ya=" $(recortadas_de "$dir" | tr '\n' ' ')"
+    cargar_extremos "$org" "$rol"
+    desact=$(desactualizadas_de "$dir" "$org") || die "no pude leer $EXTREMOS_TSV"
+    viejas=" $(cut -f1 <<<"$desact" | tr '\n' ' ')"
     while IFS=$'\t' read -r run proy rc bc; do
       sec=$(secuencia_de "$org" "$proy" "$run")
-      if [[ "$ya" == *" $run "* ]]; then
+      if [[ "$ya" == *" $run "* && "$viejas" == *" $run "* ]]; then
+        est="recortada con otro corte: se rehace"; hay=$((hay+1))
+      elif [[ "$ya" == *" $run "* ]]; then
         est="ya recortada"; listo=$((listo+1))
       elif ruta_sra "$org" "$run" >/dev/null; then
         est="por recortar"; hay=$((hay+1))
       else
         est="FALTA el .sra"; sin_sra=$((sin_sra+1))
       fi
-      printf '%-18s %-14s %-12s %-22s %8.1f  %s\n' \
-        "${org}_${rol}" "$proy" "$run" "${sec:0:22}" \
+      printf '%-18s %-14s %-12s %-22s %-5s %8.1f  %s\n' \
+        "${org}_${rol}" "$proy" "$run" "${sec:0:22}" "$(etiqueta $(corte_de "$run"))" \
         "$(awk -v b="$bc" -v r="$rc" 'BEGIN{printf "%.1f", (b*2+r*35)/1e9}')" "$est"
       total=$((total+1))
     done < <(corridas "$org" "$rol")
@@ -318,14 +375,21 @@ cmd_plan() {
 
 cmd_estado() {
   local filtro="${1:-}"
-  local org rol run proy rc bc dir ya n_ok n_no t_ok=0 t_no=0
+  local org rol run proy rc bc dir ya n_ok n_no t_ok=0 t_no=0 desact viejas
   printf '%-18s %10s %8s\n' PROYECTO RECORTADAS FALTAN
   while IFS=$'\t' read -r org rol; do
     dir="$PROY_DIR/${org}_${rol}"
     ya=" $(recortadas_de "$dir" | tr '\n' ' ')"
+    # Recortada con otro corte de extremos que el de la tabla = falta.
+    desact=$(desactualizadas_de "$dir" "$org") || die "no pude leer $EXTREMOS_TSV"
+    viejas=" $(cut -f1 <<<"$desact" | tr '\n' ' ')"
     n_ok=0; n_no=0
     while IFS=$'\t' read -r run proy rc bc; do
-      if [[ "$ya" == *" $run "* ]]; then n_ok=$((n_ok+1)); else n_no=$((n_no+1)); fi
+      if [[ "$ya" == *" $run "* && "$viejas" != *" $run "* ]]; then
+        n_ok=$((n_ok+1))
+      else
+        n_no=$((n_no+1))
+      fi
     done < <(corridas "$org" "$rol")
     printf '%-18s %10d %8d\n' "${org}_${rol}" "$n_ok" "$n_no"
     t_ok=$((t_ok+n_ok)); t_no=$((t_no+n_no))
@@ -388,19 +452,31 @@ for ln in pathlib.Path(sys.argv[3]).read_text().splitlines():
 # --- conteos de cutadapt, por libreria ---------------------------------------
 # El bloque va precedido por 'trimming: <ruta>'. Los numeros de cutadapt vienen
 # con separador de miles, asi que hay que sacarle las comas antes de int().
-stats, cur = {}, None
+# Una corrida 4N trae un segundo bloque, 'extremos: <salida> cortados 5/3', con
+# el reporte de la segunda pasada: de ahi sale lo que SOBREVIVIO, y lo que
+# entro sigue siendo lo de la primera.
+stats, cur, fase = {}, None, None
 num = lambda s: int(s.replace(',', ''))
 for ln in log.read_text(errors='replace').splitlines() if log.is_file() else []:
     m = re.match(r'\s*trimming:\s*(\S.*)$', ln)
     if m:
         cur = pathlib.Path(m.group(1).strip()).name.split('.')[0]
         stats.setdefault(cur, {})
+        fase = 'adaptador'
+        continue
+    m = re.match(r'\s*extremos:\s*(\S+)\s+cortados\s+(\d+)/(\d+)', ln)
+    if m:
+        cur = pathlib.Path(m.group(1)).name.split('.')[0]
+        stats.setdefault(cur, {})['extremos'] = f"{m.group(2)}/{m.group(3)}"
+        fase = 'extremos'
         continue
     if cur is None:
         continue
     m = re.match(r'\s*Total reads processed:\s*([\d,]+)', ln)
     if m:
-        stats[cur]['in'] = num(m.group(1)); continue
+        if fase != 'extremos':
+            stats[cur]['in'] = num(m.group(1))
+        continue
     m = re.match(r'\s*Reads written \(passing filters\):\s*([\d,]+)', ln)
     if m:
         stats[cur]['out'] = num(m.group(1))
@@ -409,12 +485,15 @@ for ln in log.read_text(errors='replace').splitlines() if log.is_file() else []:
 producidas = json.loads((d / 'inputs.json').read_text()).get('trimmed_libraries') or []
 
 led = d / os.environ['LEDGER']
-cab = 'run\tbioproject\tfichero\treads_in\treads_out\tretencion_pct\tfecha_utc\n'
+# `extremos` es lo que se le corto a cada punta ('-' nada). Un ledger de antes
+# de esa columna no corto nada, asi que sus filas se completan con '-'.
+cab = 'run\tbioproject\tfichero\treads_in\treads_out\tretencion_pct\tfecha_utc\textremos\n'
 previas, orden = {}, []
 if led.is_file():
     for ln in led.read_text().splitlines()[1:]:
         c = ln.split('\t')
         if len(c) >= 7:
+            c = c[:8] + ['-'] * (8 - len(c[:8]))
             if c[0] not in previas:
                 orden.append(c[0])
             previas[c[0]] = c
@@ -432,9 +511,10 @@ for lib in producidas:
     # filtro de longitud: es la unica que entra al alineamiento sin la ventana.
     if 'in' in s and 'out' in s and s['in']:
         pct = '%.1f' % (100.0 * s['out'] / s['in'])
-        fila = [run, de_proyecto.get(run, '-'), rel, str(s['in']), str(s['out']), pct, ahora]
+        fila = [run, de_proyecto.get(run, '-'), rel, str(s['in']), str(s['out']), pct, ahora,
+                s.get('extremos', '-')]
     else:
-        fila = [run, de_proyecto.get(run, '-'), rel, '-', '-', 'PRE-TRIMMED', ahora]
+        fila = [run, de_proyecto.get(run, '-'), rel, '-', '-', 'PRE-TRIMMED', ahora, '-']
     if run not in previas:
         orden.append(run)
         nuevas += 1
@@ -460,6 +540,60 @@ for run in orden:
 datos['trimmed_libraries'] = completas
 (d / 'inputs.json').write_text(json.dumps(datos, indent=1) + '\n')
 print(f"   recortadas: +{nuevas} (acumulado {len(completas)})")
+PY
+}
+
+# Una corrida de kit 4N: la llamada a cutadapt de yasma trim, partida en dos
+# para cortar las puntas (ver la cabecera). Deja la salida donde la dejaria
+# yasma (trim/<RUN>.t.fq.gz), los dos reportes en el log de la tanda con el
+# formato que lee cosechar(), y la anota en trimmed_libraries.
+#
+# El .t.fq.gz aparece de una vez, con mv, y recien despues se anota: una sesion
+# que muere a la mitad no deja un fichero a medio cortar contando como hecho.
+recortar_extremos() {
+  local dir="$1" log="$2" fq_nombre="$3" sec="$4" c5="$5" c3="$6"
+  local run="${fq_nombre%%.*}"
+  local sal="trim/$run.t.fq.gz" tmp="$dir/trim/.$run.extremos.fq.gz"
+  local r1="$dir/logs/.$run.pasada1" r2="$dir/logs/.$run.pasada2"
+  local -a u5=() u3=()
+  if [[ "$c5" -gt 0 ]]; then u5=(-u "$c5"); fi
+  if [[ "$c3" -gt 0 ]]; then u3=(-u "-$c3"); fi
+  echo "   $run: cortando $c5 nt del 5' y $c3 del 3' (data/extremos.tsv)"
+  if ! { cutadapt ${u5[@]+"${u5[@]}"} -a "$sec" -j "$CORES" -O 4 --max-n 0 --trimmed-only \
+           "$dir/untrimmed/$fq_nombre" 2> "$r1" </dev/null \
+         | cutadapt ${u3[@]+"${u3[@]}"} --minimum-length 15 --maximum-length 50 -j "$CORES" \
+           -o "$tmp" - > "$r2" 2>&1; }; then
+    tail -20 "$r1" "$r2" >&2 || true
+    rm -f "$tmp"
+    die "cutadapt falló cortando los extremos de $run (logs: $r1, $r2)"
+  fi
+  mv -f "$tmp" "$dir/$sal"
+  { echo "trimming: untrimmed/$fq_nombre"; cat "$r1"
+    echo "extremos: $sal cortados $c5/$c3"; cat "$r2"; } >> "$log"
+  rm -f "$r1" "$r2"
+  python3 - "$dir" "$sal" <<'PY'
+import json, pathlib, sys
+f = pathlib.Path(sys.argv[1]) / 'inputs.json'
+d = json.loads(f.read_text()) if f.is_file() else {}
+libs = d.get('trimmed_libraries') or []
+if sys.argv[2] not in libs:
+    libs.append(sys.argv[2])
+d['trimmed_libraries'] = libs
+f.write_text(json.dumps(d, indent=1) + '\n')
+PY
+}
+
+# trimmed_libraries = [] : lo que cosechar() lee como "producido" tiene que ser
+# lo de ESTA tanda, que es lo que yasma trim deja. Cuando la tanda es toda 4N
+# yasma no corre, y sin esto cosechar veria la lista completa de las tandas
+# anteriores, sin conteos, y las reescribiria como PRE-TRIMMED.
+sin_registradas() {
+  python3 - "$1" <<'PY'
+import json, pathlib, sys
+f = pathlib.Path(sys.argv[1]) / 'inputs.json'
+d = json.loads(f.read_text()) if f.is_file() else {}
+d['trimmed_libraries'] = []
+f.write_text(json.dumps(d, indent=1) + '\n')
 PY
 }
 
@@ -512,12 +646,25 @@ cmd_correr() {
     echo "== ${org}_${rol}  ($dir)"
 
     ya=" $(recortadas_de "$dir" | tr '\n' ' ')"
+    cargar_extremos "$org" "$rol"
+    # Recortadas con otro corte de extremos que el que pide la tabla hoy: se
+    # rehacen. Es el caso normal, no una rareza: la fila de un kit 4N llega
+    # despues de recortar, alinear y ver que no alinea.
+    local desact viejas r_ a_ q_
+    desact=$(desactualizadas_de "$dir" "$org") || die "no pude leer $EXTREMOS_TSV"
+    viejas=" $(cut -f1 <<<"$desact" | tr '\n' ' ')"
+    if [[ -n "$desact" ]]; then
+      echo "   recortadas con otro corte de extremos que el de $(basename "$EXTREMOS_TSV"), se rehacen:"
+      while IFS=$'\t' read -r r_ a_ q_; do
+        echo "     $r_: tiene $a_, la tabla pide $q_"
+      done <<<"$desact"
+    fi
 
     # --- armar las tandas, acotadas por el presupuesto de disco ---------------
     local pend="$dir/logs/.pendientes" nt=0
     : > "$pend"
     while IFS=$'\t' read -r run proy rc bc; do
-      [[ "$ya" == *" $run "* ]] && continue          # idempotente
+      [[ "$ya" == *" $run "* && "$viejas" != *" $run "* ]] && continue   # idempotente
       ruta_sra "$org" "$run" >/dev/null || { echo "   FALTA el .sra: $run" >&2; continue; }
       sec=$(secuencia_de "$org" "$proy" "$run")
       # La PRE-TRIMMED es la unica que se guarda comprimida: ver volcar().
@@ -559,23 +706,39 @@ cmd_correr() {
         volcar "$org" "$dir" "$lista_sig" & pid=$!
       fi
 
-      local -a pares=()
+      # Las corridas sin corte de extremos van a yasma trim; las 4N, a la misma
+      # llamada a cutadapt partida en dos (recortar_extremos).
+      local -a pares=() cortes=()
+      local j
       while IFS=$'\t' read -r run proy sec fq_nombre; do
         [[ -s "$dir/untrimmed/$fq_nombre" ]] || continue
-        pares+=("$fq_nombre" "$sec")
+        if [[ "$(corte_de "$run")" == "0 0" ]]; then
+          pares+=("$fq_nombre" "$sec")
+        else
+          cortes+=("$fq_nombre" "$sec" "$(corte_de "$run")")
+        fi
       done < "$lista"
-      [[ ${#pares[@]} -gt 0 ]] || continue
+      [[ ${#pares[@]} -gt 0 || ${#cortes[@]} -gt 0 ]] || continue
 
-      echo "   -- tanda $i/$nt: $(( ${#pares[@]} / 2 )) librería(s)"
-      escribir_inputs "$dir" "${pares[@]}"
+      echo "   -- tanda $i/$nt: $(( ${#pares[@]} / 2 + ${#cortes[@]} / 3 )) librería(s)"
       log=$(printf '%s/logs/tanda_%02d.log' "$dir" "$i")
-      # Parado adentro del directorio del proyecto, con -o absoluto.
-      # Sin --override: `yasma trim` no tiene esa opcion (si la tiene `yasma
-      # adapter`, y asumirlo por analogia hacia fallar la corrida entera).
-      # Sin --cleanup: iteraria ic.inputs['srrs'], que es None -> TypeError.
-      ( cd "$dir" && yasma trim -o "$dir" --cores "$CORES" \
-          --min_length 15 --max_length 50 </dev/null ) > "$log" 2>&1 \
-        || { tail -20 "$log" >&2; die "yasma trim falló en ${org}_${rol}, tanda $i (log: $log)"; }
+      if [[ ${#pares[@]} -gt 0 ]]; then
+        escribir_inputs "$dir" "${pares[@]}"
+        # Parado adentro del directorio del proyecto, con -o absoluto.
+        # Sin --override: `yasma trim` no tiene esa opcion (si la tiene `yasma
+        # adapter`, y asumirlo por analogia hacia fallar la corrida entera).
+        # Sin --cleanup: iteraria ic.inputs['srrs'], que es None -> TypeError.
+        ( cd "$dir" && yasma trim -o "$dir" --cores "$CORES" \
+            --min_length 15 --max_length 50 </dev/null ) > "$log" 2>&1 \
+          || { tail -20 "$log" >&2; die "yasma trim falló en ${org}_${rol}, tanda $i (log: $log)"; }
+      else
+        : > "$log"
+        sin_registradas "$dir"
+      fi
+      for ((j = 0; j < ${#cortes[@]}; j += 3)); do
+        # shellcheck disable=SC2086  # "5 3" -> dos argumentos, a proposito
+        recortar_extremos "$dir" "$log" "${cortes[j]}" "${cortes[j+1]}" ${cortes[j+2]}
+      done
       cosechar "$dir" "$log" "$lista"
 
       # El fastq sin recortar ya no hace falta: se re-genera del .sra. La
@@ -600,20 +763,36 @@ cmd_correr() {
 # con kits distintos, y una sola fila de adaptador para los dos habria vaciado el
 # que no corresponde.
 cmd_verificar() {
-  local filtro="${1:-}" org rol dir esp fallas=0 filas=0
+  local filtro="${1:-}" org rol dir esp fallas=0 filas=0 n_desact=0
   printf '%-18s %-14s %-12s %10s %10s %11s %7s  %s\n' \
     PROYECTO BIOPROJECT CORRIDA READS_IN READS_OUT MEDIDA ESPERA VEREDICTO
   while IFS=$'\t' read -r org rol; do
     dir="$PROY_DIR/${org}_${rol}"
     [[ -f "$dir/$LEDGER" ]] || { echo "   sin recortar: ${org}_${rol}" >&2; continue; }
-    local run proy fich rin rout pct fecha
-    while IFS=$'\t' read -r run proy fich rin rout pct fecha; do
+    local run proy fich rin rout pct fecha ext desact r_ a_ q_
+    local -A pide=()
+    desact=$(desactualizadas_de "$dir" "$org") || die "no pude leer $EXTREMOS_TSV"
+    while IFS=$'\t' read -r r_ a_ q_; do [[ -n "$r_" ]] && pide[$r_]="$q_"; done <<<"$desact"
+    while IFS=$'\t' read -r run proy fich rin rout pct fecha ext; do
       [[ "$run" == "run" ]] && continue
       filas=$((filas+1))
+      ext="${ext:--}"
       esp=$(retencion_esperada_de "$org" "$proy" "$run")
       local ver
-      if [[ "$pct" == "PRE-TRIMMED" ]]; then
+      if [[ -n "${pide[$run]:-}" ]]; then
+        # Primero: un recorte que no corta lo que pide la tabla alinea como
+        # rhirr_duplicado (0.17%), y eso no lo dice la retencion.
+        ver="EXTREMOS DESACTUALIZADOS: cortado ${ext}, la tabla pide ${pide[$run]}"
+        n_desact=$((n_desact+1))
+      elif [[ "$pct" == "PRE-TRIMMED" ]]; then
         ver="pre-trimmed (sin recorte ni filtro de largo)"
+      elif [[ "$ext" != "-" ]]; then
+        # `retencion_est` la midio perfil sin cortar las puntas: su inserto
+        # incluye las 8 bases y la ventana 15-50 se le aplicaba corrida. Contra
+        # eso un DESVIADA no significa nada; VACIA si.
+        ver=$(awk -v m="$pct" -v x="$ext" 'BEGIN{
+          if (m < 5) print "VACIA — casi seguro el adaptador equivocado"
+          else       print "ok, extremos " x " cortados (retencion_est es sin cortar: solo se mira VACIA)" }')
       elif [[ -z "$esp" || "$esp" == "-" ]]; then
         ver="sin retencion_est en la tabla"
       else
@@ -641,6 +820,10 @@ cmd_verificar() {
     return 0
   fi
   echo "$filas corridas verificadas, $fallas fuera de lo esperado" >&2
+  if [[ $n_desact -gt 0 ]]; then
+    echo "EXTREMOS DESACTUALIZADOS: recortadas antes de su fila en data/extremos.tsv." >&2
+    echo "  ./scripts/trim.sh correr <org>/<rol> las rehace con el corte." >&2
+  fi
   echo "Una retención muy por debajo de retencion_est es, casi siempre, la" >&2
   echo "secuencia equivocada en data/adaptadores.tsv: --trimmed-only descarta" >&2
   echo "todo lo que no matchea y no da error. Re-medí con:" >&2
@@ -732,6 +915,11 @@ PY
 # lee sin saber que es una muestra.
 #
 # Todas las corridas y no una: un BioProject puede mezclar kits, y ya mezclo.
+#
+# NO corta extremos aunque data/extremos.tsv lo pida, y es a proposito: esta
+# muestra es el instrumento que MIDE ese corte (align.sh prueba -> de_quien.py
+# --registrar). Cortada, la medicion saldria relativa a lo ya cortado, y lo que
+# se registrara seria la diferencia y no el corte.
 cmd_muestra() {
   local filtro="${1:-}" n="${2:-50000}"
   [[ "$filtro" == */* ]] || die "muestra pide <org>/<rol>"

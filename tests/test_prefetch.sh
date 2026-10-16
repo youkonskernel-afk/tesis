@@ -10,7 +10,7 @@ FALLAS=0
 ok()   { printf '  ok   %s\n' "$1"; }
 mal()  { printf '  MAL  %s\n' "$1"; FALLAS=$((FALLAS+1)); }
 chk()  { if [[ "$2" == "$3" ]]; then ok "$1"; else mal "$1 (esperaba '$3', obtuve '$2')"; fi; }
-tiene(){ if grep -qF -- "$2" <<<"$3"; then ok "$1"; else mal "$1 — no aparece: $2"; fi; }
+tiene(){ [[ -z "$2" || "$2" == *$'\n'* ]] && { mal "$1 — patrón vacío o con salto de línea: grep lo parte en varios y uno vacío matchea todo"; return; }; if grep -qF -- "$2" <<<"$3"; then ok "$1"; else mal "$1 — no aparece: $2"; fi; }
 # columna del ledger para una corrida: fila(caso) campo
 campo(){ awk -F'	' -v r="$2" -v n="$3" '$2==r {print $n}' "$TMP/$1/data/ledger.tsv" 2>/dev/null; }
 notiene(){ if grep -qF -- "$2" <<<"$3"; then mal "$1 — no debia aparecer: $2"; else ok "$1"; fi; }

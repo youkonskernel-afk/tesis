@@ -29,7 +29,7 @@ ok(){ printf '  ok   %s\n' "$1"; }; mal(){ printf '  MAL  %s\n' "$1"; FALLAS=$((
 # El `--` es imprescindible: sin el, un patron que empieza con '-' (como
 # "-o /ruta") lo toma grep como opcion, aborta, y en notiene() el exit nonzero
 # cae en la rama de exito -> el chequeo pasa SIEMPRE. Estaba en los 14 helpers.
-tiene(){ grep -qF -- "$2" <<<"$3" && ok "$1" || mal "$1 — falta: $2"; }
+tiene(){ [[ -z "$2" || "$2" == *$'\n'* ]] && { mal "$1 — patrón vacío o con salto de línea: grep lo parte en varios y uno vacío matchea todo"; return; }; grep -qF -- "$2" <<<"$3" && ok "$1" || mal "$1 — falta: $2"; }
 notiene(){ grep -qF -- "$2" <<<"$3" && mal "$1 — no deberia estar: $2" || ok "$1"; }
 
 RA3=TGGAATTCTCGGGTGCCAAGG
@@ -74,7 +74,14 @@ while [[ $# -gt 0 ]]; do
     *) shift ;;
   esac
 done
-mkdir -p "$O"; printf '@r1\nACGTACGTACGTACGTACGTAC\n+\nIIIIIIIIIIIIIIIIIIIIII\n' > "$O/$N"
+# FQ_SEQ cambia la lectura: para los kits 4N hace falta una de mas de 23 nt, o
+# despues de cortar 8 queda debajo de la ventana.
+# FQ_N lecturas iguales (1 por defecto).
+q="${FQ_SEQ:-ACGTACGTACGTACGTACGTAC}"
+mkdir -p "$O"; : > "$O/$N"
+for ((k = 1; k <= ${FQ_N:-1}; k++)); do
+  printf '@r%d\n%s\n+\n%s\n' "$k" "$q" "$(printf 'I%.0s' $(seq ${#q}))" >> "$O/$N"
+done
 echo "SALIDA=$O/$N" >> "$LOG_FQ"
 FD
 cat > "$TMP/bin/yasma" <<'YA'
@@ -122,20 +129,50 @@ PY
 YA
 cat > "$TMP/bin/cutadapt" <<'CA'
 #!/usr/bin/env bash
-# Sin -o solo dice la version. Con -o (lo que llama `muestra`) anota los
-# argumentos y deja la mitad de las lecturas, como si la otra mitad no tuviera
-# adaptador (--trimmed-only).
-[[ " $* " == *" -o "* ]] || { echo "cutadapt 4.0"; exit 0; }
+# Sin nada que recortar solo dice la version. Con -a (lo que llaman `muestra` y
+# la primera pasada de un kit 4N) deja la mitad de las lecturas, como si la otra
+# mitad no tuviera adaptador (--trimmed-only). -u N corta N del 5' y -u -N del
+# 3', y --minimum-length filtra, como el de verdad: es lo que se prueba en la
+# segunda pasada. Sin -o escribe a stdout y el reporte va a stderr, tambien
+# como el de verdad (medido con cutadapt 5.2); con -o, el reporte a stdout.
+[[ " $* " == *" -a "* || " $* " == *" -u "* || " $* " == *" -o "* ]] || { echo "cutadapt 4.0"; exit 0; }
 echo "CA $*" >> "$LOG_CA"
-python3 - "$@" <<'PY'
+# El programa de python le llega por stdin (el heredoc), asi que la entrada '-'
+# de la segunda pasada se guarda antes en un fichero.
+args=("$@")
+if [[ "${args[-1]}" == "-" ]]; then t=$(mktemp); cat > "$t"; args[-1]="$t"; fi
+python3 - "${args[@]}" <<'PY'
 import gzip, sys
 a = sys.argv[1:]
-out, inp = a[a.index('-o') + 1], a[-1]
-lineas = open(inp).read().splitlines()
+out = a[a.index('-o') + 1] if '-o' in a else None
+inp = a[-1]
+if inp == '-':
+    txt = sys.stdin.read()
+elif inp.endswith('.gz'):
+    txt = gzip.open(inp, 'rt').read()
+else:
+    txt = open(inp).read()
+lineas = txt.splitlines()
 recs = [lineas[i:i + 4] for i in range(0, len(lineas), 4)]
-with gzip.open(out, 'wt') as h:
-    for r in recs[::2]:
-        h.write('\n'.join(r) + '\n')
+n_in = len(recs)
+if '-a' in a:
+    recs = recs[::2]
+minimo = int(a[a.index('--minimum-length') + 1]) if '--minimum-length' in a else 0
+for i, x in enumerate(a):
+    if x == '-u':
+        c = int(a[i + 1])
+        recs = [[r[0], r[1][c:], r[2], r[3][c:]] if c > 0 else [r[0], r[1][:c], r[2], r[3][:c]]
+                for r in recs]
+recs = [r for r in recs if len(r[1]) >= minimo]
+texto = ''.join('\n'.join(r) + '\n' for r in recs)
+if out is None:
+    sys.stdout.write(texto)
+else:
+    with (gzip.open(out, 'wt') if out.endswith('.gz') else open(out, 'w')) as h:
+        h.write(texto)
+rep = (f"Total reads processed:                   {n_in:,}\n"
+       f"Reads written (passing filters):         {len(recs):,}\n")
+(sys.stderr if out is None else sys.stdout).write(rep)
 PY
 CA
 cat > "$TMP/bin/fastq-dump" <<'FQD'
@@ -153,8 +190,9 @@ export LOG_FQ="$TMP/fq.log" LOG_YA="$TMP/ya.log" LOG_CA="$TMP/ca.log" LOG_FQD="$
 # PRESUPUESTO_GB=2 con corridas de ~2 GB estimados -> una tanda por corrida, que
 # es lo que ejercita el ledger. SOLAPAR=0 para que el log de fasterq sea
 # determinista; el solapado tiene su propio chequeo.
+EXT="$TMP/extremos.tsv"     # no existe salvo en el 17: no cortar es lo normal
 corre() {
-  MANIFEST="$MAN" ADAPTADORES_TSV="$TABLA" SRA_DEST="$DEST" PROY_DIR="$TMP/trim" \
+  MANIFEST="$MAN" ADAPTADORES_TSV="$TABLA" EXTREMOS_TSV="$EXT" SRA_DEST="$DEST" PROY_DIR="$TMP/trim" \
   PRESUPUESTO_GB="${PRES:-2}" SOLAPAR="${SOL:-0}" CORES=2 bash "$T" "$@" 2>&1
 }
 
@@ -490,6 +528,131 @@ S=$(corre muestra aa/primario cero 2>&1); RC=$?
 [[ $RC -ne 0 ]] && ok "un N que no es número corta" || mal "un N que no es número corta"
 S=$(corre muestra aa 2>&1); RC=$?
 [[ $RC -ne 0 ]] && ok "sin rol corta" || mal "sin rol corta"
+
+echo "== 17. kits 4N: data/extremos.tsv corta las puntas, y lo recortado antes se rehace"
+# rhirr_duplicado: 0.17% alineado; cortando 4 nt de cada punta, 82.07%. La fila
+# llega DESPUES de recortar (hay que alinear para verlo), asi que el caso normal
+# es una corrida ya recortada sin cortar que hay que rehacer.
+tabla_completa; rm -rf "$TMP/trim" "$EXT"; : > "$LOG_CA"; : > "$LOG_YA"
+Q30=GGGGTTTTACGTACGTACGTACGTACCCCC     # 4 + 22 + 4
+export FQ_SEQ=$Q30
+fila_ext() {   # org proy run c5 c3
+  { [[ -s "$EXT" ]] || printf 'org\tbioproject\trun\tcortar_5p\tcortar_3p\talin_sin_pct\talin_con_pct\tlecturas\tfuente\tfecha_utc\n'
+    printf '%s\t%s\t%s\t%s\t%s\t0.17\t82.07\t900\tbanco\t2026-10-16\n' "$@"; } >> "$EXT"
+}
+corre correr aa/duplicado >/dev/null
+D="$TMP/trim/aa_duplicado"
+tiene "sin fila: el ledger dice que no se cortó" "$(printf 'SRR_D1\tPRJ_D\t')" "$(cat "$D/recortadas.tsv")"
+[[ "$(awk -F'\t' 'NR==2 {print $8}' "$D/recortadas.tsv")" == "-" ]] \
+  && ok "columna extremos = -" || mal "columna extremos = - ($(sed -n 2p "$D/recortadas.tsv"))"
+fila_ext aa PRJ_D - 4 4
+
+echo "  -- 17a. la fila nueva vuelve desactualizado lo recortado"
+S=$(corre plan aa/duplicado)
+tiene "plan muestra el corte"            "4/4"                                  "$S"
+tiene "y que se rehace"                  "recortada con otro corte: se rehace"  "$S"
+S=$(corre estado aa/duplicado)
+grep -E '^aa_duplicado ' <<<"$S" | tr -s ' ' | grep -q '^aa_duplicado 0 1' \
+  && ok "estado la cuenta como faltante" || mal "estado la cuenta como faltante ($S)"
+S=$(corre verificar aa/duplicado); RC=$?
+[[ $RC -ne 0 ]] && ok "verificar sale != 0" || mal "verificar sale != 0"
+tiene "y dice por qué"  "EXTREMOS DESACTUALIZADOS: cortado -, la tabla pide 4/4"  "$S"
+
+echo "  -- 17b. correr la rehace con cutadapt en dos pasadas, sin yasma"
+: > "$LOG_CA"; : > "$LOG_YA"
+S=$(FQ_N=4 corre correr aa/duplicado); RC=$?
+[[ $RC -eq 0 ]] && ok "exit 0" || mal "exit 0 (rc=$RC): $S"
+tiene "avisa qué rehace"             "SRR_D1: tiene -, la tabla pide 4/4"  "$S"
+CA=$(cat "$LOG_CA")
+tiene "1ra pasada: el 5' y lo de yasma trim, sin ventana" \
+  "-u 4 -a $RA3 -j 2 -O 4 --max-n 0 --trimmed-only $D/untrimmed/SRR_D1.fastq" "$CA"
+tiene "2da: el 3' y la ventana, desde stdin" \
+  "-u -4 --minimum-length 15 --maximum-length 50 -j 2 -o $D/trim/.SRR_D1.extremos.fq.gz -" "$CA"
+notiene "yasma no la ve"              "SRR_D1"   "$(cat "$LOG_YA")"
+L=$(gzip -dc "$D/trim/SRR_D1.t.fq.gz" 2>/dev/null | sed -n 2p)
+[[ "$L" == TTTTACGTACGTACGTACGTAC ]] && ok "queda el inserto sin las 8 bases" \
+  || mal "queda el inserto sin las 8 bases (quedó '$L')"
+[[ ! -e "$D/trim/.SRR_D1.extremos.fq.gz" ]] && ok "sin el temporal" || mal "sin el temporal"
+[[ ! -e "$D/untrimmed/SRR_D1.fastq" ]] && ok "y borra el fastq crudo" || mal "y borra el fastq crudo"
+R=$(grep '^SRR_D1' "$D/recortadas.tsv")
+# 4 lecturas, la 1ra pasada tira la mitad (sin adaptador) y la 2da ninguna: lo
+# que entra es lo de la 1ra y lo que sale lo de la 2da.
+[[ "$(cut -f4-6,8 <<<"$R")" == "$(printf '4\t2\t50.0\t4/4')" ]] \
+  && ok "ledger: entra 4, sale 2, cortada 4/4" || mal "ledger: entra 4, sale 2, cortada 4/4 ($R)"
+tiene "inputs.json la tiene" "trim/SRR_D1.t.fq.gz" "$(cat "$D/inputs.json")"
+S=$(corre verificar aa/duplicado); RC=$?
+[[ $RC -eq 0 ]] && ok "verificar pasa" || mal "verificar pasa (rc=$RC): $S"
+tiene "y dice que se cortó"  "ok, extremos 4/4 cortados"  "$S"
+S=$(corre correr aa/duplicado)
+tiene "idempotente"  "nada que recortar"  "$S"
+
+echo "  -- 17c. la cuenta usa la 2da pasada: lo que no entra en la ventana no sobrevive"
+# 4 + 14 + 4: con el adaptador sale de 22 y pasaria la ventana; el inserto de
+# verdad son 14 nt, y la ventana va sobre el inserto.
+corre rehacer aa/duplicado SRR_D1 >/dev/null
+FQ_SEQ=GGGGACGTACGTACGTACCCCC corre correr aa/duplicado >/dev/null
+R=$(grep '^SRR_D1' "$D/recortadas.tsv")
+[[ "$(cut -f4,5 <<<"$R")" == "$(printf '1\t0')" ]] \
+  && ok "entra 1, sale 0" || mal "entra 1, sale 0 ($R)"
+S=$(corre verificar aa/duplicado)
+tiene "y una corrida cortada que queda vacía es VACIA" "VACIA" "$S"
+
+echo "  -- 17d. sacar la fila tambien desactualiza: vuelve a yasma"
+rm -f "$EXT"; : > "$LOG_YA"
+S=$(corre correr aa/duplicado)
+tiene "avisa"            "SRR_D1: tiene 4/4, la tabla pide -"  "$S"
+tiene "yasma la recorta" "TRIM SRR_D1"                          "$(cat "$LOG_YA")"
+[[ "$(awk -F'\t' '$1=="SRR_D1" {print $8}' "$D/recortadas.tsv")" == "-" ]] \
+  && ok "y el ledger vuelve a -" || mal "y el ledger vuelve a -"
+
+echo "  -- 17e. una tanda mezclada: la 4N por cutadapt, las otras por yasma"
+fila_ext aa PRJ_A SRR_A1 4 4
+rm -rf "$TMP/trim/aa_primario"; : > "$LOG_YA"; : > "$LOG_CA"
+S=$(PRES=100 corre correr aa/primario); RC=$?
+[[ $RC -eq 0 ]] && ok "exit 0" || mal "exit 0 (rc=$RC): $S"
+tiene "una tanda"                  "en 1 tanda(s)"           "$S"
+LY=$(cat "$LOG_YA")
+tiene "yasma recibe las otras dos" "LIBS=untrimmed/SRR_A2.fastq,untrimmed/SRR_A3.fastq" "$LY"
+notiene "y no la 4N"               "SRR_A1"                  "$LY"
+P="$TMP/trim/aa_primario"
+J=$(python3 -c "import json;print(' '.join(json.load(open('$P/inputs.json'))['trimmed_libraries']))")
+for r in SRR_A1 SRR_A2 SRR_A3; do tiene "inputs.json tiene $r" "$r.t.fq.gz" "$J"; done
+[[ "$(awk -F'\t' 'NR>1 {print $1 ":" $8}' "$P/recortadas.tsv" | sort | tr '\n' ' ')" == "SRR_A1:4/4 SRR_A2:- SRR_A3:- " ]] \
+  && ok "ledger: A1 cortada, las otras no" \
+  || mal "ledger: A1 cortada, las otras no ($(awk -F'\t' 'NR>1 {print $1 ":" $8}' "$P/recortadas.tsv" | tr '\n' ' '))"
+
+echo "  -- 17f. una tanda SOLO 4N despues de tandas normales no pisa a las anteriores"
+# yasma no corre, asi que nadie deja trimmed_libraries con lo de esta tanda; si
+# se queda con la lista entera, cosechar reescribe A1 y A2 como PRE-TRIMMED.
+rm -f "$EXT"; fila_ext aa PRJ_A2 SRR_A3 4 4
+rm -rf "$P"
+S=$(corre correr aa/primario); RC=$?
+[[ $RC -eq 0 ]] && ok "exit 0" || mal "exit 0 (rc=$RC): $S"
+tiene "3 tandas" "en 3 tanda(s)" "$S"
+notiene "A1 y A2 conservan sus conteos" "PRE-TRIMMED" "$(cat "$P/recortadas.tsv")"
+[[ "$(awk -F'\t' '$1=="SRR_A3" {print $8}' "$P/recortadas.tsv")" == "4/4" ]] \
+  && ok "y A3 queda cortada" || mal "y A3 queda cortada"
+
+echo "  -- 17g. un ledger de antes de la columna cuenta como sin cortar"
+cut -f1-7 "$P/recortadas.tsv" > "$P/r7" && mv "$P/r7" "$P/recortadas.tsv"
+S=$(corre plan aa/primario)
+tiene "A3 vuelve a estar desactualizada" "recortada con otro corte: se rehace" "$S"
+S=$(corre verificar aa/primario)
+tiene "verificar lo lee igual"  "EXTREMOS DESACTUALIZADOS: cortado -, la tabla pide 4/4"  "$S"
+
+echo "  -- 17h. una PRE-TRIMMED con corte no se inventa"
+fila_ext bb PRJ_B - 4 4
+S=$(corre plan); RC=$?
+[[ $RC -ne 0 ]] && ok "exit != 0" || mal "exit != 0"
+tiene "la nombra" "bb PRJ_B SRR_B1" "$S"
+tiene "y por qué" "no pasa por cutadapt" "$S"
+
+echo "  -- 17i. una tabla rota hace fallar, no recorta sin cortar"
+rm -f "$EXT"; fila_ext aa PRJ_D - 4 cuarenta
+S=$(corre correr aa/duplicado); RC=$?
+[[ $RC -ne 0 ]] && ok "exit != 0" || mal "exit != 0"
+tiene "nombra la tabla" "no pude leer $EXT" "$S"
+rm -f "$EXT"; unset FQ_SEQ
 
 echo "== 15. errores"
 tiene "modo desconocido"            "modo desconocido"             "$(corre nosequé 2>&1 || true)"

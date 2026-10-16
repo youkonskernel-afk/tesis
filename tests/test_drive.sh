@@ -11,7 +11,7 @@ RAIZ="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
 FALLAS=0
 ok(){ printf '  ok   %s\n' "$1"; }; mal(){ printf '  MAL  %s\n' "$1"; FALLAS=$((FALLAS+1)); }
-tiene(){ grep -qF -- "$2" <<<"$3" && ok "$1" || mal "$1 — falta: $2"; }
+tiene(){ [[ -z "$2" || "$2" == *$'\n'* ]] && { mal "$1 — patrón vacío o con salto de línea: grep lo parte en varios y uno vacío matchea todo"; return; }; grep -qF -- "$2" <<<"$3" && ok "$1" || mal "$1 — falta: $2"; }
 notiene(){ grep -qF -- "$2" <<<"$3" && mal "$1 — no debia: $2" || ok "$1"; }
 
 mkdir -p "$TMP/bin"

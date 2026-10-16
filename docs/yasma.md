@@ -414,6 +414,29 @@ Cuatro consecuencias que hay que declarar en métodos:
   largo tal cual, sin llamar a cutadapt. Para `cloro` da igual —sus reads de
   30-34 nt están todos dentro de 15-50— pero no es una regla general.
 
+### Lo que `yasma trim` no puede hacer: los kits 4N
+
+La llamada de arriba no tiene dónde cortar bases fijas, y eso importa con los
+kits de adaptadores 4N (NEXTflex, los "HD"): dejan 4 bases aleatorias pegadas a
+**cada** punta del inserto, que cutadapt no ve porque no son adaptador. Con
+`bowtie -v 1` un read así no alinea. Fue `rhirr_duplicado`: 0.17% alineado, y
+**82.07%** cortando 4 nt de cada punta.
+
+Esas corridas (las que tienen fila en `data/extremos.tsv`) no pasan por
+`yasma trim`: `scripts/trim.sh` les hace la misma llamada partida en dos,
+
+```
+cutadapt -u 4 -a <sec> -j <cores> -O 4 --max-n 0 --trimmed-only <in> \
+  | cutadapt -u -4 --minimum-length 15 --maximum-length 50 -j <cores> -o <out> -
+```
+
+porque cutadapt aplica `-u` **antes** de buscar el adaptador (las bases del 3'
+están entre el inserto y el adaptador, y solo quedan en la punta después de
+sacarlo), y la ventana tiene que ir sobre el inserto ya cortado. La salida
+queda donde la dejaría YASMA (`trim/<RUN>.t.fq.gz`) y se anota en
+`trimmed_libraries`, así que para `yasma align` no hay diferencia. El detalle
+está en `scripts/extremos.py` y en la trampa del kit 4N de `CLAUDE.md`.
+
 ### Por qué el adaptador NO se lo dejamos a `yasma adapter`
 
 `yasma trim` lee los adaptadores de `inputs.json`. Ante un adaptador `"None"`

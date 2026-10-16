@@ -255,6 +255,43 @@ C1B = celda("MAX_READS = ", NB30)
 chk("§1b no retiene la salida hasta el final", "capture_output=" not in C1B)
 chk("§1b le pasa --max-reads al control", "'--max-reads', str(MAX_READS)" in C1B)
 
+print("== 5f. lo que §5c mide en data/extremos.tsv llega a git: §5d, §6 y la cola")
+# Vive en el clon de la VM. Sin empujarlo, la sesion siguiente recorta sin
+# cortar y rhirr_duplicado vuelve a alinear 0.17%.
+LLAMADAS = []
+falso = types.ModuleType("colab_git")
+falso.empujar = lambda clon, rutas, msg, **kw: LLAMADAS.append((rutas, kw)) or "falso"
+viejo_mod = sys.modules.get("colab_git")
+sys.modules["colab_git"] = falso
+try:
+    C5D = celda("'extremos 4N medidos con align.sh prueba")
+    try:
+        exec(C5D, {})
+        e = None
+    except Exception as x:  # noqa: BLE001
+        e = x
+    chk("§5d sin CLON: RuntimeError que lo nombra", isinstance(e, RuntimeError) and "CLON" in str(e), repr(e))
+    with redirect_stdout(io.StringIO()):
+        exec(C5D, {"CLON": RAIZ})
+    chk("§5d empuja data/extremos.tsv", LLAMADAS and LLAMADAS[-1][0] == ["data/extremos.tsv"], LLAMADAS)
+    chk("§5d revisa primero por defecto", LLAMADAS and LLAMADAS[-1][1].get("revisar") is True, LLAMADAS)
+    C6 = celda("f'alineamientos: {PROYECTO} desde Colab'")
+    with redirect_stdout(io.StringIO()):
+        exec(C6, {"CLON": RAIZ, "PROYECTO": "rhirr/duplicado", "correr": lambda *a, **k: 0})
+    chk("§6 también", LLAMADAS and "data/extremos.tsv" in LLAMADAS[-1][0], LLAMADAS)
+    import cola  # noqa: E402,PLC0415
+    with tempfile.TemporaryDirectory() as d:
+        (pathlib.Path(d) / "data").mkdir()
+        (pathlib.Path(d) / "data" / "extremos.tsv").write_text("org\n")
+        with redirect_stdout(io.StringIO()):
+            cola._empujar(d, "x")
+    chk("y la cola", LLAMADAS and LLAMADAS[-1][0] == ["data/extremos.tsv"], LLAMADAS)
+finally:
+    if viejo_mod is None:
+        sys.modules.pop("colab_git", None)
+    else:
+        sys.modules["colab_git"] = viejo_mod
+
 print("== 6. la celda de montaje es la misma en todos los notebooks")
 todas = {nb.name: celda("drive.mount(", nb)
          for nb in sorted((RAIZ / "notebooks").glob("*.ipynb"))

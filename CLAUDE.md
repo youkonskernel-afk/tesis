@@ -316,25 +316,32 @@ probabilidad calibrada.
   cutadapt con `RA3` saca el adaptador pero deja esas 4 bases pegadas al read,
   que con `-v 1` ya no alinea. Encaja con el `perfil`: inserto modal de 32 nt
   en un proyecto de sRNA, donde lo esperable son 21-24.
-  **Sin confirmar todavía**: `de_quien.py` ahora mide la variación de cada
-  punta y, con el índice, **alinea una muestra recortando o no 4 nt de cada
-  extremo** — si el 3' recortado pasa de 0.1% a decenas de %, está confirmado y
-  dice qué recortar. `align.sh verificar` lo corre solo para cada proyecto con
-  más de la mitad sin alinear (lo imprimen §5 y la cola), porque mandar a correr
-  una celda aparte no funcionó: se re-corrió §5 tres veces sin llegar a §5b.
-  **Si se confirma, el arreglo es del recorte, no del alineamiento**: hay que
-  sacar esas 4 nt en `trim.sh` y re-alinear, y revisar con la misma prueba los
-  otros proyectos con inserto modal alto —`rhirr PRJEB29180` (30 nt) y `cloro
-  PRJEB51338` (38)—, porque `gadmo PRJNA284846` (32) alineó ~80% y no lo tiene.
-  Hasta tanto, `rhirr/duplicado` no conviene dejarlo en la cola: es el primero y
-  la re-alinearía, ~2.5 h para el mismo resultado.
-  **La prueba ya no exige alinear el proyecto: `align.sh prueba <org>/<rol>`**
+  **Confirmado con el índice: es un kit 4N en las DOS puntas.** `de_quien.py`
+  alineó una muestra con `bowtie -v 1` cortando o no 4 nt de cada extremo:
+  **0.17%** sin cortar, 6.72% cortando solo el 3', 4.81% solo el 5' y
+  **82.07% cortando 4 y 4**. Las dos puntas salen `ALEATORIO` (la variante más
+  común se lleva 5.2% en el 3' y 24.7% en el 5') y los miRNAs de planta, 0%. O
+  sea que el inserto modal de 32 nt que medía `perfil` son ~24 más 8 bases
+  inventadas. El §5 que lo midió cortó con `AssertionError` y el BAM **no** subió
+  a Drive: es el guardia funcionando.
+  **El arreglo es del recorte**, porque `yasma trim` no puede cortar bases
+  fijas: `data/extremos.tsv` dice cuánto cortar por proyecto o por corrida, y
+  `trim.sh` recorta esas corridas con la misma llamada a cutadapt partida en dos
+  —ver la trampa del kit 4N—. La tabla no se llena a mano: la escribe
+  `align.sh prueba`, que mide **cada corrida** por separado. **Falta correr §5c**
+  para que registre `rhirr/duplicado` y mida `rhirr PRJEB29180` (inserto modal
+  30) y `cloro PRJEB51338` (38), los otros dos con inserto alto; `gadmo
+  PRJNA284846` (32) alineó ~80% y no lo tiene. Después `rhirr/duplicado` se
+  re-recorta y re-alinea (§3-§5 o la cola), y hasta entonces no conviene dejarlo
+  en la cola: alinearía sin cortar.
+  **La prueba no exige alinear el proyecto: `align.sh prueba <org>/<rol>`**
   (§5c de `20_alinear`, los tres sospechosos de una vez) toma N lecturas de
   **cada** corrida con `trim.sh muestra` —la misma llamada a cutadapt que
-  `yasma trim`, con el adaptador por corrida de la tabla—, construye el índice
-  y corre `de_quien.py` sobre eso. Minutos en vez de ~2.5 h, y sin tocar el
-  proyecto de verdad: la muestra va a `proyectos/_muestras/`. Banco en
-  `test_trim.sh` 16 y `test_align.sh` 10h.
+  `yasma trim`, con el adaptador por corrida de la tabla y **sin** cortar
+  extremos—, construye el índice y corre `de_quien.py --registrar`. Minutos en
+  vez de ~2.5 h, y sin tocar el proyecto de verdad: la muestra va a
+  `proyectos/_muestras/`. §5d empuja la tabla. Banco en `test_trim.sh` 16-17,
+  `test_align.sh` 10f2/10h y `test_de_quien.py` 12.
 - **`cloro` primario es `ncRNA-Seq`**, no miRNA-Seq. Igual que `phypa`, hay que
   declararlo en métodos. (Que venga ya recortado está anotado arriba.)
 - **Re-estimado con datos, no con reglas de tres.** Con 3.4× más reads, las
@@ -358,6 +365,42 @@ probabilidad calibrada.
   del asunto de SRA Lite — en el recorte la calidad sintética no distorsiona
   nada porque no se mira. Detalle que cuesta una corrida: `yasma trim` **no
   tiene `--override`**, aunque `yasma adapter` sí.
+- **Un kit 4N no falla en el recorte: alinea 0.17%.** Las bases aleatorias de
+  los adaptadores 4N (NEXTflex, los "HD") quedan pegadas a las dos puntas del
+  inserto: cutadapt saca el adaptador, la retención da lo esperado, y
+  `bowtie -v 1` no alinea un read con 4 bases inventadas. Fue `rhirr_duplicado`.
+  `yasma trim` no puede cortarlas —le pasa a cutadapt `-a` y la ventana, nada
+  más—, así que las corridas con fila en `data/extremos.tsv` no van por
+  `yasma trim` sino por su misma llamada partida en dos:
+  `cutadapt -u 4 -a <sec> -O 4 --max-n 0 --trimmed-only | cutadapt -u -4 -m 15 -M 50`.
+  **Dos pasadas porque cutadapt aplica `-u` antes de buscar el adaptador**: el
+  5' se puede cortar ahí, pero las 4 bases del 3' están entre el inserto y el
+  adaptador. **Y la ventana va al final, sobre el inserto ya cortado**: con la
+  de `yasma trim` se perderían los insertos de 43-50 nt y entrarían los de
+  7-14. Medido con cutadapt 5.2 sobre reads 4N sintéticos, también a través de
+  `trim.sh`: 2233 de 2233 insertos exactos, ninguno de más. Cuatro cosas que se
+  siguen y que es fácil hacer mal:
+  - **La fila llega después del recorte**, por construcción: hay que alinear
+    para ver que no alinea. Por eso el ledger del recorte anota en `extremos`
+    qué se cortó, y lo recortado con otro corte que el que pide la tabla hoy
+    **se rehace solo** con `trim.sh correr`, cuenta como faltante en `estado`,
+    sale `EXTREMOS DESACTUALIZADOS` en `verificar`, y `align.sh correr` se niega
+    a alinearlo.
+  - **`trim.sh muestra` no corta extremos, a propósito**: es el instrumento que
+    los mide. Cortada, `de_quien.py --registrar` registraría la diferencia y no
+    el corte. Por eso registra `align.sh prueba` y no `verificar`, que mira el
+    recorte de verdad.
+  - **La `retencion_est` no vale para una corrida cortada**: `perfil` midió el
+    inserto con las 8 bases adentro y le aplicó la ventana así. `verificar` le
+    aplica solo `VACIA`.
+  - **Se mide por corrida, no por proyecto**: un 82% agregado no distingue 13
+    corridas 4N de 11 más 2 que no lo son, y cortar 4 nt a una corrida que no
+    los trae acorta insertos de verdad sin que nada falle —lo de gadmo
+    PRJNA328800, un nivel más abajo—. `de_quien.py` sabe de qué corrida es cada
+    lectura alineada y escribe una fila `-` solo si se midieron **todas** las
+    del BioProject y piden lo mismo. Una `PRE-TRIMMED` con corte hace fallar
+    `trim.sh`: no pasa por cutadapt, y cortarle las puntas no está
+    implementado.
 - **`yasma trim` pisa `trimmed_libraries` en vez de acumularlo, y eso rompe
   cualquier recorte por tandas.** Hace `ic.inputs['trimmed_libraries'] = []` al
   entrar y `= <lo de esta llamada>` al salir. Medido: tras recortar RUNA el json
@@ -560,6 +603,14 @@ probabilidad calibrada.
   nonzero cae en la rama de éxito, y se imprime `ok`. Estaba en los **14**
   helpers de los bancos; todos llevan `--` ahora. Al escribir un helper que
   reciba un patrón como dato: `grep -qF -- "$2"`.
+- **Un patrón de `grep` con un salto de línea son varios patrones, y uno vacío
+  matchea todo.** `tiene "..." "$(printf '\nACGT...\n')"`: la sustitución saca
+  el `\n` final pero no el del principio, grep recibe `""` y `"ACGT..."`, y el
+  vacío matchea cualquier línea — el chequeo pasa SIEMPRE. Pasó en el banco del
+  kit 4N: daba por bueno un inserto equivocado. Es el mismo modo de fallo que el
+  `--` de arriba, por otro camino, y ahora los 11 `tiene()` de los bancos se
+  niegan a un patrón vacío o multilínea. Para comparar una línea entera:
+  sacarla con `sed -n Np` y comparar con `==`.
 - **`fastp --disable_length_filtering`**: desactiva el filtro de longitud, no el
   de Ns (eso es `--n_base_limit`). Con ese flag entraba mRNA fragmentado de
   50-150 nt y distorsionaba las *size class*. Ya se eliminó; no volver a ponerlo.
@@ -1218,7 +1269,7 @@ Lo que necesita red va en otro lado:
 | manifiesto y `.sra` | Colab | `notebooks/10_descarga_runs.ipynb` |
 | ver qué falta | Colab | `notebooks/90_estado.ipynb` |
 | recorte y alineamiento (los que entran) | Colab | `notebooks/20_alinear.ipynb` |
-| prueba 4N sobre una muestra (sin alinear) | Colab | §5c de `20_alinear.ipynb` (`align.sh prueba`) |
+| prueba 4N sobre una muestra, y su registro en `data/extremos.tsv` | Colab | §5c y §5d de `20_alinear.ipynb` (`align.sh prueba`) |
 | todos los que faltan, en cola | Colab | §8 de `20_alinear.ipynb` (`scripts/cola.py`) |
 | matriz de features (anotar, features, etiquetar, exportar, excel) | Colab | `notebooks/30_matriz.ipynb` (`scripts/matriz.py`) |
 | empujar a git desde Colab | Colab | `scripts/colab_git.py` + un PAT en Secrets |
@@ -1249,7 +1300,7 @@ evitan que dos hagan el mismo proyecto. El techo es 4× y lo marca
 Todo corre sin red y en segundos. Antes de cada push:
 
 ```bash
-./tests/run_all.sh              # 28 bancos, 1090 chequeos, binarios falsos en el PATH
+./tests/run_all.sh              # 28 bancos, 1173 chequeos, binarios falsos en el PATH
 ./tests/mutar.py                # rompe el codigo y exige que algun banco grite
 ./scripts/check_docs.py         # lo que afirman los docs contra data/
 ./scripts/validate_notebooks.py # los .ipynb parsean y no hay duplicados
@@ -1260,7 +1311,7 @@ y `check_docs.py` dos más.
 
 **Un banco que pasa no prueba nada.** Prueba algo el día que se rompe lo que
 cubre y el banco se queja, y la única forma de saberlo es romper el código a
-propósito: eso es `tests/mutar.py`, 216 mutaciones que tienen que dar todas
+propósito: eso es `tests/mutar.py`, 236 mutaciones que tienen que dar todas
 `[OK]`. Un `[HUECO]` es un chequeo que falta; un `[VIEJA]` es una mutación cuyo
 patrón ya no existe, que tampoco prueba nada. Así aparecieron los dos huecos que
 ninguna otra cosa mostró — el veredicto de `perfil` que iba a la tabla sin estar
